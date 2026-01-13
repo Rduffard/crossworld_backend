@@ -16,6 +16,10 @@ const {
 const createUser = (req, res) => {
   const { name, avatar, email, password } = req.body;
 
+  if (!email || !password || !name || !avatar) {
+    return res.status(BAD_REQUEST).send({ message: "Invalid data" });
+  }
+
   bcrypt
     .hash(password, 10)
     .then((hash) =>
@@ -42,7 +46,6 @@ const createUser = (req, res) => {
       }
 
       if (err.name === "ValidationError") {
-        [];
         return res.status(BAD_REQUEST).send({ message: "Invalid data" });
       }
 
@@ -56,6 +59,10 @@ const createUser = (req, res) => {
 const login = (req, res) => {
   const { email, password } = req.body;
 
+  if (!email || !password) {
+    return res.status(BAD_REQUEST).send({ message: "Invalid data" });
+  }
+
   User.findUserByCredentials(email, password)
     .then((user) => {
       const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
@@ -64,8 +71,17 @@ const login = (req, res) => {
 
       res.send({ token });
     })
-    .catch(() => {
-      res.status(UNAUTHORIZED).send({ message: "Incorrect email or password" });
+    .catch((err) => {
+      if (err.message === "Incorrect email or password") {
+        return res
+          .status(UNAUTHORIZED)
+          .send({ message: "Incorrect email or password" });
+      }
+
+      console.error(err);
+      return res
+        .status(SERVER_ERROR)
+        .send({ message: "An error has occurred on the server" });
     });
 };
 
