@@ -42,6 +42,7 @@ const createUser = (req, res) => {
       }
 
       if (err.name === "ValidationError") {
+        [];
         return res.status(BAD_REQUEST).send({ message: "Invalid data" });
       }
 
