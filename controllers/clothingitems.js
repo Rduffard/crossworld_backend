@@ -1,5 +1,10 @@
 const ClothingItem = require("../models/clothingitem");
-const { BAD_REQUEST, NOT_FOUND, SERVER_ERROR } = require("../utils/errors");
+const {
+  BAD_REQUEST,
+  NOT_FOUND,
+  SERVER_ERROR,
+  FORBIDDEN,
+} = require("../utils/errors");
 
 // Create
 const createItem = (req, res) => {
@@ -86,13 +91,21 @@ const dislikeItem = (req, res) => {
     });
 };
 
-// Delete
+// Delete (OWNER ONLY)
 const deleteItem = (req, res) => {
   const { itemId } = req.params;
 
-  ClothingItem.findByIdAndDelete(itemId)
+  ClothingItem.findById(itemId)
     .orFail()
-    .then((item) => res.status(200).send(item))
+    .then((item) => {
+      if (item.owner.toString() !== req.user._id) {
+        return res.status(FORBIDDEN).send({ message: "Forbidden" });
+      }
+
+      return ClothingItem.findByIdAndDelete(itemId).then(() =>
+        res.send({ message: "Item deleted" })
+      );
+    })
     .catch((err) => {
       console.error(err);
 
