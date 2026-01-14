@@ -16,10 +16,6 @@ const {
 const createUser = (req, res) => {
   const { name, avatar, email, password } = req.body;
 
-  if (!email || !password || !name || !avatar) {
-    return res.status(BAD_REQUEST).send({ message: "Invalid data" });
-  }
-
   bcrypt
     .hash(password, 10)
     .then((hash) =>
@@ -63,7 +59,7 @@ const login = (req, res) => {
     return res.status(BAD_REQUEST).send({ message: "Invalid data" });
   }
 
-  User.findUserByCredentials(email, password)
+  return User.findUserByCredentials(email, password)
     .then((user) => {
       const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
         expiresIn: "7d",
