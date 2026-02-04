@@ -86,5 +86,9 @@ Authorization: Bearer <JWT>
 
 ## Project Pitch Video
 
-Check out [this video](https://drive.google.com/file/d/1IUrfnz3PYlEqUs3viGk2a6vA1ehKXFjd/view?usp=drive_link), where I describe my
+Check out the videos below, where I describe my
 project and some challenges I faced while building it.
+
+- [First Video](https://drive.google.com/file/d/1IUrfnz3PYlEqUs3viGk2a6vA1ehKXFjd/view?usp=drive_link)
+
+- [Second Video](https://drive.google.com/file/d/1y-EgJPQdi1_w85JDMNUzMHjuLbw9wc_3/view?usp=sharing)
