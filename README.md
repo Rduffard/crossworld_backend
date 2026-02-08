@@ -1,96 +1,127 @@
-# WTWR (What to Wear?): Back End
+# Crossworld Backend API
 
-This project is the back end for the **WTWR (What to Wear?)** application. It provides a RESTful API built with Express and MongoDB, supporting user authentication, protected routes, and role-based permissions.
+A centralized, scalable **Node.js + Express + MongoDB backend** powering multiple projects under the **Crossworld Creative** umbrella.
 
-The server handles user registration and login, secure password storage, authorization via JSON Web Tokens (JWT), and CRUD operations for clothing items with ownership restrictions.
+This API began as the backend for **WTWR (What to Wear)** and has since evolved into a shared service designed to support multiple applications, user domains, and feature sets from a single, well-structured codebase.
 
-## Features
+---
 
-- **User authentication**
-  - User signup with validation and hashed passwords
-  - User signin with JWT-based authentication
-- **Authorization middleware**
-  - Protects private routes using Bearer tokens
-  - Public access for signup, signin, and viewing items
-- **User profile management**
-  - Get current user (`GET /users/me`)
-  - Update profile information (`PATCH /users/me`)
-- **Clothing items**
-  - Create, read, like, and dislike items
-  - Only item owners can delete their own items (403 Forbidden otherwise)
-- **Security**
-  - Passwords are hashed with bcrypt
-  - Password hashes are never returned in API responses
-- **Error handling**
-  - Centralized status codes (400, 401, 403, 404, 409, 500)
-  - Consistent error responses across controllers
+## 🧠 Purpose & Philosophy
 
-## Technologies Used
+Rather than maintaining isolated backends for each project, this repository serves as a **unified API platform** that:
 
-- Node.js
-- Express.js
-- MongoDB
-- Mongoose
-- JWT (jsonwebtoken)
-- bcryptjs
-- ESLint
-- CORS
+- Shares **authentication and user identity** across projects
+- Exposes **project-specific routes** where needed
+- Encourages **code reuse, consistency, and maintainability**
+- Reflects a real-world, production-style backend architecture
 
-## Running the Project Locally
+Each frontend consumes only the endpoints it needs, while the backend remains cohesive and extensible.
 
-Start the server:
+---
 
-npm run start
+## 🚀 Projects Powered by This Backend
 
-Start the server with hot reload enabled:
+### 1️⃣ WTWR – _What To Wear_
 
-npm run dev
+A weather-based clothing recommendation app.
 
-The server runs on port **3001** by default.
+**Status:** ✅ Complete  
+**Role:** Original backend foundation
 
-## API Overview
+Features:
 
-### Public Routes
+- User authentication (JWT)
+- Secure password hashing
+- Clothing item CRUD
+- Likes / ownership logic
+- Validation and centralized error handling
 
-- POST /signup — create a new user
-- POST /signin — authenticate a user and return a JWT
-- GET /items — retrieve all clothing items
+WTWR served as the proving ground for the backend’s structure and standards.
 
-### Protected Routes
+---
 
-(Require an Authorization header)
+### 2️⃣ Crossworld Creative – Portfolio Platform
 
-- GET /users/me — get the current user
-- PATCH /users/me — update user profile
-- POST /items — create a clothing item
-- DELETE /items/:itemId — delete an item (owner only)
-- PUT /items/:itemId/likes — like an item
-- DELETE /items/:itemId/likes — remove a like
+A personal portfolio and creative hub showcasing multiple projects.
 
-Authorization header format:
+**Status:** 🛠 In active development  
+**Role:** Central identity & platform layer
 
-Authorization: Bearer <JWT>
+Planned / ongoing features:
 
-## Project Structure
+- Shared user accounts across all Crossworld projects
+- Project metadata and access control
+- Public vs authenticated experiences
+- Future admin and content management endpoints
 
-- models/ — Mongoose schemas
-- controllers/ — Request handling logic
-- routes/ — API route definitions
-- middlewares/ — Authorization middleware
-- utils/ — Configuration and error constants
-- app.js — Application entry point
+This backend acts as the **core identity layer** for the Crossworld ecosystem.
 
-## Link
+---
 
-- Github Repository: https://github.com/Rduffard/se_project_express
-- Frontend Repository: https://github.com/Rduffard/se_project_react
-- Domain: https://wtwrdemo.jumpingcrab.com
+### 3️⃣ Squash – Bug & QA Tracking Platform
 
-## Project Pitch Video
+A QA-focused issue tracking and project management tool.
 
-Check out the videos below, where I describe my
-project and some challenges I faced while building it.
+**Status:** 🛠 In active development  
+**Role:** Project-specific domain API
 
-- [First Video](https://drive.google.com/file/d/1IUrfnz3PYlEqUs3viGk2a6vA1ehKXFjd/view?usp=drive_link)
+Planned features:
 
-- [Second Video](https://drive.google.com/file/d/1y-EgJPQdi1_w85JDMNUzMHjuLbw9wc_3/view?usp=sharing)
+- Projects, issues, and workflow states
+- User roles and permissions
+- Comments, activity logs, and assignments
+- Future automation and QA-centric tooling
+
+Squash will consume the same auth system while introducing its own domain logic.
+
+---
+
+## 🏗 Architecture Overview
+
+- **Node.js / Express** – API framework
+- **MongoDB / Mongoose** – Data modeling & persistence
+- **JWT Authentication** – Stateless auth across services
+- **bcrypt** – Secure password hashing
+- **Celebrate / Joi** – Request validation
+- **Centralized error handling** – Custom error classes
+- **Winston + express-winston** – Request & error logging
+- **Modular routing** – Shared vs project-specific routes
+
+The codebase is intentionally organized to scale as new projects are added.
+
+---
+
+## 🔐 Authentication Model
+
+- Users authenticate once
+- JWTs are shared across all consuming applications
+- Each project enforces its own authorization rules
+- Enables SSO-like behavior across Crossworld projects
+
+---
+
+## 🌱 Future Expansion
+
+This backend is designed to grow alongside the Crossworld Creative ecosystem, including:
+
+- Additional applications
+- Shared services (notifications, uploads, email, etc.)
+- Role-based access control
+- External API integrations
+- Production deployment hardening
+
+---
+
+## 🧑‍💻 Author
+
+**Romain Duffard**  
+QA Analyst → Software Engineer  
+Crossworld Creative
+
+This project reflects a real-world transition from a single-app backend to a multi-project platform — prioritizing clarity, scalability, and long-term maintainability.
+
+---
+
+## 📄 License
+
+MIT (or update as needed)
