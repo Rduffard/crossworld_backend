@@ -1,34 +1,44 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 const { errors } = require("celebrate");
 
 require("dotenv").config();
 
 const mainRouter = require("./routes/index");
-
-const app = express();
-const { PORT = 3001 } = process.env;
-
 const errorHandler = require("./middlewares/errorHandler");
-
 const { requestLogger, errorLogger } = require("./middlewares/logger");
 
-mongoose
-  .connect("mongodb://127.0.0.1:27017/wtwr_db")
-  .then(() => console.log("Connected to DB"))
-  .catch(console.error);
+const connectDB = require("./db/connect");
 
+const app = express();
+
+// DB
+connectDB();
+
+// logging
 app.use(requestLogger);
 
-app.use(cors());
+// CORS – dev friendly, supports multiple local frontends
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+
+// body parsing
 app.use(express.json());
 
+// routes
 app.use("/", mainRouter);
+
+// error logging + handling
 app.use(errorLogger);
 app.use(errors());
 app.use(errorHandler);
 
+// server
+const { PORT = 3001 } = process.env;
 app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

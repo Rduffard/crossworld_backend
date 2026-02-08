@@ -1,8 +1,8 @@
-const ClothingItem = require("../models/clothingitem");
+const ClothingItem = require("./model");
 
-const BadRequestError = require("../errors/bad-request-error");
-const NotFoundError = require("../errors/not-found-error");
-const ForbiddenError = require("../errors/forbidden-error");
+const BadRequestError = require("../../errors/bad-request-error");
+const NotFoundError = require("../../errors/not-found-error");
+const ForbiddenError = require("../../errors/forbidden-error");
 
 // Create
 const createItem = (req, res, next) => {
@@ -19,7 +19,6 @@ const createItem = (req, res, next) => {
       if (err.name === "ValidationError") {
         return next(new BadRequestError("Invalid data"));
       }
-
       return next(err);
     });
 };
@@ -49,7 +48,6 @@ const likeItem = (req, res, next) => {
       if (err.name === "DocumentNotFoundError") {
         return next(new NotFoundError("Item not found"));
       }
-
       return next(err);
     });
 };
@@ -72,7 +70,6 @@ const dislikeItem = (req, res, next) => {
       if (err.name === "DocumentNotFoundError") {
         return next(new NotFoundError("Item not found"));
       }
-
       return next(err);
     });
 };
@@ -84,10 +81,9 @@ const deleteItem = (req, res, next) => {
   ClothingItem.findById(itemId)
     .orFail()
     .then((item) => {
-      if (item.owner.toString() !== req.user._id) {
+      if (item.owner.toString() !== String(req.user._id)) {
         throw new ForbiddenError("Forbidden");
       }
-
       return ClothingItem.findByIdAndDelete(itemId);
     })
     .then(() => res.send({ message: "Item deleted" }))
@@ -98,7 +94,6 @@ const deleteItem = (req, res, next) => {
       if (err.name === "DocumentNotFoundError") {
         return next(new NotFoundError("Item not found"));
       }
-
       return next(err);
     });
 };
