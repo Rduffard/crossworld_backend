@@ -2,7 +2,6 @@ const Bug = require("./model");
 const Project = require("../projects/model");
 
 const ForbiddenError = require("../../../errors/forbidden-error");
-const NotFoundError = require("../../../errors/not-found-error");
 
 const userHasProjectAccess = async (userId, projectId) => {
   const exists = await Project.exists({
