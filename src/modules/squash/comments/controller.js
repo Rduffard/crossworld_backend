@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
 const Comment = require("./model");
 
-const BadRequestError = require("../../../errors/bad-request-error");
-const ForbiddenError = require("../../../errors/forbidden-error");
-const NotFoundError = require("../../../errors/not-found-error");
+const BadRequestError = require("../../../core/errors/bad-request-error");
+const ForbiddenError = require("../../../core/errors/forbidden-error");
+const NotFoundError = require("../../../core/errors/not-found-error");
 
 /**
  * GET /squash/comments?bugId=<id>

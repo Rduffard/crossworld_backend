@@ -1,6 +1,6 @@
 const { isCelebrateError } = require("celebrate");
 
-module.exports = (err, req, res, next) => {
+module.exports = (err, req, res, _next) => {
   // Celebrate/Joi validation errors
   if (isCelebrateError(err)) {
     const details = [];

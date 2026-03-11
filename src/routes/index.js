@@ -4,7 +4,7 @@ const authRoutes = require("../modules/auth/routes");
 const wtwrRoutes = require("../modules/wtwr/routes");
 const squashRoutes = require("../modules/squash/routes");
 
-const NotFoundError = require("../errors/not-found-error");
+const NotFoundError = require("../core/errors/not-found-error");
 
 router.use("/auth", authRoutes);
 router.use("/wtwr", wtwrRoutes);

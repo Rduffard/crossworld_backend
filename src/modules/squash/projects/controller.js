@@ -1,7 +1,7 @@
 const Project = require("./model");
 
-const BadRequestError = require("../../../errors/bad-request-error");
-const NotFoundError = require("../../../errors/not-found-error");
+const BadRequestError = require("../../../core/errors/bad-request-error");
+const NotFoundError = require("../../../core/errors/not-found-error");
 
 const getProjects = async (req, res, next) => {
   try {
