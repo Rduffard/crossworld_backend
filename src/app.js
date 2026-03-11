@@ -2,13 +2,12 @@ const express = require("express");
 const cors = require("cors");
 const { errors } = require("celebrate");
 
-require("dotenv").config();
-
 const mainRouter = require("./routes/index");
-const errorHandler = require("./middlewares/errorHandler");
-const { requestLogger, errorLogger } = require("./middlewares/logger");
+const errorHandler = require("./core/middleware/errorHandler");
+const { requestLogger, errorLogger } = require("./core/middleware/logger");
 
-const connectDB = require("./db/connect");
+const connectDB = require("./config/db");
+const { PORT } = require("./config/env");
 
 const app = express();
 
@@ -38,7 +37,6 @@ app.use(errors());
 app.use(errorHandler);
 
 // server
-const { PORT = 3001 } = process.env;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

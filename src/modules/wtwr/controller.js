@@ -1,8 +1,8 @@
 const ClothingItem = require("./model");
 
-const BadRequestError = require("../../errors/bad-request-error");
-const NotFoundError = require("../../errors/not-found-error");
-const ForbiddenError = require("../../errors/forbidden-error");
+const BadRequestError = require("../../core/errors/bad-request-error");
+const NotFoundError = require("../../core/errors/not-found-error");
+const ForbiddenError = require("../../core/errors/forbidden-error");
 
 // Create
 const createItem = (req, res, next) => {

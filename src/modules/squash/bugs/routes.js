@@ -1,6 +1,6 @@
 const router = require("express").Router();
 
-const auth = require("../../../middlewares/auth"); // adjust if your auth path differs
+const auth = require("../../../core/middleware/auth"); // adjust if your auth path differs
 const { validateCreateBug, validateBugQuery } = require("./validators");
 const { getBugs, createBug } = require("./controller");
 

@@ -7,13 +7,13 @@ const {
   updateCurrentUser,
 } = require("./controller");
 
-const auth = require("../../middlewares/auth");
+const auth = require("../../core/middleware/auth");
 
 const {
   validateUserBody,
   validateLogin,
   validateUserUpdate,
-} = require("../../middlewares/validation");
+} = require("../../core/middleware/validation");
 
 router.post("/signup", validateUserBody, createUser);
 router.post("/signin", validateLogin, login);

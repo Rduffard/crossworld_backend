@@ -2,12 +2,12 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const User = require("./model");
-const { JWT_SECRET } = require("../../config");
+const { JWT_SECRET } = require("../../config/env");
 
-const BadRequestError = require("../../errors/bad-request-error");
-const ConflictError = require("../../errors/conflict-error");
-const UnauthorizedError = require("../../errors/unauthorized-error");
-const NotFoundError = require("../../errors/not-found-error");
+const BadRequestError = require("../../core/errors/bad-request-error");
+const ConflictError = require("../../core/errors/conflict-error");
+const UnauthorizedError = require("../../core/errors/unauthorized-error");
+const NotFoundError = require("../../core/errors/not-found-error");
 
 /**
  * POST /auth/signup
