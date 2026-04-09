@@ -14,13 +14,14 @@ const NotFoundError = require("../../core/errors/not-found-error");
  */
 const createUser = (req, res, next) => {
   const { name, avatar, email, password } = req.body;
+  const normalizedAvatar = typeof avatar === "string" && avatar.trim() ? avatar : undefined;
 
   bcrypt
     .hash(password, 10)
     .then((hash) =>
       User.create({
         name,
-        avatar,
+        avatar: normalizedAvatar,
         email,
         password: hash,
       })
