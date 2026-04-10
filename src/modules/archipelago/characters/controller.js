@@ -39,22 +39,29 @@ const getCharacters = async (req, res, next) => {
 const createCharacter = async (req, res, next) => {
   try {
     const characterCount = await Character.countDocuments({ owner: req.user._id });
+    const body = req.body ?? {};
 
     if (characterCount >= MAX_CHARACTERS_PER_USER) {
       throw new ForbiddenError("Character limit reached");
     }
 
     const payload = {
-      ...req.body,
+      ...body,
       owner: req.user._id,
-      derivedStats: calculateDerivedStats(req.body.attributes),
+      derivedStats: calculateDerivedStats(body.attributes),
     };
 
     const character = await Character.create(payload);
     res.status(201).send(character);
   } catch (err) {
     if (err.name === "ValidationError") {
-      return next(new BadRequestError("Invalid character data"));
+      const validationMessage =
+        Object.values(err.errors ?? {})
+          .map((validationError) => validationError.message)
+          .filter(Boolean)
+          .join(", ") || "Invalid character data";
+
+      return next(new BadRequestError(validationMessage));
     }
     return next(err);
   }
@@ -83,6 +90,7 @@ const getCharacterById = async (req, res, next) => {
 const updateCharacter = async (req, res, next) => {
   try {
     const existingCharacter = await Character.findById(req.params.characterId);
+    const body = req.body ?? {};
 
     if (!existingCharacter) {
       throw new NotFoundError("Character not found");
@@ -93,8 +101,8 @@ const updateCharacter = async (req, res, next) => {
     }
 
     const update = {
-      ...req.body,
-      derivedStats: calculateDerivedStats(req.body.attributes ?? existingCharacter.attributes),
+      ...body,
+      derivedStats: calculateDerivedStats(body.attributes ?? existingCharacter.attributes),
     };
 
     const updatedCharacter = await Character.findByIdAndUpdate(
@@ -109,7 +117,13 @@ const updateCharacter = async (req, res, next) => {
     res.send(updatedCharacter);
   } catch (err) {
     if (err.name === "ValidationError") {
-      return next(new BadRequestError("Invalid character data"));
+      const validationMessage =
+        Object.values(err.errors ?? {})
+          .map((validationError) => validationError.message)
+          .filter(Boolean)
+          .join(", ") || "Invalid character data";
+
+      return next(new BadRequestError(validationMessage));
     }
     if (err.name === "CastError") {
       return next(new BadRequestError("Invalid character id"));
