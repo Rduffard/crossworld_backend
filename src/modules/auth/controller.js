@@ -1,13 +1,12 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const User = require("./model");
+const User = require("../users/model");
 const { JWT_SECRET } = require("../../config/env");
 
 const BadRequestError = require("../../core/errors/bad-request-error");
 const ConflictError = require("../../core/errors/conflict-error");
 const UnauthorizedError = require("../../core/errors/unauthorized-error");
-const NotFoundError = require("../../core/errors/not-found-error");
 
 /**
  * POST /auth/signup
@@ -72,48 +71,7 @@ const login = (req, res, next) => {
     });
 };
 
-/**
- * GET /auth/users/me
- */
-const getCurrentUser = (req, res, next) => {
-  User.findById(req.user._id)
-    .orFail()
-    .then((user) => res.send(user))
-    .catch((err) => {
-      if (err.name === "DocumentNotFoundError") {
-        return next(new NotFoundError("User not found"));
-      }
-      return next(err);
-    });
-};
-
-/**
- * PATCH /auth/users/me
- */
-const updateCurrentUser = (req, res, next) => {
-  const { name, avatar } = req.body;
-
-  User.findByIdAndUpdate(
-    req.user._id,
-    { name, avatar },
-    { new: true, runValidators: true }
-  )
-    .orFail()
-    .then((user) => res.send(user))
-    .catch((err) => {
-      if (err.name === "ValidationError") {
-        return next(new BadRequestError("Invalid data"));
-      }
-      if (err.name === "DocumentNotFoundError") {
-        return next(new NotFoundError("User not found"));
-      }
-      return next(err);
-    });
-};
-
 module.exports = {
   createUser,
   login,
-  getCurrentUser,
-  updateCurrentUser,
 };

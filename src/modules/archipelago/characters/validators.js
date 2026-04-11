@@ -3,6 +3,51 @@ const { celebrate, Joi } = require("celebrate");
 const objectId = Joi.string().hex().length(24);
 
 const attributeSchema = Joi.number().integer().min(0).max(10);
+const reputationSchema = Joi.number().integer().min(-3).max(3);
+
+const derivedStatsSchema = Joi.object({
+  vitality: Joi.number().integer().min(0).default(10),
+  guard: Joi.number().integer().min(0).default(10),
+  initiative: Joi.number().integer().min(0).default(10),
+  focus: Joi.number().integer().min(0).default(10),
+}).default({});
+
+const socialStatsSchema = Joi.object({
+  grace: Joi.number().integer().min(0).default(10),
+  guile: Joi.number().integer().min(0).default(10),
+  pressure: Joi.number().integer().min(0).default(10),
+}).default({});
+
+const pairingStatsSchema = Joi.object({
+  skirmish: Joi.number().integer().min(0).default(10),
+  leverage: Joi.number().integer().min(0).default(10),
+  conviction: Joi.number().integer().min(0).default(10),
+  pressure: Joi.number().integer().min(0).default(10),
+  pursuit: Joi.number().integer().min(0).default(10),
+  precision: Joi.number().integer().min(0).default(10),
+  flourish: Joi.number().integer().min(0).default(10),
+  balance: Joi.number().integer().min(0).default(10),
+  reflex: Joi.number().integer().min(0).default(10),
+  guile: Joi.number().integer().min(0).default(10),
+  tactics: Joi.number().integer().min(0).default(10),
+  sense: Joi.number().integer().min(0).default(10),
+  grace: Joi.number().integer().min(0).default(10),
+  attunement: Joi.number().integer().min(0).default(10),
+  nerve: Joi.number().integer().min(0).default(10),
+}).default({});
+
+const reputationMapSchema = Joi.object({
+  yumaRepublic: reputationSchema,
+  lilinEmpire: reputationSchema,
+  freeCaptains: reputationSchema,
+  rebelMovements: reputationSchema,
+  guildConsortium: reputationSchema,
+  nobleCourts: reputationSchema,
+  underworld: reputationSchema,
+  faithOrders: reputationSchema,
+  seaPeoples: reputationSchema,
+  frontierTribes: reputationSchema,
+}).default({});
 
 const woundSchema = Joi.object({
   name: Joi.string().min(1).max(80).required(),
@@ -45,7 +90,11 @@ const characterBodySchema = Joi.object({
     resolve: attributeSchema,
     instinct: attributeSchema,
   }).default({}),
-  passives: Joi.array().items(Joi.string().max(120)).default([]),
+  derivedStats: derivedStatsSchema,
+  socialStats: socialStatsSchema,
+  pairingStats: pairingStatsSchema,
+  reputation: reputationMapSchema,
+  passives: Joi.array().items(Joi.string().max(500)).default([]),
   wounds: Joi.array().items(woundSchema).default([]),
   abilities: Joi.array().items(abilitySchema).default([]),
   inventory: Joi.array().items(inventoryItemSchema).default([]),

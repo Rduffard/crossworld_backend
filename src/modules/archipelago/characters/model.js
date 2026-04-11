@@ -22,6 +22,52 @@ const derivedStatsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const socialStatsSchema = new mongoose.Schema(
+  {
+    grace: { type: Number, min: 0, default: 10 },
+    guile: { type: Number, min: 0, default: 10 },
+    pressure: { type: Number, min: 0, default: 10 },
+  },
+  { _id: false }
+);
+
+const pairingStatsSchema = new mongoose.Schema(
+  {
+    skirmish: { type: Number, min: 0, default: 10 },
+    leverage: { type: Number, min: 0, default: 10 },
+    conviction: { type: Number, min: 0, default: 10 },
+    pressure: { type: Number, min: 0, default: 10 },
+    pursuit: { type: Number, min: 0, default: 10 },
+    precision: { type: Number, min: 0, default: 10 },
+    flourish: { type: Number, min: 0, default: 10 },
+    balance: { type: Number, min: 0, default: 10 },
+    reflex: { type: Number, min: 0, default: 10 },
+    guile: { type: Number, min: 0, default: 10 },
+    tactics: { type: Number, min: 0, default: 10 },
+    sense: { type: Number, min: 0, default: 10 },
+    grace: { type: Number, min: 0, default: 10 },
+    attunement: { type: Number, min: 0, default: 10 },
+    nerve: { type: Number, min: 0, default: 10 },
+  },
+  { _id: false }
+);
+
+const reputationSchema = new mongoose.Schema(
+  {
+    yumaRepublic: { type: Number, min: -3, max: 3, default: 0 },
+    lilinEmpire: { type: Number, min: -3, max: 3, default: 0 },
+    freeCaptains: { type: Number, min: -3, max: 3, default: 0 },
+    rebelMovements: { type: Number, min: -3, max: 3, default: 0 },
+    guildConsortium: { type: Number, min: -3, max: 3, default: 0 },
+    nobleCourts: { type: Number, min: -3, max: 3, default: 0 },
+    underworld: { type: Number, min: -3, max: 3, default: 0 },
+    faithOrders: { type: Number, min: -3, max: 3, default: 0 },
+    seaPeoples: { type: Number, min: -3, max: 3, default: 0 },
+    frontierTribes: { type: Number, min: -3, max: 3, default: 0 },
+  },
+  { _id: false }
+);
+
 const woundSchema = new mongoose.Schema(
   {
     name: {
@@ -162,6 +208,18 @@ const characterSchema = new mongoose.Schema(
     },
     derivedStats: {
       type: derivedStatsSchema,
+      default: () => ({}),
+    },
+    socialStats: {
+      type: socialStatsSchema,
+      default: () => ({}),
+    },
+    pairingStats: {
+      type: pairingStatsSchema,
+      default: () => ({}),
+    },
+    reputation: {
+      type: reputationSchema,
       default: () => ({}),
     },
     passives: {

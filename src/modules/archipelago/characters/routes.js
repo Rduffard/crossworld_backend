@@ -11,7 +11,7 @@ const {
   validateCharacterIdParam,
   validateCreateCharacter,
   validateUpdateCharacter,
-} = require("../validators");
+} = require("./validators");
 
 router.get("/", getCharacters);
 router.post("/", validateCreateCharacter, createCharacter);

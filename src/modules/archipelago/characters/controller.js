@@ -1,4 +1,4 @@
-const Character = require("../models/character");
+const Character = require("./model");
 
 const BadRequestError = require("../../../core/errors/bad-request-error");
 const ForbiddenError = require("../../../core/errors/forbidden-error");
@@ -21,6 +21,52 @@ function calculateDerivedStats(attributes = {}) {
     guard: 10 + safeAttributes.agility,
     initiative: 10 + safeAttributes.agility + safeAttributes.instinct,
     focus: 10 + safeAttributes.spirit + safeAttributes.resolve,
+  };
+}
+
+function calculateSocialStats(attributes = {}) {
+  const safeAttributes = {
+    might: attributes.might ?? 0,
+    agility: attributes.agility ?? 0,
+    wit: attributes.wit ?? 0,
+    spirit: attributes.spirit ?? 0,
+    resolve: attributes.resolve ?? 0,
+    instinct: attributes.instinct ?? 0,
+  };
+
+  return {
+    grace: 10 + safeAttributes.spirit + safeAttributes.resolve,
+    guile: 10 + safeAttributes.wit + safeAttributes.spirit,
+    pressure: 10 + safeAttributes.might + safeAttributes.resolve,
+  };
+}
+
+function calculatePairingStats(attributes = {}) {
+  const safeAttributes = {
+    might: attributes.might ?? 0,
+    agility: attributes.agility ?? 0,
+    wit: attributes.wit ?? 0,
+    spirit: attributes.spirit ?? 0,
+    resolve: attributes.resolve ?? 0,
+    instinct: attributes.instinct ?? 0,
+  };
+
+  return {
+    skirmish: 10 + safeAttributes.might + safeAttributes.agility,
+    leverage: 10 + safeAttributes.might + safeAttributes.wit,
+    conviction: 10 + safeAttributes.might + safeAttributes.spirit,
+    pressure: 10 + safeAttributes.might + safeAttributes.resolve,
+    pursuit: 10 + safeAttributes.might + safeAttributes.instinct,
+    precision: 10 + safeAttributes.agility + safeAttributes.wit,
+    flourish: 10 + safeAttributes.agility + safeAttributes.spirit,
+    balance: 10 + safeAttributes.agility + safeAttributes.resolve,
+    reflex: 10 + safeAttributes.agility + safeAttributes.instinct,
+    guile: 10 + safeAttributes.wit + safeAttributes.spirit,
+    tactics: 10 + safeAttributes.wit + safeAttributes.resolve,
+    sense: 10 + safeAttributes.wit + safeAttributes.instinct,
+    grace: 10 + safeAttributes.spirit + safeAttributes.resolve,
+    attunement: 10 + safeAttributes.spirit + safeAttributes.instinct,
+    nerve: 10 + safeAttributes.resolve + safeAttributes.instinct,
   };
 }
 
@@ -49,6 +95,8 @@ const createCharacter = async (req, res, next) => {
       ...body,
       owner: req.user._id,
       derivedStats: calculateDerivedStats(body.attributes),
+      socialStats: calculateSocialStats(body.attributes),
+      pairingStats: calculatePairingStats(body.attributes),
     };
 
     const character = await Character.create(payload);
@@ -103,6 +151,8 @@ const updateCharacter = async (req, res, next) => {
     const update = {
       ...body,
       derivedStats: calculateDerivedStats(body.attributes ?? existingCharacter.attributes),
+      socialStats: calculateSocialStats(body.attributes ?? existingCharacter.attributes),
+      pairingStats: calculatePairingStats(body.attributes ?? existingCharacter.attributes),
     };
 
     const updatedCharacter = await Character.findByIdAndUpdate(

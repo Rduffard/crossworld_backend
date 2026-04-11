@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
       validate: {
-        validator: (v) => validator.isURL(v),
+        validator: (value) => validator.isURL(value),
         message: "Avatar must be a valid URL",
       },
     },
@@ -24,20 +24,19 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
       validate: {
-        validator: (v) => validator.isEmail(v),
+        validator: (value) => validator.isEmail(value),
         message: "Email must be a valid email",
       },
     },
     password: {
       type: String,
       required: true,
-      select: false, // IMPORTANT: do not return password hash by default
+      select: false,
     },
   },
   { versionKey: false }
 );
 
-// WTWR-style helper: used by /signin
 userSchema.statics.findUserByCredentials = function findUserByCredentials(
   email,
   password
@@ -53,6 +52,7 @@ userSchema.statics.findUserByCredentials = function findUserByCredentials(
         if (!matched) {
           throw new UnauthorizedError("Incorrect email or password");
         }
+
         return user;
       });
     });
