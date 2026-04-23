@@ -50,7 +50,7 @@ module.exports = {
   },
   Attributes: {
     type: "object",
-    description: "Broad capabilities that feed verb skills and resource ceilings.",
+    description: "Broad capabilities that feed skills and resource ceilings.",
     properties: {
       might: {
         type: "number",
