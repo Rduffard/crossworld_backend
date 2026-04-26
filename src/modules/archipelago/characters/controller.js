@@ -5,6 +5,27 @@ const ForbiddenError = require("../../../core/errors/forbidden-error");
 const NotFoundError = require("../../../core/errors/not-found-error");
 
 const MAX_CHARACTERS_PER_USER = 20;
+const ATTRIBUTE_KEYS = ["might", "agility", "wit", "spirit", "resolve", "instinct"];
+
+function toPlainObject(value) {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value.toObject === "function") {
+    return value.toObject();
+  }
+
+  return value;
+}
+
+function normalizeAttributes(...sources) {
+  return ATTRIBUTE_KEYS.reduce((accumulator, key) => {
+    const nextValue = sources.find((source) => source?.[key] !== undefined)?.[key];
+    accumulator[key] = nextValue ?? 0;
+    return accumulator;
+  }, {});
+}
 
 function calculateDerivedStats(attributes = {}) {
   const safeAttributes = {
@@ -70,6 +91,90 @@ function calculatePairingStats(attributes = {}) {
   };
 }
 
+function createResourceTrack(current, max) {
+  return {
+    current: Math.max(0, current ?? max ?? 0),
+    max: Math.max(0, max ?? 0),
+  };
+}
+
+function buildResources(attributes = {}, incomingResources = {}, wounds = []) {
+  const derivedStats = calculateDerivedStats(attributes);
+  const staminaMax = 4 + attributes.might + attributes.agility;
+  const focusMax = Math.max(0, derivedStats.focus - 10);
+  const woundMax = Math.max(3, 2 + Math.ceil(attributes.resolve / 2));
+  const safeIncoming = incomingResources ?? {};
+  const activeWounds = safeIncoming.wounds?.active ?? wounds ?? [];
+
+  return {
+    health: createResourceTrack(safeIncoming.health?.current, safeIncoming.health?.max ?? derivedStats.vitality),
+    wounds: {
+      current: safeIncoming.wounds?.current ?? activeWounds.length,
+      max: safeIncoming.wounds?.max ?? woundMax,
+      active: activeWounds,
+    },
+    stamina: createResourceTrack(safeIncoming.stamina?.current, safeIncoming.stamina?.max ?? staminaMax),
+    focus: createResourceTrack(safeIncoming.focus?.current, safeIncoming.focus?.max ?? focusMax),
+    corruption: createResourceTrack(
+      safeIncoming.corruption?.current ?? 0,
+      safeIncoming.corruption?.max ?? 6
+    ),
+  };
+}
+
+function buildProgression(rank, incomingProgression = {}) {
+  return {
+    rank,
+    skillPoints: incomingProgression.skillPoints ?? 0,
+    advancementPoints: incomingProgression.advancementPoints ?? 0,
+    specializationPath: incomingProgression.specializationPath ?? "",
+    unlockedNodes: incomingProgression.unlockedNodes ?? [],
+  };
+}
+
+function buildCharacterPayload(body = {}, existingCharacter = null) {
+  const existing = existingCharacter ? toPlainObject(existingCharacter) : {};
+  const mergedAttributes = normalizeAttributes(body.attributes, existing.attributes);
+  const rank = body.progression?.rank ?? existing.progression?.rank ?? 1;
+  const canonicalTags = body.identity?.tags ?? existing.identity?.tags ?? [];
+  const canonicalWounds = body.resources?.wounds?.active ?? existing.resources?.wounds?.active ?? [];
+  const resources = buildResources(
+    mergedAttributes,
+    {
+      ...toPlainObject(existing.resources),
+      ...toPlainObject(body.resources),
+      wounds: {
+        ...toPlainObject(existing.resources?.wounds),
+        ...toPlainObject(body.resources?.wounds),
+      },
+    },
+    canonicalWounds
+  );
+
+  return {
+    ...existing,
+    ...body,
+    identity: {
+      ...toPlainObject(existing.identity),
+      ...toPlainObject(body.identity),
+      background: {
+        ...toPlainObject(existing.identity?.background),
+        ...toPlainObject(body.identity?.background),
+      },
+      tags: canonicalTags,
+    },
+    attributes: mergedAttributes,
+    derivedStats: calculateDerivedStats(mergedAttributes),
+    socialStats: calculateSocialStats(mergedAttributes),
+    pairingStats: calculatePairingStats(mergedAttributes),
+    resources,
+    progression: buildProgression(rank, {
+      ...toPlainObject(existing.progression),
+      ...toPlainObject(body.progression),
+    }),
+  };
+}
+
 const getCharacters = async (req, res, next) => {
   try {
     const characters = await Character.find({ owner: req.user._id })
@@ -92,11 +197,8 @@ const createCharacter = async (req, res, next) => {
     }
 
     const payload = {
-      ...body,
+      ...buildCharacterPayload(body),
       owner: req.user._id,
-      derivedStats: calculateDerivedStats(body.attributes),
-      socialStats: calculateSocialStats(body.attributes),
-      pairingStats: calculatePairingStats(body.attributes),
     };
 
     const character = await Character.create(payload);
@@ -149,10 +251,8 @@ const updateCharacter = async (req, res, next) => {
     }
 
     const update = {
-      ...body,
-      derivedStats: calculateDerivedStats(body.attributes ?? existingCharacter.attributes),
-      socialStats: calculateSocialStats(body.attributes ?? existingCharacter.attributes),
-      pairingStats: calculatePairingStats(body.attributes ?? existingCharacter.attributes),
+      ...buildCharacterPayload(body, existingCharacter),
+      owner: existingCharacter.owner,
     };
 
     const updatedCharacter = await Character.findByIdAndUpdate(

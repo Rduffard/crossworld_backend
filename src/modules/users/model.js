@@ -4,6 +4,56 @@ const bcrypt = require("bcryptjs");
 
 const UnauthorizedError = require("../../core/errors/unauthorized-error");
 
+const userSettingsSchema = new mongoose.Schema(
+  {
+    profileDisplayName: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: "",
+    },
+    avatarUrl: {
+      type: String,
+      default: "",
+      validate: {
+        validator: (value) => !value || validator.isURL(value),
+        message: "avatarUrl must be a valid URL",
+      },
+    },
+    theme: {
+      type: String,
+      enum: ["default", "system", "light"],
+      default: "default",
+    },
+    accentColor: {
+      type: String,
+      trim: true,
+      maxlength: 40,
+      default: "",
+    },
+    brandSkin: {
+      type: String,
+      trim: true,
+      maxlength: 40,
+      default: "default",
+    },
+    emailNotifications: {
+      type: Boolean,
+      default: true,
+    },
+    productUpdates: {
+      type: Boolean,
+      default: true,
+    },
+    defaultLandingApp: {
+      type: String,
+      enum: ["dashboard", "squash", "wtwr", "archipelago"],
+      default: "dashboard",
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -11,6 +61,11 @@ const userSchema = new mongoose.Schema(
       minlength: 2,
       maxlength: 30,
       default: "Jacques Cousteau",
+    },
+    displayName: {
+      type: String,
+      trim: true,
+      maxlength: 60,
     },
     avatar: {
       type: String,
@@ -32,6 +87,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       select: false,
+    },
+    settings: {
+      type: userSettingsSchema,
+      default: () => ({}),
     },
   },
   { versionKey: false }

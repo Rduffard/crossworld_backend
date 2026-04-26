@@ -1,4 +1,5 @@
 const User = require("./model");
+const { sanitizeUser } = require("./utils");
 
 const BadRequestError = require("../../core/errors/bad-request-error");
 const NotFoundError = require("../../core/errors/not-found-error");
@@ -6,7 +7,7 @@ const NotFoundError = require("../../core/errors/not-found-error");
 const getCurrentUser = (req, res, next) => {
   User.findById(req.user._id)
     .orFail()
-    .then((user) => res.send(user))
+    .then((user) => res.send(sanitizeUser(user)))
     .catch((err) => {
       if (err.name === "DocumentNotFoundError") {
         return next(new NotFoundError("User not found"));
@@ -25,7 +26,7 @@ const updateCurrentUser = (req, res, next) => {
     { new: true, runValidators: true }
   )
     .orFail()
-    .then((user) => res.send(user))
+    .then((user) => res.send(sanitizeUser(user)))
     .catch((err) => {
       if (err.name === "ValidationError") {
         return next(new BadRequestError("Invalid data"));
