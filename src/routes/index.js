@@ -7,6 +7,7 @@ const archipelagoRoutes = require("../modules/archipelago/routes");
 const wtwrRoutes = require("../modules/wtwr/routes");
 const squashRoutes = require("../modules/squash/routes");
 const paleshelterRoutes = require("../modules/paleshelter/routes");
+const communityRoutes = require("../modules/community/routes");
 
 const NotFoundError = require("../core/errors/not-found-error");
 
@@ -17,6 +18,7 @@ router.use("/archipelago", archipelagoRoutes);
 router.use("/wtwr", wtwrRoutes);
 router.use("/squash", squashRoutes);
 router.use("/paleshelter", paleshelterRoutes);
+router.use("/community", communityRoutes);
 
 router.use((req, res, next) => {
   next(new NotFoundError("Route not found"));
