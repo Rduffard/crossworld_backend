@@ -18,4 +18,23 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            /home/iroamm/scripts/deploy-backend.sh
+            set -e
+
+            echo "==> Starting backend deploy"
+            cd /var/www/crossworld_backend
+
+            echo "==> Resetting repo"
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+
+            echo "==> Installing dependencies"
+            npm ci
+
+            PM2_PROCESS_NAME="crossworld_backend"
+            if ! pm2 describe "$PM2_PROCESS_NAME" > /dev/null 2>&1; then
+              PM2_PROCESS_NAME="$(pm2 jlist | node -e 'let json=""; process.stdin.on("data", (chunk) => json += chunk); process.stdin.on("end", () => { const apps = JSON.parse(json); const match = apps.find((app) => app.name && app.name.includes("crossworld")) || apps[0]; if (!match?.name) process.exit(1); process.stdout.write(match.name); });')"
+            fi
+
+            echo "==> Restarting PM2"
+            pm2 restart "$PM2_PROCESS_NAME"
