@@ -80,4 +80,26 @@ module.exports = {
       description: "Relic sense, spiritual attunement, omens, and the unseen pulse of a place.",
     },
   },
+  checkCategories: {
+    combat: {
+      label: "Combat",
+      description: "Primary checks for violence, defense, tempo, positioning, and staying alive.",
+    },
+    social: {
+      label: "Social",
+      description: "Primary checks for influence, deception, composure, command, and presence.",
+    },
+    exploration: {
+      label: "Exploration",
+      description: "Primary checks for travel, survival, scouting, perception, and hostile terrain.",
+    },
+    utility: {
+      label: "Utility",
+      description: "Primary checks for repair, breach, salvage, fabrication, signals, and practical leverage.",
+    },
+    arcane: {
+      label: "Arcane",
+      description: "Primary checks for relics, omens, warding, binding, corruption, and unseen power.",
+    },
+  },
 };

@@ -1,4 +1,6 @@
 const { celebrate, Joi } = require("celebrate");
+const { checkKeys } = require("../system/blueprints/checkHelpers");
+const { skillCategories } = require("../system/blueprints/skillHelpers");
 
 const objectId = Joi.string().hex().length(24);
 
@@ -35,6 +37,13 @@ const pairingStatsSchema = Joi.object({
   attunement: Joi.number().integer().min(0).default(10),
   nerve: Joi.number().integer().min(0).default(10),
 }).default({});
+
+const checksSchema = Joi.object(
+  checkKeys.reduce((schema, checkKey) => {
+    schema[checkKey] = Joi.number().integer().min(0).default(10);
+    return schema;
+  }, {})
+).default({});
 
 const reputationMapSchema = Joi.object({
   yumaRepublic: reputationSchema,
@@ -122,13 +131,12 @@ const skillRatingSchema = Joi.object({
   specialty: Joi.string().allow("").max(120).default(""),
 });
 
-const skillsSchema = Joi.object({
-  combat: Joi.array().items(skillRatingSchema).default([]),
-  social: Joi.array().items(skillRatingSchema).default([]),
-  exploration: Joi.array().items(skillRatingSchema).default([]),
-  utility: Joi.array().items(skillRatingSchema).default([]),
-  arcane: Joi.array().items(skillRatingSchema).default([]),
-}).default({});
+const skillsSchema = Joi.object(
+  skillCategories.reduce((schema, categoryKey) => {
+    schema[categoryKey] = Joi.array().items(skillRatingSchema).default([]);
+    return schema;
+  }, {})
+).default({});
 
 const resourceTrackSchema = Joi.object({
   current: Joi.number().integer().min(0).default(0),
@@ -191,6 +199,7 @@ const characterBodySchema = Joi.object({
   derivedStats: derivedStatsSchema,
   socialStats: socialStatsSchema,
   pairingStats: pairingStatsSchema,
+  checks: checksSchema,
   reputation: reputationMapSchema,
   skills: skillsSchema,
   abilities: Joi.array().items(abilitySchema).default([]),

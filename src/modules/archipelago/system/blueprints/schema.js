@@ -1,3 +1,6 @@
+const { checkCategories, checkKeys } = require("./checkHelpers");
+const { skillCategories } = require("./skillHelpers");
+
 module.exports = {
   Character: {
     type: "object",
@@ -5,6 +8,7 @@ module.exports = {
       "name",
       "identity",
       "attributes",
+      "checks",
       "skills",
       "resources",
       "abilities",
@@ -18,6 +22,7 @@ module.exports = {
       pronouns: { type: "string", example: "she/they" },
       identity: { $ref: "#/schema/Identity" },
       attributes: { $ref: "#/schema/Attributes" },
+      checks: { $ref: "#/schema/Checks" },
       skills: { $ref: "#/schema/Skills" },
       abilities: { $ref: "#/schema/Abilities" },
       resources: { $ref: "#/schema/Resources" },
@@ -93,13 +98,20 @@ module.exports = {
   Skills: {
     type: "object",
     description: "Verb-based skills grouped by play pillar.",
-    properties: {
-      combat: { type: "array", items: { $ref: "#/schema/SkillRating" } },
-      social: { type: "array", items: { $ref: "#/schema/SkillRating" } },
-      exploration: { type: "array", items: { $ref: "#/schema/SkillRating" } },
-      utility: { type: "array", items: { $ref: "#/schema/SkillRating" } },
-      arcane: { type: "array", items: { $ref: "#/schema/SkillRating" } },
-    },
+    properties: skillCategories.reduce((properties, categoryKey) => {
+      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SkillRating" } };
+      return properties;
+    }, {}),
+  },
+  Checks: {
+    type: "object",
+    description:
+      "Canonical gameplay checks. These are the primary rolls the GM calls for; trained skills modify them contextually.",
+    categories: checkCategories,
+    properties: checkKeys.reduce((properties, checkKey) => {
+      properties[checkKey] = { type: "number", example: 12 };
+      return properties;
+    }, {}),
   },
   TraitsTags: {
     type: "array",

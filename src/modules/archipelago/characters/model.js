@@ -1,4 +1,6 @@
 const mongoose = require("mongoose");
+const { checkKeys } = require("../system/blueprints/checkHelpers");
+const { skillCategories } = require("../system/blueprints/skillHelpers");
 
 const attributesSchema = new mongoose.Schema(
   {
@@ -328,28 +330,25 @@ const skillRatingSchema = new mongoose.Schema(
 );
 
 const skillsSchema = new mongoose.Schema(
-  {
-    combat: {
+  skillCategories.reduce((schema, categoryKey) => {
+    schema[categoryKey] = {
       type: [skillRatingSchema],
       default: [],
-    },
-    social: {
-      type: [skillRatingSchema],
-      default: [],
-    },
-    exploration: {
-      type: [skillRatingSchema],
-      default: [],
-    },
-    utility: {
-      type: [skillRatingSchema],
-      default: [],
-    },
-    arcane: {
-      type: [skillRatingSchema],
-      default: [],
-    },
-  },
+    };
+    return schema;
+  }, {}),
+  { _id: false }
+);
+
+const checksSchema = new mongoose.Schema(
+  checkKeys.reduce((schema, checkKey) => {
+    schema[checkKey] = {
+      type: Number,
+      min: 0,
+      default: 10,
+    };
+    return schema;
+  }, {}),
   { _id: false }
 );
 
@@ -560,6 +559,10 @@ const characterSchema = new mongoose.Schema(
     },
     pairingStats: {
       type: pairingStatsSchema,
+      default: () => ({}),
+    },
+    checks: {
+      type: checksSchema,
       default: () => ({}),
     },
     reputation: {

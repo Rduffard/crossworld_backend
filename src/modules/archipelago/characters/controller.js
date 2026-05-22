@@ -1,4 +1,11 @@
 const Character = require("./model");
+const {
+  calculateChecks,
+  getLegacyDerivedStats,
+  getLegacyPairingStats,
+  getLegacySocialStats,
+} = require("../system/blueprints/checkHelpers");
+const { normalizeCharacterSkills } = require("../system/blueprints/skillHelpers");
 
 const BadRequestError = require("../../../core/errors/bad-request-error");
 const ForbiddenError = require("../../../core/errors/forbidden-error");
@@ -42,52 +49,6 @@ function calculateDerivedStats(attributes = {}) {
     guard: 10 + safeAttributes.agility,
     initiative: 10 + safeAttributes.agility + safeAttributes.instinct,
     focus: 10 + safeAttributes.spirit + safeAttributes.resolve,
-  };
-}
-
-function calculateSocialStats(attributes = {}) {
-  const safeAttributes = {
-    might: attributes.might ?? 0,
-    agility: attributes.agility ?? 0,
-    wit: attributes.wit ?? 0,
-    spirit: attributes.spirit ?? 0,
-    resolve: attributes.resolve ?? 0,
-    instinct: attributes.instinct ?? 0,
-  };
-
-  return {
-    grace: 10 + safeAttributes.spirit + safeAttributes.resolve,
-    guile: 10 + safeAttributes.wit + safeAttributes.spirit,
-    pressure: 10 + safeAttributes.might + safeAttributes.resolve,
-  };
-}
-
-function calculatePairingStats(attributes = {}) {
-  const safeAttributes = {
-    might: attributes.might ?? 0,
-    agility: attributes.agility ?? 0,
-    wit: attributes.wit ?? 0,
-    spirit: attributes.spirit ?? 0,
-    resolve: attributes.resolve ?? 0,
-    instinct: attributes.instinct ?? 0,
-  };
-
-  return {
-    skirmish: 10 + safeAttributes.might + safeAttributes.agility,
-    leverage: 10 + safeAttributes.might + safeAttributes.wit,
-    conviction: 10 + safeAttributes.might + safeAttributes.spirit,
-    pressure: 10 + safeAttributes.might + safeAttributes.resolve,
-    pursuit: 10 + safeAttributes.might + safeAttributes.instinct,
-    precision: 10 + safeAttributes.agility + safeAttributes.wit,
-    flourish: 10 + safeAttributes.agility + safeAttributes.spirit,
-    balance: 10 + safeAttributes.agility + safeAttributes.resolve,
-    reflex: 10 + safeAttributes.agility + safeAttributes.instinct,
-    guile: 10 + safeAttributes.wit + safeAttributes.spirit,
-    tactics: 10 + safeAttributes.wit + safeAttributes.resolve,
-    sense: 10 + safeAttributes.wit + safeAttributes.instinct,
-    grace: 10 + safeAttributes.spirit + safeAttributes.resolve,
-    attunement: 10 + safeAttributes.spirit + safeAttributes.instinct,
-    nerve: 10 + safeAttributes.resolve + safeAttributes.instinct,
   };
 }
 
@@ -138,6 +99,7 @@ function buildCharacterPayload(body = {}, existingCharacter = null) {
   const rank = body.progression?.rank ?? existing.progression?.rank ?? 1;
   const canonicalTags = body.identity?.tags ?? existing.identity?.tags ?? [];
   const canonicalWounds = body.resources?.wounds?.active ?? existing.resources?.wounds?.active ?? [];
+  const checks = calculateChecks(mergedAttributes);
   const resources = buildResources(
     mergedAttributes,
     {
@@ -164,9 +126,11 @@ function buildCharacterPayload(body = {}, existingCharacter = null) {
       tags: canonicalTags,
     },
     attributes: mergedAttributes,
-    derivedStats: calculateDerivedStats(mergedAttributes),
-    socialStats: calculateSocialStats(mergedAttributes),
-    pairingStats: calculatePairingStats(mergedAttributes),
+    checks,
+    derivedStats: getLegacyDerivedStats(checks),
+    socialStats: getLegacySocialStats(checks),
+    pairingStats: getLegacyPairingStats(checks),
+    skills: normalizeCharacterSkills(body.skills ?? existing.skills ?? {}),
     resources,
     progression: buildProgression(rank, {
       ...toPlainObject(existing.progression),
