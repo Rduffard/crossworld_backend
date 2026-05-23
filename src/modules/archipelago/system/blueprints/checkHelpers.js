@@ -21,13 +21,17 @@ function getFormulaLabel(check) {
   return check.formulaLabel ?? check.attributes.map(titleCase).join(" + ");
 }
 
-function getCheckScore(attributes = {}, check) {
-  return 10 + check.attributes.reduce((total, attributeKey) => total + (attributes[attributeKey] ?? 0), 0);
+function getCheckScore(attributes = {}, check, investments = {}) {
+  return (
+    10 +
+    check.attributes.reduce((total, attributeKey) => total + (attributes[attributeKey] ?? 0), 0) +
+    (investments[check.key] ?? 0)
+  );
 }
 
-function calculateChecks(attributes = {}) {
+function calculateChecks(attributes = {}, investments = {}) {
   return checkList.reduce((scores, check) => {
-    scores[check.key] = getCheckScore(attributes, check);
+    scores[check.key] = getCheckScore(attributes, check, investments);
     return scores;
   }, {});
 }

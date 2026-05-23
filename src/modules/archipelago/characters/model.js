@@ -315,10 +315,6 @@ const skillRatingSchema = new mongoose.Schema(
       max: 5,
       default: 0,
     },
-    linkedAttributes: {
-      type: [String],
-      default: [],
-    },
     specialty: {
       type: String,
       default: "",
@@ -346,6 +342,19 @@ const checksSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       default: 10,
+    };
+    return schema;
+  }, {}),
+  { _id: false }
+);
+
+const coreCheckInvestmentsSchema = new mongoose.Schema(
+  checkKeys.reduce((schema, checkKey) => {
+    schema[checkKey] = {
+      type: Number,
+      min: 0,
+      max: 20,
+      default: 0,
     };
     return schema;
   }, {}),
@@ -484,7 +493,12 @@ const progressionSchema = new mongoose.Schema(
       min: 1,
       default: 1,
     },
-    skillPoints: {
+    corePoints: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    specialtyPicks: {
       type: Number,
       min: 0,
       default: 0,
@@ -493,6 +507,10 @@ const progressionSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    coreCheckInvestments: {
+      type: coreCheckInvestmentsSchema,
+      default: () => ({}),
     },
     specializationPath: {
       type: String,

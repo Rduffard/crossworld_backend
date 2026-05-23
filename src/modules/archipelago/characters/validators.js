@@ -45,6 +45,13 @@ const checksSchema = Joi.object(
   }, {})
 ).default({});
 
+const coreCheckInvestmentsSchema = Joi.object(
+  checkKeys.reduce((schema, checkKey) => {
+    schema[checkKey] = Joi.number().integer().min(0).max(20).default(0);
+    return schema;
+  }, {})
+).default({});
+
 const reputationMapSchema = Joi.object({
   yumaRepublic: reputationSchema,
   lilinEmpire: reputationSchema,
@@ -125,9 +132,6 @@ const skillRatingSchema = Joi.object({
   id: Joi.string().min(1).max(80).required(),
   name: Joi.string().allow("").max(80).default(""),
   rank: Joi.number().integer().min(0).max(5).default(0),
-  linkedAttributes: Joi.array()
-    .items(Joi.string().valid("might", "agility", "wit", "spirit", "resolve", "instinct"))
-    .default([]),
   specialty: Joi.string().allow("").max(120).default(""),
 });
 
@@ -176,8 +180,10 @@ const equipmentSchema = Joi.object({
 
 const progressionSchema = Joi.object({
   rank: Joi.number().integer().min(1).max(20).default(1),
-  skillPoints: Joi.number().integer().min(0).default(0),
+  corePoints: Joi.number().integer().min(0).default(0),
+  specialtyPicks: Joi.number().integer().min(0).default(0),
   advancementPoints: Joi.number().integer().min(0).default(0),
+  coreCheckInvestments: coreCheckInvestmentsSchema,
   specializationPath: Joi.string().allow("").max(80).default(""),
   unlockedNodes: Joi.array().items(Joi.string().max(80)).default([]),
 }).default({});

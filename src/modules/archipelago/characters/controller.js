@@ -86,8 +86,10 @@ function buildResources(attributes = {}, incomingResources = {}, wounds = []) {
 function buildProgression(rank, incomingProgression = {}) {
   return {
     rank,
-    skillPoints: incomingProgression.skillPoints ?? 0,
+    corePoints: incomingProgression.corePoints ?? 0,
+    specialtyPicks: incomingProgression.specialtyPicks ?? 0,
     advancementPoints: incomingProgression.advancementPoints ?? 0,
+    coreCheckInvestments: incomingProgression.coreCheckInvestments ?? {},
     specializationPath: incomingProgression.specializationPath ?? "",
     unlockedNodes: incomingProgression.unlockedNodes ?? [],
   };
@@ -99,7 +101,11 @@ function buildCharacterPayload(body = {}, existingCharacter = null) {
   const rank = body.progression?.rank ?? existing.progression?.rank ?? 1;
   const canonicalTags = body.identity?.tags ?? existing.identity?.tags ?? [];
   const canonicalWounds = body.resources?.wounds?.active ?? existing.resources?.wounds?.active ?? [];
-  const checks = calculateChecks(mergedAttributes);
+  const progression = buildProgression(rank, {
+    ...toPlainObject(existing.progression),
+    ...toPlainObject(body.progression),
+  });
+  const checks = calculateChecks(mergedAttributes, progression.coreCheckInvestments);
   const resources = buildResources(
     mergedAttributes,
     {
@@ -132,10 +138,7 @@ function buildCharacterPayload(body = {}, existingCharacter = null) {
     pairingStats: getLegacyPairingStats(checks),
     skills: normalizeCharacterSkills(body.skills ?? existing.skills ?? {}),
     resources,
-    progression: buildProgression(rank, {
-      ...toPlainObject(existing.progression),
-      ...toPlainObject(body.progression),
-    }),
+    progression,
   };
 }
 

@@ -441,7 +441,7 @@ module.exports = {
       recommendedCallings: ["navigator", "gunslinger"],
       affinity: {
         categories: ["utility", "exploration"],
-        skills: ["jury-rig", "patch", "salvage", "navigate", "scout"],
+        specialties: ["jury-rig", "navigate", "scout"],
       },
       nodes: [
         {
@@ -481,7 +481,7 @@ module.exports = {
       recommendedCallings: ["navigator", "tidecaller"],
       affinity: {
         categories: ["arcane", "exploration", "social"],
-        skills: ["attune", "invoke", "navigate", "signal", "command"],
+        specialties: ["attune", "navigate", "command", "bargain"],
       },
       nodes: [
         {
@@ -509,7 +509,7 @@ module.exports = {
           cost: 2,
           summary: "When your call is right, it pays the whole crew back.",
           effect:
-            "After an ally succeeds on a setup, maneuver, or repositioning action you created, recover 1 shared skill point or 1 Focus for that ally once per scene.",
+            "After an ally succeeds on a setup, maneuver, or repositioning action you created, recover 1 shared specialty pick or 1 Focus for that ally once per scene.",
         },
       ],
     },
@@ -521,7 +521,7 @@ module.exports = {
       recommendedCallings: ["corsair", "gunslinger", "reaver"],
       affinity: {
         categories: ["combat", "exploration"],
-        skills: ["board", "shoot", "scout", "feint", "suppress"],
+        specialties: ["board", "shoot", "scout", "feint", "suppress"],
       },
       nodes: [
         {
@@ -561,7 +561,7 @@ module.exports = {
       recommendedCallings: ["gunslinger", "navigator"],
       affinity: {
         categories: ["utility", "combat"],
-        skills: ["shoot", "suppress", "jury-rig", "signal", "patch"],
+        specialties: ["shoot", "suppress", "jury-rig", "calibrate"],
       },
       nodes: [
         {
@@ -601,7 +601,7 @@ module.exports = {
       recommendedCallings: ["warden", "corsair"],
       affinity: {
         categories: ["combat", "social"],
-        skills: ["brace", "secure", "threaten", "endure", "command"],
+        specialties: ["brace", "threaten", "endure", "command"],
       },
       nodes: [
         {
@@ -641,7 +641,7 @@ module.exports = {
       recommendedCallings: ["tidecaller", "navigator"],
       affinity: {
         categories: ["arcane", "utility"],
-        skills: ["attune", "invoke", "read", "salvage", "signal"],
+        specialties: ["attune", "read", "sift", "jury-rig"],
       },
       nodes: [
         {

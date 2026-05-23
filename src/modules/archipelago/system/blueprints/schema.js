@@ -9,7 +9,7 @@ module.exports = {
       "identity",
       "attributes",
       "checks",
-      "skills",
+      "specialties",
       "resources",
       "abilities",
       "reputation",
@@ -23,7 +23,8 @@ module.exports = {
       identity: { $ref: "#/schema/Identity" },
       attributes: { $ref: "#/schema/Attributes" },
       checks: { $ref: "#/schema/Checks" },
-      skills: { $ref: "#/schema/Skills" },
+      skills: { $ref: "#/schema/Specialties" },
+      specialties: { $ref: "#/schema/Specialties" },
       abilities: { $ref: "#/schema/Abilities" },
       resources: { $ref: "#/schema/Resources" },
       reputation: { $ref: "#/schema/Reputation" },
@@ -55,7 +56,7 @@ module.exports = {
   },
   Attributes: {
     type: "object",
-    description: "Broad capabilities that feed skills and resource ceilings.",
+    description: "Raw character potential that feeds resources and derived check math.",
     properties: {
       might: {
         type: "number",
@@ -95,18 +96,26 @@ module.exports = {
       },
     },
   },
+  Specialties: {
+    type: "object",
+    description: "Ranked techniques and proficiencies grouped by play pillar.",
+    properties: skillCategories.reduce((properties, categoryKey) => {
+      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SpecialtyRank" } };
+      return properties;
+    }, {}),
+  },
   Skills: {
     type: "object",
-    description: "Verb-based skills grouped by play pillar.",
+    description: "Deprecated alias for Specialties.",
     properties: skillCategories.reduce((properties, categoryKey) => {
-      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SkillRating" } };
+      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SpecialtyRank" } };
       return properties;
     }, {}),
   },
   Checks: {
     type: "object",
     description:
-      "Canonical gameplay checks. These are the primary rolls the GM calls for; trained skills modify them contextually.",
+      "Canonical gameplay checks. These are the primary rolls and direct numerical progression layer.",
     categories: checkCategories,
     properties: checkKeys.reduce((properties, checkKey) => {
       properties[checkKey] = { type: "number", example: 12 };
@@ -163,14 +172,24 @@ module.exports = {
   },
   Progression: {
     type: "object",
-    required: ["rank", "skillPoints", "specializationPath", "unlockedNodes"],
+    required: ["rank", "corePoints", "specialtyPicks", "coreCheckInvestments", "specializationPath", "unlockedNodes"],
     properties: {
       rank: { type: "number", example: 1 },
-      skillPoints: { type: "number", example: 4 },
+      corePoints: { type: "number", example: 4 },
+      specialtyPicks: { type: "number", example: 2 },
       advancementPoints: { type: "number", example: 1 },
+      coreCheckInvestments: { $ref: "#/schema/CoreCheckInvestments" },
       specializationPath: { type: "string", example: "storm-broker" },
       unlockedNodes: { type: "array", items: { type: "string" } },
     },
+  },
+  CoreCheckInvestments: {
+    type: "object",
+    description: "Direct Core Point investment by core check key.",
+    properties: checkKeys.reduce((properties, checkKey) => {
+      properties[checkKey] = { type: "number", example: 1 };
+      return properties;
+    }, {}),
   },
   Tag: {
     type: "object",
@@ -190,14 +209,41 @@ module.exports = {
       },
     },
   },
-  SkillRating: {
+  SpecialtyRank: {
     type: "object",
     required: ["id", "rank"],
     properties: {
       id: { type: "string", example: "jury-rig" },
       name: { type: "string", example: "Jury-Rig" },
+      category: { type: "string", example: "utility" },
+      description: { type: "string", example: "Make broken gear work long enough to matter." },
       rank: { type: "number", range: "0-5", example: 2 },
-      linkedAttributes: { type: "array", items: { type: "string" } },
+      maxRank: { type: "number", example: 3 },
+      relatedChecks: { type: "array", items: { type: "string" } },
+      ranks: { type: "array", items: { $ref: "#/schema/SpecialtyRankDefinition" } },
+      prerequisites: { type: "object", additionalProperties: { type: "array", items: { type: "object" } } },
+      tags: { type: "array", items: { type: "string" } },
+      context: { type: "string", example: "Temporary repairs and emergency improvisation." },
+      specialty: { type: "string", example: "Pressure seals" },
+    },
+  },
+  SpecialtyRankDefinition: {
+    type: "object",
+    required: ["rank", "title", "effect"],
+    properties: {
+      rank: { type: "number", example: 1 },
+      title: { type: "string", example: "Ugly Fix" },
+      effect: { type: "string", example: "Create a temporary fix that survives the current scene." },
+    },
+  },
+  SkillRating: {
+    type: "object",
+    description: "Deprecated alias for SpecialtyRank.",
+    required: ["id", "rank"],
+    properties: {
+      id: { type: "string", example: "jury-rig" },
+      name: { type: "string", example: "Jury-Rig" },
+      rank: { type: "number", range: "0-5", example: 2 },
       specialty: { type: "string", example: "Pressure seals" },
     },
   },

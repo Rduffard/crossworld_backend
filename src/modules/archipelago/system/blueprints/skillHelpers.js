@@ -1,6 +1,7 @@
 const expandedSkillList = require("./skills");
 
 const skillCategories = Object.keys(expandedSkillList);
+const specialtyRegistry = Object.freeze(expandedSkillList);
 
 function createEmptySkillState() {
   return skillCategories.reduce((skills, categoryKey) => {
@@ -38,8 +39,8 @@ function getSavedSkillEntries(skills = {}) {
   );
 }
 
-function normalizeSkillRank(rank) {
-  return Math.max(0, Math.min(5, Number(rank) || 0));
+function normalizeSkillRank(rank, maxRank = 5) {
+  return Math.max(0, Math.min(maxRank, Number(rank) || 0));
 }
 
 function normalizeCharacterSkills(skills = {}) {
@@ -54,7 +55,7 @@ function normalizeCharacterSkills(skills = {}) {
       return;
     }
 
-    const rank = normalizeSkillRank(skill.rank);
+    const rank = normalizeSkillRank(skill.rank, catalogSkill.maxRank ?? 5);
 
     if (rank <= 0) {
       return;
@@ -83,5 +84,6 @@ module.exports = {
   createEmptySkillState,
   expandedSkillList,
   normalizeCharacterSkills,
+  specialtyRegistry,
   skillCategories,
 };
