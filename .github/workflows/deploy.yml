@@ -13,17 +13,26 @@ jobs:
     steps:
       - name: Deploy to VM over SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          DB_URI: ${{ secrets.DB_URI }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          envs: DB_URI,JWT_SECRET
+          command_timeout: 5m
           script: |
-            set -e
+            set -eu
 
             echo "==> Starting backend deploy"
             cd /home/iroamm/crossworld_backend
 
-            echo "==> Resetting repo"
+            echo "==> Checking required secrets"
+            test -n "$DB_URI"
+            test -n "$JWT_SECRET"
+
+            echo "==> Updating repository"
             git fetch origin main
             git reset --hard origin/main
             git clean -fd
@@ -31,5 +40,57 @@ jobs:
             echo "==> Installing dependencies"
             npm ci
 
-            echo "==> Restarting PM2"
-            pm2 restart crossworld_backend
+            echo "==> Configuring production environment"
+            umask 077
+            export DB_URI JWT_SECRET
+
+            node -e '
+              const fs = require("fs");
+              const values = {
+                PORT: "3001",
+                DB_URI: process.env.DB_URI,
+                JWT_SECRET: process.env.JWT_SECRET
+              };
+
+              fs.writeFileSync(
+                ".env",
+                Object.entries(values)
+                  .map(([key, value]) =>
+                    `${key}=${JSON.stringify(value)}`
+                  )
+                  .join("\n") + "\n",
+                { mode: 0o600 }
+              );
+            '
+
+            echo "==> Starting or restarting PM2"
+            if pm2 describe crossworld_backend >/dev/null 2>&1; then
+              pm2 restart crossworld_backend --update-env
+            else
+              pm2 start src/app.js --name crossworld_backend
+            fi
+
+            echo "==> Verifying backend"
+            healthy=0
+
+            for i in $(seq 1 15); do
+              if curl -sS --max-time 3 \
+                -o /dev/null \
+                http://127.0.0.1:3001/; then
+                healthy=1
+                break
+              fi
+
+              sleep 2
+            done
+
+            if [ "$healthy" -ne 1 ]; then
+              echo "Backend failed to respond"
+              pm2 status
+              exit 1
+            fi
+
+            echo "==> Saving PM2 configuration"
+            pm2 save
+
+            echo "==> Backend deployment complete"
