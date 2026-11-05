@@ -9,6 +9,7 @@ const BadRequestError = require("../../../core/errors/bad-request-error");
 const ForbiddenError = require("../../../core/errors/forbidden-error");
 const NotFoundError = require("../../../core/errors/not-found-error");
 
+const advancement = require('../system/advancement');
 const MAX_CHARACTERS_PER_USER = 20;
 
 function toPlainObject(value) {
@@ -39,7 +40,7 @@ function validateFinalAttributes(attributes, originId) {
 }
 
 function rejectDerivedInput(body, creating = false) {
-  for (const field of ['checks', 'derivedStats', 'socialStats', 'pairingStats', 'skills', 'specialties', 'proficiencyBonus']) {
+  for (const field of ['documentRevision', 'advancement', 'trainingRulesVersion', 'checks', 'derivedStats', 'socialStats', 'pairingStats', 'skills', 'specialties', 'proficiencyBonus']) {
     if (body[field] !== undefined) throw new BadRequestError(`${field} is server-managed`);
   }
   for (const field of ['corePoints', 'specialtyPicks', 'coreCheckInvestments']) {
@@ -84,18 +85,33 @@ function mergePatch(existing, patch) {
 }
 
 function buildUpdatePayload(body, existingCharacter) {
-  const merged = mergePatch(existingCharacter, body);
+  const { advancementOperation, ...patch } = body;
+  const merged = mergePatch(existingCharacter, patch);
+  if (existingCharacter.advancement && (body.calling !== undefined || body.origin !== undefined || body.attributes !== undefined || body.progression !== undefined)) {
+    throw new BadRequestError('Use advancement operations; Calling, origin, base attributes and reward history require an explicit respec');
+  }
+  if (existingCharacter.advancement && body.abilities?.some(a=>a.source === 'calling')) throw new BadRequestError('Calling abilities must be selected through advancement');
+  if (!existingCharacter.advancement && advancementOperation !== undefined) throw new BadRequestError('Historical progression requires an explicit reviewed upgrade');
+  if (!existingCharacter.advancement && body.progression?.rank !== undefined) throw new BadRequestError('Historical level changes require an explicit reviewed upgrade');
+  let advanced;
+  if (advancementOperation !== undefined) {
+    try { advanced = advancement.advance(existingCharacter.advancement, existingCharacter.progression.rank, advancementOperation); }
+    catch (error) { throw new BadRequestError(error.message); }
+    merged.advancement = advanced.ledger;
+    merged.progression = {...toPlainObject(existingCharacter.progression),rank:advanced.level};
+    merged.attributes = advanced.summary.attributes;
+  }
   rejectDerivedInput(body);
   if (body.training !== undefined) {
-    try { merged.training = validateTraining(body.training); }
+    try { merged.training = validateTraining(body.training); merged.trainingRulesVersion = 1; }
     catch (error) { throw new BadRequestError(error.message); }
   }
   if (body.origin !== undefined) validateOrigin(merged.origin);
-  const recalculate = body.attributes !== undefined || body.origin !== undefined ||
+  const recalculate = Boolean(advanced) || body.attributes !== undefined || body.origin !== undefined ||
     body.progression?.rank !== undefined;
   if (recalculate) {
     // PATCH carries final scores; never apply the origin bonus to stored scores.
-    validateFinalAttributes(merged.attributes, merged.origin);
+    if (!advanced) validateFinalAttributes(merged.attributes, merged.origin);
   }
   if (recalculate) {
     let maxima;
@@ -122,15 +138,19 @@ function buildUpdatePayload(body, existingCharacter) {
       };
     }
   }
-  const keys = new Set(Object.keys(body));
+  const keys = new Set(Object.keys(patch));
+  if (body.training !== undefined) keys.add('trainingRulesVersion');
+  if (advanced) for (const key of ['advancement','progression','attributes']) keys.add(key);
   if (recalculate) keys.add('resources');
   return Object.fromEntries([...keys].map((key) => [key, merged[key]]));
 }
 
 function buildCharacterPayload(body = {}) {
   rejectDerivedInput(body, true);
+  if (body.abilities?.some(a=>a.source === 'calling')) throw new BadRequestError('Calling ability content awaits review');
+  if (body.advancementOperation !== undefined) throw new BadRequestError('Advancement operations are not allowed at creation');
   validateOrigin(body.origin);
-  if ((body.progression?.rank ?? 1) !== 1 || body.progression?.specializationPath ||
+  if ((body.progression?.rank ?? 1) !== 1 || (body.progression?.advancementPoints ?? 0) !== 0 || body.progression?.specializationPath ||
       body.progression?.unlockedNodes?.length) {
     throw new BadRequestError('Creation starts at level 1 with no Path ownership or advancement');
   }
@@ -139,8 +159,14 @@ function buildCharacterPayload(body = {}) {
   catch (error) { throw new BadRequestError(error.message); }
   try { attributes = applyOriginBonus(body.attributes, body.origin); }
   catch (error) { throw new BadRequestError(error.message); }
+  let ledger;
+  try { ledger = advancement.initialize(body.calling, attributes); }
+  catch (error) { throw new BadRequestError(error.message); }
   return {
     ...body,
+    advancement: ledger,
+    documentRevision: 0,
+    trainingRulesVersion: 1,
     attributes,
     training,
     resources: buildResources(attributes, 1, body.resources),
@@ -229,11 +255,14 @@ const updateCharacter = async (req, res, next) => {
 
     const update = {
       ...buildUpdatePayload(body, existingCharacter),
+      documentRevision: (existingCharacter.documentRevision ?? 0) + 1,
       owner: existingCharacter.owner,
     };
 
-    const updatedCharacter = await Character.findByIdAndUpdate(
-      req.params.characterId,
+    const updatedCharacter = await Character.findOneAndUpdate(
+      { _id: req.params.characterId, owner: existingCharacter.owner,
+        documentRevision: existingCharacter.documentRevision ?? {$exists:false},
+        ...(existingCharacter.updatedAt ? {updatedAt:existingCharacter.updatedAt} : {updatedAt:{$exists:false}}) },
       update,
       {
         new: true,
@@ -241,6 +270,7 @@ const updateCharacter = async (req, res, next) => {
       }
     ).lean();
 
+    if (!updatedCharacter) throw new BadRequestError('Character changed; reload before saving');
     res.send(updatedCharacter);
   } catch (err) {
     if (err.name === "ValidationError") {

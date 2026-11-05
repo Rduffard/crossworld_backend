@@ -1,3 +1,5 @@
+> Superseded for new characters by [Progression foundation v1](./progression-foundation.md). The implementation notes below describe the prior 23-discipline Training system and remain historical context.
+
 # Training and attribute checks
 
 This is the implemented character system as of 2026-11-04. Earlier Core Check and ranked Specialty documents are historical design material where marked.

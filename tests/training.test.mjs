@@ -26,9 +26,9 @@ test('all levels and attributes add proficiency exactly once for acquired releva
   }
   for (const level of [0,21,1.5,'1',null]) assert.throws(() => proficiencyBonus(level));
 });
-test('canonical catalog has 23 binary identities and no executable legacy rules', () => {
-  assert.equal(system.training.length,23);
-  assert.equal(new Set(system.training.map(e => e.id)).size,23);
+test('canonical catalog has 20 General Skills and no executable legacy rules', () => {
+  assert.equal(system.training.length,20);
+  assert.equal(new Set(system.training.map(e => e.id)).size,20);
   assert.ok(system.training.some(e => e.id === 'deceive'));
   assert.ok(!system.training.some(e => e.id === 'guile'));
   for (const entry of system.training) {
@@ -42,7 +42,7 @@ test('canonical catalog has 23 binary identities and no executable legacy rules'
 test('historical effect archive contains every original rank entry; Paths retain all 18 nodes', () => {
   const archive=readFileSync(new URL('../docs/historical-specialty-effects.md',import.meta.url),'utf8');
   assert.equal((archive.match(/^- Rank [1-4] —/gm) ?? []).length,92);
-  for (const entry of system.training) assert.ok(archive.includes(`## ${entry.name} (`));
+  for (const entry of system.legacyTraining) assert.ok(archive.includes(`## ${entry.name} (`));
   assert.equal(system.catalogs.specializations.length,6);
   for (const path of system.catalogs.specializations) {
     assert.equal(path.nodes.length,3);

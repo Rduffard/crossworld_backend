@@ -2,12 +2,12 @@ const mongoose = require("mongoose");
 
 const attributesSchema = new mongoose.Schema(
   {
-    might: { type: Number, min: 0, max: 16, default: 0 },
-    agility: { type: Number, min: 0, max: 16, default: 0 },
-    wit: { type: Number, min: 0, max: 16, default: 0 },
-    spirit: { type: Number, min: 0, max: 16, default: 0 },
-    resolve: { type: Number, min: 0, max: 16, default: 0 },
-    instinct: { type: Number, min: 0, max: 16, default: 0 },
+    might: { type: Number, min: 0, max: 20, default: 0 },
+    agility: { type: Number, min: 0, max: 20, default: 0 },
+    wit: { type: Number, min: 0, max: 20, default: 0 },
+    spirit: { type: Number, min: 0, max: 20, default: 0 },
+    resolve: { type: Number, min: 0, max: 20, default: 0 },
+    instinct: { type: Number, min: 0, max: 20, default: 0 },
   },
   { _id: false }
 );
@@ -451,13 +451,18 @@ const characterSchema = new mongoose.Schema(
       type: reputationSchema,
       default: () => ({}),
     },
+    documentRevision: { type: Number, default: undefined },
+    advancement: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    trainingRulesVersion: { type: Number, default: undefined },
     training: {
       type: [String],
       default: undefined,
       castNonArrays: false,
       validate: { validator(value) {
         if (value === undefined) return true; // Historical documents remain unconverted.
-        try { require('../system/training').validateTraining(value); return true; }
+        try { if (!Array.isArray(value) || value.length !== 4 || new Set(value).size !== 4) return false;
+        const known = [...require('../system/blueprints/training'), ...require('../system/blueprints/legacyTraining')].map(e=>e.id);
+        return value.every(id=>typeof id === 'string' && known.includes(id)); }
         catch { return false; }
       }, message: 'Choose exactly four distinct canonical Training IDs' },
     },

@@ -3,7 +3,7 @@ const { celebrate, Joi } = require("celebrate");
 
 const objectId = Joi.string().hex().length(24);
 
-const attributeSchema = Joi.number().integer().min(8).max(16);
+const attributeSchema = Joi.number().integer().min(8).max(20);
 const reputationSchema = Joi.number().integer().min(-3).max(3);
 
 const reputationMapSchema = Joi.object({
@@ -126,6 +126,19 @@ const progressionSchema = Joi.object({
 }).default({});
 
 const characterBodySchema = Joi.object({
+  advancement: Joi.forbidden(),
+  trainingRulesVersion: Joi.forbidden(),
+  advancementOperation: Joi.object({
+    expectedRevision: Joi.number().integer().min(0).required(),
+    level: Joi.number().integer().min(1).max(20),
+    exchanges: Joi.array().max(2).items(Joi.object({rewardId:Joi.string().max(40).required(),kind:Joi.string().valid('calling','path').required()})),
+    spends: Joi.array().max(19).items(Joi.object({
+      rewardId: Joi.string().max(40).required(),
+      kind: Joi.string().valid('calling','path','attribute').required(),
+      increases: Joi.object(Object.fromEntries(['might','agility','wit','spirit','resolve','instinct'].map(key=>[key,Joi.number().integer().min(1).max(2)]))),
+      abilityId: Joi.string().max(100), pathId: Joi.string().max(100), tier: Joi.number().integer().min(1).max(4),
+    })),
+  }),
   name: Joi.string().min(2).max(80).required(),
   pronouns: Joi.string().allow("").max(40).default(""),
   calling: Joi.string().min(2).max(40).required(),
@@ -169,6 +182,7 @@ const creationProgressionSchema = progressionSchema.keys({
   unlockedNodes: Joi.array().max(0).default([]),
 });
 const createCharacterSchema = characterBodySchema.keys({
+  advancementOperation: Joi.forbidden(),
   attributes: allocationSchema,
   training: Joi.array().items(Joi.string().valid(...trainingIds)).length(4).unique().required(),
   origin: originSchema.required(),

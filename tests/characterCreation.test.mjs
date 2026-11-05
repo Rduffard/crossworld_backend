@@ -11,7 +11,7 @@ import resources from '../src/modules/archipelago/system/resources.js';
 const owner = '507f1f77bcf86cd799439011';
 const origin = catalog.origins.find((entry) => entry.bonus === '+1 Might');
 const allocation = () => ({ might: 15, agility: 14, wit: 13, spirit: 12, resolve: 10, instinct: 8 });
-const body = () => ({ name: 'Regression Sailor', calling: catalog.callings[0].id, origin: origin.id, attributes: allocation(), training: ['board', 'shoot', 'deceive', 'navigate'] });
+const body = () => ({ name: 'Regression Sailor', calling: catalog.callings[0].id, origin: origin.id, attributes: allocation(), training: ['climb', 'perception', 'deceive', 'navigate'] });
 const copy = (value) => JSON.parse(JSON.stringify(value));
 async function validate(middleware, input, method = 'POST') {
   const request = { body: copy(input), method, headers: {} };
@@ -36,7 +36,7 @@ function database(t, seed) {
     return doc;
   });
   t.mock.method(Character, 'findById', () => ({ lean: async () => copy(saved) }));
-  t.mock.method(Character, 'findByIdAndUpdate', (_id, update, options) => {
+  t.mock.method(Character, 'findOneAndUpdate', (_filter, update, options) => {
     assert.equal(options.runValidators, true);
     const error = new Character({ ...saved, ...update }).validateSync();
     if (error) throw error;
@@ -58,7 +58,7 @@ const existing = () => ({
   ...body(), _id: owner, owner,
   attributes: origins.applyOriginBonus(allocation(), origin.id),
   progression: { rank: 1, corePoints: 2, specialtyPicks: 4, advancementPoints: 5, coreCheckInvestments: { skirmish: 3 }, specializationPath: 'drydock-ghost', unlockedNodes: ['ghost-patch'] },
-  skills: { combat: [{ id: 'board', rank: 1, specialty: 'saved investment' }], social: [{ id: 'command', rank: 1 }] },
+  skills: { combat: [{ id: 'climb', rank: 1, specialty: 'saved investment' }], social: [{ id: 'command', rank: 1 }] },
   resources: { health: { current: 15, max: 15 }, stamina: { current: 15, max: 15 }, focus: { current: 12, max: 12 }, wounds: { current: 2, max: 7, active: [{ name: 'Scar', severity: 'major' }] }, corruption: { current: 3, max: 9 } },
   checks: { skirmish: 18 }, derivedStats: { vitality: 24 }, notes: 'Original',
 });
@@ -80,6 +80,10 @@ test('creation persists final attributes, full authoritative resources and no Pa
   assert.equal(pointBuy.validatePointBuyAllocation(allocation()).cost, 27);
   assert.deepEqual(saved.attributes, { ...allocation(), might: 16 });
   assert.equal(saved.progression.rank, 1);
+  assert.equal(saved.advancement.version, 1);
+  assert.equal(saved.advancement.passive.name, 'Sea Legs');
+  assert.deepEqual(saved.advancement.spends, []);
+  assert.equal(saved.trainingRulesVersion, 1);
   assert.equal(saved.progression.specializationPath, '');
   assert.deepEqual(saved.progression.unlockedNodes, []);
   for (const [track, max] of Object.entries(resources.calculateResourceMaximums(saved.attributes))) {
@@ -161,19 +165,19 @@ test('maximum decrease above low current preserves that current', async (t) => {
 
 test('partial PATCH changes one resource only and caps explicit current at saved maximum', async (t) => {
   const { after, before } = await patch(t, { resources: { stamina: { current: 999 } } });
-  assert.deepEqual(after, before);
+  assert.deepEqual(after, { ...before, documentRevision: 1 });
 });
 
 test('name-only PATCH preserves all omitted fields, including historical scores and investments', async (t) => {
   const seed = existing(); seed.attributes = { might: 3, agility: 2, wit: 4, spirit: 1, resolve: 2, instinct: 0 };
   const { after, before } = await patch(t, { name: 'Edited Sailor' }, seed);
-  assert.deepEqual(after, { ...before, name: 'Edited Sailor' });
+  assert.deepEqual(after, { ...before, name: 'Edited Sailor', documentRevision: 1 });
 });
 
 test('explicit Training and nested identity PATCH preserve historical siblings', async (t) => {
-  const { after, before } = await patch(t, { training: ['cut', 'shoot', 'deceive', 'navigate'], identity: { background: { pastRole: 'Captain' } } });
+  const { after, before } = await patch(t, { training: ['stealth', 'perception', 'deceive', 'navigate'], identity: { background: { pastRole: 'Captain' } } });
   assert.equal(after.progression.coreCheckInvestments.skirmish, 3);
-  assert.deepEqual(after.training, ['cut', 'shoot', 'deceive', 'navigate']);
+  assert.deepEqual(after.training, ['stealth', 'perception', 'deceive', 'navigate']);
   assert.equal(after.identity.background.pastRole, 'Captain');
   assert.equal(after.progression.advancementPoints, 5);
   assert.deepEqual(after.skills.social, before.skills.social);
@@ -197,16 +201,16 @@ test('origin changes validate merged final scores without applying another bonus
   assert.equal(after.origin, next.id);
 });
 
-test('rank recalculation supports 1–20 and clamps without healing', async (t) => {
-  const { after, before } = await patch(t, { progression: { rank: 3 } });
-  assert.equal(after.resources.health.max, 33);
-  assert.equal(after.resources.health.current, before.resources.health.current);
+test('historical rank changes require explicit upgrade', async (t) => {
+  database(t, existing());
+  const rejected = await invoke(controller.updateCharacter, {body:{progression:{rank:3}}});
+  assert.match(rejected.error.message,/reviewed upgrade/);
   const invalid = await validate(validators.validateUpdateCharacter, { progression: { rank: 21 } }, 'PATCH');
   assert.ok(invalid.error);
 });
 
 test('PATCH rejects derived maximum and check manipulation', async () => {
-  for (const input of [{ resources: { health: { max: 900 } } }, { checks: {} }, { attributes: { might: 17 } }, { origin: 'unknown' }]) {
+  for (const input of [{ resources: { health: { max: 900 } } }, { checks: {} }, { attributes: { might: 21 } }, { origin: 'unknown' }]) {
     assert.ok((await validate(validators.validateUpdateCharacter, input, 'PATCH')).error);
   }
 });
@@ -237,8 +241,8 @@ test('empty PATCH performs no database write', async (t) => {
 
 
 test('Training validates exactly four distinct canonical IDs at creation and PATCH', async () => {
-  const valid = ['board', 'shoot', 'deceive', 'navigate'];
-  for (const training of [undefined, valid.slice(0, 3), [...valid, 'cut'], ['board', 'board', 'shoot', 'cut'], ['board', 'shoot', 'cut', 'guile'], [{ id: 'board', rank: 1 }, ...valid.slice(1)], 'board']) {
+  const valid = ['climb', 'perception', 'deceive', 'navigate'];
+  for (const training of [undefined, valid.slice(0, 3), [...valid, 'stealth'], ['climb', 'climb', 'perception', 'stealth'], ['climb', 'perception', 'stealth', 'guile'], [{ id: 'climb', rank: 1 }, ...valid.slice(1)], 'climb']) {
     const checked = await validate(validators.validateCreateCharacter, { ...body(), training });
     assert.ok(checked.error, JSON.stringify(training));
     if (training !== undefined) assert.ok((await validate(validators.validateUpdateCharacter, { training }, 'PATCH')).error);
@@ -265,8 +269,8 @@ test('PATCH preserves omitted Training and updates four IDs without resetting ne
   const seed = existing();
   seed.identity = { background: { pastRole: 'Courier', definingEvent: 'Saved event' }, tags: [{ key: 'mark', label: 'Mark' }] };
   seed.resources.health.current = 1;
-  const { after, before } = await patch(t, { training: ['cut', 'shoot', 'deceive', 'navigate'], identity: { background: { pastRole: 'Captain' } } }, seed);
-  assert.deepEqual(after.training, ['cut', 'shoot', 'deceive', 'navigate']);
+  const { after, before } = await patch(t, { training: ['stealth', 'perception', 'deceive', 'navigate'], identity: { background: { pastRole: 'Captain' } } }, seed);
+  assert.deepEqual(after.training, ['stealth', 'perception', 'deceive', 'navigate']);
   assert.equal(after.identity.background.definingEvent, before.identity.background.definingEvent);
   assert.deepEqual(after.identity.tags, before.identity.tags);
   assert.deepEqual(after.resources, before.resources);
