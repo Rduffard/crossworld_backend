@@ -307,3 +307,22 @@ test('missing historical resource maximum rejects current edits explicitly', asy
   const outcome=await invoke(controller.updateCharacter,checked.request);
   assert.ok(outcome.error.message.includes('capacity is unavailable'));
 });
+
+test('Calling skills, free choices and substitutions persist through creation and API reads', async (t) => {
+  const packages = (await import('../src/modules/archipelago/system/blueprints/startingProficiencies.js')).default;
+  for (const [calling, pkg] of Object.entries(packages.callings)) {
+    const free = ['bargain','deceive','perform','persuade'].filter(id => !pkg.skills.includes(id)).slice(0,2);
+    const saved = await create(t, {...body(), calling, training: [...pkg.skills, ...free]});
+    assert.deepEqual(saved.training, [...pkg.skills, ...free]);
+    assert.deepEqual(saved.advancement.savingThrows, pkg.saves);
+    t.mock.method(Character, 'findOne', () => ({lean: async () => copy(saved)}));
+    const read = await invoke(controller.getCharacterById, {});
+    assert.ifError(read.error);
+    assert.deepEqual(read.result.training, saved.training);
+    const replacement = ['read','stealth','investigate'].find(id => !saved.training.includes(id));
+    const selected = [replacement, ...saved.training.slice(1)];
+    const changed = await create(t, {...body(), calling, training: selected});
+    assert.deepEqual(changed.training, selected);
+    assert.ok(!changed.training.includes(pkg.skills[0]));
+  }
+});
