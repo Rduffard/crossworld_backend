@@ -1,6 +1,3 @@
-const { checkCategories, checkKeys } = require("./checkHelpers");
-const { skillCategories } = require("./skillHelpers");
-
 module.exports = {
   Character: {
     type: "object",
@@ -8,8 +5,7 @@ module.exports = {
       "name",
       "identity",
       "attributes",
-      "checks",
-      "specialties",
+      "training",
       "resources",
       "abilities",
       "reputation",
@@ -22,9 +18,7 @@ module.exports = {
       pronouns: { type: "string", example: "she/they" },
       identity: { $ref: "#/schema/Identity" },
       attributes: { $ref: "#/schema/Attributes" },
-      checks: { $ref: "#/schema/Checks" },
-      skills: { $ref: "#/schema/Specialties" },
-      specialties: { $ref: "#/schema/Specialties" },
+      training: { type: "array", minItems: 4, maxItems: 4, uniqueItems: true, items: { type: "string", enum: require("./training").map((entry) => entry.id) } },
       abilities: { $ref: "#/schema/Abilities" },
       resources: { $ref: "#/schema/Resources" },
       reputation: { $ref: "#/schema/Reputation" },
@@ -56,71 +50,45 @@ module.exports = {
   },
   Attributes: {
     type: "object",
-    description: "Raw character potential that feeds resources and derived check math.",
+    description: "Attributes determine modifiers and authoritative resources.",
     properties: {
       might: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Force, lift, impact tolerance, and bodily threat.",
         example: 3,
       },
       agility: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Aim, footwork, acceleration, and precision under motion.",
         example: 2,
       },
       wit: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Planning, deduction, technical control, and procedural thinking.",
         example: 4,
       },
       spirit: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Presence, occult receptivity, emotional force, and ritual resonance.",
         example: 1,
       },
       resolve: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Composure, tenacity, pain tolerance, and pressure resistance.",
         example: 3,
       },
       instinct: {
         type: "number",
-        range: "0-5 starting, 0-8 heroic",
+        range: "8–15 point buy, plus origin bonus",
         description: "Reaction, situational sensing, navigation by feel, and gut reads.",
         example: 2,
       },
     },
-  },
-  Specialties: {
-    type: "object",
-    description: "Ranked techniques and proficiencies grouped by play pillar.",
-    properties: skillCategories.reduce((properties, categoryKey) => {
-      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SpecialtyRank" } };
-      return properties;
-    }, {}),
-  },
-  Skills: {
-    type: "object",
-    description: "Deprecated alias for Specialties.",
-    properties: skillCategories.reduce((properties, categoryKey) => {
-      properties[categoryKey] = { type: "array", items: { $ref: "#/schema/SpecialtyRank" } };
-      return properties;
-    }, {}),
-  },
-  Checks: {
-    type: "object",
-    description:
-      "Canonical gameplay checks. These are the primary rolls and direct numerical progression layer.",
-    categories: checkCategories,
-    properties: checkKeys.reduce((properties, checkKey) => {
-      properties[checkKey] = { type: "number", example: 12 };
-      return properties;
-    }, {}),
   },
   TraitsTags: {
     type: "array",
@@ -172,24 +140,13 @@ module.exports = {
   },
   Progression: {
     type: "object",
-    required: ["rank", "corePoints", "specialtyPicks", "coreCheckInvestments", "specializationPath", "unlockedNodes"],
+    required: ["rank", "specializationPath", "unlockedNodes"],
     properties: {
       rank: { type: "number", example: 1 },
-      corePoints: { type: "number", example: 4 },
-      specialtyPicks: { type: "number", example: 2 },
       advancementPoints: { type: "number", example: 1 },
-      coreCheckInvestments: { $ref: "#/schema/CoreCheckInvestments" },
       specializationPath: { type: "string", example: "storm-broker" },
       unlockedNodes: { type: "array", items: { type: "string" } },
     },
-  },
-  CoreCheckInvestments: {
-    type: "object",
-    description: "Direct Core Point investment by core check key.",
-    properties: checkKeys.reduce((properties, checkKey) => {
-      properties[checkKey] = { type: "number", example: 1 };
-      return properties;
-    }, {}),
   },
   Tag: {
     type: "object",
@@ -207,44 +164,6 @@ module.exports = {
         example:
           "Unlocks machine-facing dialogue and reduces the first Jury-Rig stamina cost each scene by 1.",
       },
-    },
-  },
-  SpecialtyRank: {
-    type: "object",
-    required: ["id", "rank"],
-    properties: {
-      id: { type: "string", example: "jury-rig" },
-      name: { type: "string", example: "Jury-Rig" },
-      category: { type: "string", example: "utility" },
-      description: { type: "string", example: "Make broken gear work long enough to matter." },
-      rank: { type: "number", range: "0-5", example: 2 },
-      maxRank: { type: "number", example: 3 },
-      relatedChecks: { type: "array", items: { type: "string" } },
-      ranks: { type: "array", items: { $ref: "#/schema/SpecialtyRankDefinition" } },
-      prerequisites: { type: "object", additionalProperties: { type: "array", items: { type: "object" } } },
-      tags: { type: "array", items: { type: "string" } },
-      context: { type: "string", example: "Temporary repairs and emergency improvisation." },
-      specialty: { type: "string", example: "Pressure seals" },
-    },
-  },
-  SpecialtyRankDefinition: {
-    type: "object",
-    required: ["rank", "title", "effect"],
-    properties: {
-      rank: { type: "number", example: 1 },
-      title: { type: "string", example: "Ugly Fix" },
-      effect: { type: "string", example: "Create a temporary fix that survives the current scene." },
-    },
-  },
-  SkillRating: {
-    type: "object",
-    description: "Deprecated alias for SpecialtyRank.",
-    required: ["id", "rank"],
-    properties: {
-      id: { type: "string", example: "jury-rig" },
-      name: { type: "string", example: "Jury-Rig" },
-      rank: { type: "number", range: "0-5", example: 2 },
-      specialty: { type: "string", example: "Pressure seals" },
     },
   },
   Ability: {

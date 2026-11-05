@@ -1,10 +1,1 @@
-module.exports = {
-  version: "2026-05-22",
-  title: "Archipelago System Blueprint",
-  designGoals: [
-    "Core Checks are the primary investable rolls that answer what a character is broadly capable of.",
-    "Specialties are ranked techniques that grant permissions, rerolls, substitutions, or situational dominance without replacing Core Checks.",
-    "Conflict is resolved through resources, positioning, leverage, and political consequences rather than class locked fantasy loops.",
-    "Identity, faction standing, and equipment shape access to content as much as raw numbers.",
-  ],
-};
+module.exports = { version: '2026-11-04-training', title: 'Archipelago System Blueprint', designGoals: ['Attribute checks add proficiency once when relevant Training applies.', 'Choose exactly four binary Training proficiencies.', 'Identity, resources, reputation, and equipment retain their existing roles.'] };

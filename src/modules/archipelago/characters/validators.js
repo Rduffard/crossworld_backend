@@ -1,56 +1,10 @@
+const { trainingIds } = require('../system/training');
 const { celebrate, Joi } = require("celebrate");
-const { checkKeys } = require("../system/blueprints/checkHelpers");
-const { skillCategories } = require("../system/blueprints/skillHelpers");
 
 const objectId = Joi.string().hex().length(24);
 
-const attributeSchema = Joi.number().integer().min(0).max(10);
+const attributeSchema = Joi.number().integer().min(8).max(16);
 const reputationSchema = Joi.number().integer().min(-3).max(3);
-
-const derivedStatsSchema = Joi.object({
-  vitality: Joi.number().integer().min(0).default(10),
-  guard: Joi.number().integer().min(0).default(10),
-  initiative: Joi.number().integer().min(0).default(10),
-  focus: Joi.number().integer().min(0).default(10),
-}).default({});
-
-const socialStatsSchema = Joi.object({
-  grace: Joi.number().integer().min(0).default(10),
-  guile: Joi.number().integer().min(0).default(10),
-  pressure: Joi.number().integer().min(0).default(10),
-}).default({});
-
-const pairingStatsSchema = Joi.object({
-  skirmish: Joi.number().integer().min(0).default(10),
-  leverage: Joi.number().integer().min(0).default(10),
-  conviction: Joi.number().integer().min(0).default(10),
-  pressure: Joi.number().integer().min(0).default(10),
-  pursuit: Joi.number().integer().min(0).default(10),
-  precision: Joi.number().integer().min(0).default(10),
-  flourish: Joi.number().integer().min(0).default(10),
-  balance: Joi.number().integer().min(0).default(10),
-  reflex: Joi.number().integer().min(0).default(10),
-  guile: Joi.number().integer().min(0).default(10),
-  tactics: Joi.number().integer().min(0).default(10),
-  sense: Joi.number().integer().min(0).default(10),
-  grace: Joi.number().integer().min(0).default(10),
-  attunement: Joi.number().integer().min(0).default(10),
-  nerve: Joi.number().integer().min(0).default(10),
-}).default({});
-
-const checksSchema = Joi.object(
-  checkKeys.reduce((schema, checkKey) => {
-    schema[checkKey] = Joi.number().integer().min(0).default(10);
-    return schema;
-  }, {})
-).default({});
-
-const coreCheckInvestmentsSchema = Joi.object(
-  checkKeys.reduce((schema, checkKey) => {
-    schema[checkKey] = Joi.number().integer().min(0).max(20).default(0);
-    return schema;
-  }, {})
-).default({});
 
 const reputationMapSchema = Joi.object({
   yumaRepublic: reputationSchema,
@@ -128,20 +82,6 @@ const identitySchema = Joi.object({
   tags: Joi.array().items(tagSchema).default([]),
 }).default({});
 
-const skillRatingSchema = Joi.object({
-  id: Joi.string().min(1).max(80).required(),
-  name: Joi.string().allow("").max(80).default(""),
-  rank: Joi.number().integer().min(0).max(5).default(0),
-  specialty: Joi.string().allow("").max(120).default(""),
-});
-
-const skillsSchema = Joi.object(
-  skillCategories.reduce((schema, categoryKey) => {
-    schema[categoryKey] = Joi.array().items(skillRatingSchema).default([]);
-    return schema;
-  }, {})
-).default({});
-
 const resourceTrackSchema = Joi.object({
   current: Joi.number().integer().min(0).default(0),
   max: Joi.number().integer().min(0).default(0),
@@ -180,10 +120,7 @@ const equipmentSchema = Joi.object({
 
 const progressionSchema = Joi.object({
   rank: Joi.number().integer().min(1).max(20).default(1),
-  corePoints: Joi.number().integer().min(0).default(0),
-  specialtyPicks: Joi.number().integer().min(0).default(0),
   advancementPoints: Joi.number().integer().min(0).default(0),
-  coreCheckInvestments: coreCheckInvestmentsSchema,
   specializationPath: Joi.string().allow("").max(80).default(""),
   unlockedNodes: Joi.array().items(Joi.string().max(80)).default([]),
 }).default({});
@@ -202,12 +139,8 @@ const characterBodySchema = Joi.object({
     resolve: attributeSchema,
     instinct: attributeSchema,
   }).default({}),
-  derivedStats: derivedStatsSchema,
-  socialStats: socialStatsSchema,
-  pairingStats: pairingStatsSchema,
-  checks: checksSchema,
   reputation: reputationMapSchema,
-  skills: skillsSchema,
+  training: Joi.array().items(Joi.string().valid(...trainingIds)).length(4).unique(),
   abilities: Joi.array().items(abilitySchema).default([]),
   resources: resourcesSchema,
   inventory: Joi.array().items(inventoryItemSchema).default([]),
@@ -220,15 +153,57 @@ const characterBodySchema = Joi.object({
   status: Joi.string().valid("active", "archived", "retired").default("active"),
 });
 
-module.exports.validateCreateCharacter = celebrate({
-  body: characterBodySchema,
+const { validatePointBuyAllocation } = require('../system/pointBuy');
+const { origins } = require('../system/blueprints/catalogs');
+const allocationSchema = Joi.object(Object.fromEntries(
+  ['might', 'agility', 'wit', 'spirit', 'resolve', 'instinct'].map((key) =>
+    [key, Joi.number().integer().min(8).max(15).required()])
+)).required().custom((value, helpers) => {
+  try { validatePointBuyAllocation(value); return value; }
+  catch (error) { return helpers.message({ custom: error.message }); }
+});
+const originSchema = Joi.string().valid(...origins.map((origin) => origin.id));
+const creationProgressionSchema = progressionSchema.keys({
+  rank: Joi.number().integer().valid(1).default(1),
+  specializationPath: Joi.string().valid('').default(''),
+  unlockedNodes: Joi.array().max(0).default([]),
+});
+const createCharacterSchema = characterBodySchema.keys({
+  attributes: allocationSchema,
+  training: Joi.array().items(Joi.string().valid(...trainingIds)).length(4).unique().required(),
+  origin: originSchema.required(),
+  checks: Joi.forbidden(),
+  derivedStats: Joi.forbidden(),
+  socialStats: Joi.forbidden(),
+  pairingStats: Joi.forbidden(),
+  // Physical/mental tracks always start full and are calculated by the server.
+  resources: Joi.object({
+    wounds: woundTrackSchema,
+    corruption: resourceTrackSchema.keys({ max: Joi.number().integer().min(0).default(6) }),
+  }),
+  progression: creationProgressionSchema,
+});
+const updateCharacterSchema = characterBodySchema.fork(
+  ['name', 'calling', 'origin'], (schema) => schema.optional()
+).keys({
+  origin: originSchema,
+  progression: progressionSchema.keys({ specializationPath: Joi.forbidden(), unlockedNodes: Joi.forbidden() }),
+  checks: Joi.forbidden(),
+  derivedStats: Joi.forbidden(),
+  socialStats: Joi.forbidden(),
+  pairingStats: Joi.forbidden(),
+  resources: resourcesSchema.keys({
+    health: resourceTrackSchema.keys({ max: Joi.forbidden() }),
+    stamina: resourceTrackSchema.keys({ max: Joi.forbidden() }),
+    focus: resourceTrackSchema.keys({ max: Joi.forbidden() }),
+  }),
 });
 
+module.exports.validateCreateCharacter = celebrate({ body: createCharacterSchema }, { convert: false });
+
 module.exports.validateUpdateCharacter = celebrate({
-  body: characterBodySchema.fork(["name", "calling", "origin"], (schema) =>
-    schema.optional()
-  ),
-});
+  body: updateCharacterSchema,
+}, { noDefaults: true, convert: false });
 
 module.exports.validateCharacterIdParam = celebrate({
   params: Joi.object({

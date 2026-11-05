@@ -1,55 +1,13 @@
 const mongoose = require("mongoose");
-const { checkKeys } = require("../system/blueprints/checkHelpers");
-const { skillCategories } = require("../system/blueprints/skillHelpers");
 
 const attributesSchema = new mongoose.Schema(
   {
-    might: { type: Number, min: 0, max: 10, default: 0 },
-    agility: { type: Number, min: 0, max: 10, default: 0 },
-    wit: { type: Number, min: 0, max: 10, default: 0 },
-    spirit: { type: Number, min: 0, max: 10, default: 0 },
-    resolve: { type: Number, min: 0, max: 10, default: 0 },
-    instinct: { type: Number, min: 0, max: 10, default: 0 },
-  },
-  { _id: false }
-);
-
-const derivedStatsSchema = new mongoose.Schema(
-  {
-    vitality: { type: Number, min: 0, default: 10 },
-    guard: { type: Number, min: 0, default: 10 },
-    initiative: { type: Number, min: 0, default: 10 },
-    focus: { type: Number, min: 0, default: 10 },
-  },
-  { _id: false }
-);
-
-const socialStatsSchema = new mongoose.Schema(
-  {
-    grace: { type: Number, min: 0, default: 10 },
-    guile: { type: Number, min: 0, default: 10 },
-    pressure: { type: Number, min: 0, default: 10 },
-  },
-  { _id: false }
-);
-
-const pairingStatsSchema = new mongoose.Schema(
-  {
-    skirmish: { type: Number, min: 0, default: 10 },
-    leverage: { type: Number, min: 0, default: 10 },
-    conviction: { type: Number, min: 0, default: 10 },
-    pressure: { type: Number, min: 0, default: 10 },
-    pursuit: { type: Number, min: 0, default: 10 },
-    precision: { type: Number, min: 0, default: 10 },
-    flourish: { type: Number, min: 0, default: 10 },
-    balance: { type: Number, min: 0, default: 10 },
-    reflex: { type: Number, min: 0, default: 10 },
-    guile: { type: Number, min: 0, default: 10 },
-    tactics: { type: Number, min: 0, default: 10 },
-    sense: { type: Number, min: 0, default: 10 },
-    grace: { type: Number, min: 0, default: 10 },
-    attunement: { type: Number, min: 0, default: 10 },
-    nerve: { type: Number, min: 0, default: 10 },
+    might: { type: Number, min: 0, max: 16, default: 0 },
+    agility: { type: Number, min: 0, max: 16, default: 0 },
+    wit: { type: Number, min: 0, max: 16, default: 0 },
+    spirit: { type: Number, min: 0, max: 16, default: 0 },
+    resolve: { type: Number, min: 0, max: 16, default: 0 },
+    instinct: { type: Number, min: 0, max: 16, default: 0 },
   },
   { _id: false }
 );
@@ -295,72 +253,6 @@ const identitySchema = new mongoose.Schema(
   { _id: false }
 );
 
-const skillRatingSchema = new mongoose.Schema(
-  {
-    id: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 80,
-    },
-    name: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 80,
-    },
-    rank: {
-      type: Number,
-      min: 0,
-      max: 5,
-      default: 0,
-    },
-    specialty: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 120,
-    },
-  },
-  { _id: false }
-);
-
-const skillsSchema = new mongoose.Schema(
-  skillCategories.reduce((schema, categoryKey) => {
-    schema[categoryKey] = {
-      type: [skillRatingSchema],
-      default: [],
-    };
-    return schema;
-  }, {}),
-  { _id: false }
-);
-
-const checksSchema = new mongoose.Schema(
-  checkKeys.reduce((schema, checkKey) => {
-    schema[checkKey] = {
-      type: Number,
-      min: 0,
-      default: 10,
-    };
-    return schema;
-  }, {}),
-  { _id: false }
-);
-
-const coreCheckInvestmentsSchema = new mongoose.Schema(
-  checkKeys.reduce((schema, checkKey) => {
-    schema[checkKey] = {
-      type: Number,
-      min: 0,
-      max: 20,
-      default: 0,
-    };
-    return schema;
-  }, {}),
-  { _id: false }
-);
-
 const resourceTrackSchema = new mongoose.Schema(
   {
     current: {
@@ -401,7 +293,7 @@ const resourceBundleSchema = new mongoose.Schema(
   {
     health: {
       type: resourceTrackSchema,
-      default: () => ({}),
+      default: undefined,
     },
     wounds: {
       type: woundTrackSchema,
@@ -409,11 +301,11 @@ const resourceBundleSchema = new mongoose.Schema(
     },
     stamina: {
       type: resourceTrackSchema,
-      default: () => ({}),
+      default: undefined,
     },
     focus: {
       type: resourceTrackSchema,
-      default: () => ({}),
+      default: undefined,
     },
     corruption: {
       type: resourceTrackSchema,
@@ -486,31 +378,19 @@ const equipmentSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Unknown historical progression fields are inert and retained on explicit level edits.
 const progressionSchema = new mongoose.Schema(
   {
     rank: {
       type: Number,
       min: 1,
+      max: 20,
       default: 1,
-    },
-    corePoints: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-    specialtyPicks: {
-      type: Number,
-      min: 0,
-      default: 0,
     },
     advancementPoints: {
       type: Number,
       min: 0,
       default: 0,
-    },
-    coreCheckInvestments: {
-      type: coreCheckInvestmentsSchema,
-      default: () => ({}),
     },
     specializationPath: {
       type: String,
@@ -523,7 +403,7 @@ const progressionSchema = new mongoose.Schema(
       default: [],
     },
   },
-  { _id: false }
+  { _id: false, strict: false }
 );
 
 const characterSchema = new mongoose.Schema(
@@ -567,29 +447,19 @@ const characterSchema = new mongoose.Schema(
       type: attributesSchema,
       default: () => ({}),
     },
-    derivedStats: {
-      type: derivedStatsSchema,
-      default: () => ({}),
-    },
-    socialStats: {
-      type: socialStatsSchema,
-      default: () => ({}),
-    },
-    pairingStats: {
-      type: pairingStatsSchema,
-      default: () => ({}),
-    },
-    checks: {
-      type: checksSchema,
-      default: () => ({}),
-    },
     reputation: {
       type: reputationSchema,
       default: () => ({}),
     },
-    skills: {
-      type: skillsSchema,
-      default: () => ({}),
+    training: {
+      type: [String],
+      default: undefined,
+      castNonArrays: false,
+      validate: { validator(value) {
+        if (value === undefined) return true; // Historical documents remain unconverted.
+        try { require('../system/training').validateTraining(value); return true; }
+        catch { return false; }
+      }, message: 'Choose exactly four distinct canonical Training IDs' },
     },
     abilities: {
       type: [abilitySchema],
