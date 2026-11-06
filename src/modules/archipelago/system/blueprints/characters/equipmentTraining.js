@@ -7,7 +7,7 @@ module.exports = {
   },
   gunslinger: {
     categories: ["simple"],
-    weapons: [],
+    weapons: ["pistol", "musket"],
     armor: ["light"],
   },
   navigator: {

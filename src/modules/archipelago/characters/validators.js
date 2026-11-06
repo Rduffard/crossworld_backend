@@ -28,34 +28,6 @@ const woundSchema = Joi.object({
   severity: Joi.string().valid("minor", "major", "critical").default("minor"),
 });
 
-const abilityCostSchema = Joi.object({
-  resource: Joi.string()
-    .valid("stamina", "focus", "corruption", "health", "")
-    .default(""),
-  amount: Joi.number().integer().min(0).default(0),
-}).default({});
-
-const abilityScalingSchema = Joi.object({
-  attribute: Joi.string()
-    .valid("might", "agility", "wit", "spirit", "resolve", "instinct", "")
-    .default(""),
-  skill: Joi.string().allow("").max(80).default(""),
-}).default({});
-
-const abilitySchema = Joi.object({
-  id: Joi.string().allow("").max(80).default(""),
-  name: Joi.string().min(1).max(80).required(),
-  type: Joi.string().valid("active", "passive", "reaction").default("active"),
-  description: Joi.string().allow("").max(500).default(""),
-  source: Joi.string()
-    .valid("calling", "origin", "relic", "custom")
-    .default("custom"),
-  cost: abilityCostSchema,
-  scaling: abilityScalingSchema,
-  tags: Joi.array().items(Joi.string().max(80)).default([]),
-  effect: Joi.string().allow("").max(500).default(""),
-});
-
 const tagSchema = Joi.object({
   type: Joi.string().valid("tag", "trait", "scar", "license").default("tag"),
   key: Joi.string().min(1).max(80).required(),
@@ -147,7 +119,10 @@ const characterBodySchema = Joi.object({
       .items(
         Joi.object({
           rewardId: Joi.string().max(40).required(),
-          kind: Joi.string().valid("calling", "path", "attribute").required(),
+          kind: Joi.string()
+            .valid("calling", "path", "attribute", "selection")
+            .required(),
+          abilityIds: Joi.array().items(Joi.string()).unique(),
           increases: Joi.object(
             Object.fromEntries(
               ["might", "agility", "wit", "spirit", "resolve", "instinct"].map(
@@ -179,7 +154,22 @@ const characterBodySchema = Joi.object({
     .items(Joi.string().valid(...trainingIds))
     .length(4)
     .unique(),
-  abilities: Joi.array().items(abilitySchema).default([]),
+  abilities: Joi.forbidden(),
+  abilitySelections: Joi.object().pattern(
+    Joi.string(),
+    Joi.array().items(Joi.string()).unique()
+  ),
+  startingEquipment: Joi.object({
+    packageId: Joi.string().required(),
+    version: Joi.number().integer().valid(1).required(),
+    choices: Joi.object().pattern(Joi.string(), Joi.string()).required(),
+    equipped: Joi.object({
+      mainHand: Joi.string().allow(null).required(),
+      offHand: Joi.string().allow(null).required(),
+      armor: Joi.string().allow(null).required(),
+      grip: Joi.string().valid("one", "two").required(),
+    }),
+  }),
   resources: resourcesSchema,
   inventory: Joi.forbidden(),
   loadout: Joi.forbidden(),
@@ -221,6 +211,7 @@ const creationProgressionSchema = progressionSchema.keys({
 const createCharacterSchema = characterBodySchema.keys({
   advancementOperation: Joi.forbidden(),
   equipmentOperation: Joi.forbidden(),
+  startingEquipment: Joi.required(),
   attributes: allocationSchema,
   training: Joi.array()
     .items(Joi.string().valid(...trainingIds))
@@ -245,6 +236,8 @@ const updateCharacterSchema = characterBodySchema
   .fork(["name", "calling", "origin"], (schema) => schema.optional())
   .keys({
     origin: originSchema,
+    abilitySelections: Joi.forbidden(),
+    startingEquipment: Joi.forbidden(),
     progression: progressionSchema.keys({
       specializationPath: Joi.forbidden(),
       unlockedNodes: Joi.forbidden(),

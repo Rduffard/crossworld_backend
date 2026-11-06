@@ -53,6 +53,17 @@ test("create, equip, unequip and patch use server inventory with revision and ow
     },
   }));
   const made = await invoke(controller.createCharacter, {
+    startingEquipment: {
+      packageId: "corsair",
+      version: 1,
+      choices: { secondary: "dagger" },
+    },
+    abilitySelections: {
+      "choice:corsair:expertise:1": [
+        "corsair:expertise-climb",
+        "corsair:expertise-read",
+      ],
+    },
     name: "Equipment Sailor",
     calling: "corsair",
     origin,
@@ -67,7 +78,7 @@ test("create, equip, unequip and patch use server inventory with revision and ow
     training: ["climb", "read", "lore", "attune"],
   });
   assert.ifError(made.error);
-  assert.equal(saved.inventory.length, 1);
+  assert.equal(saved.inventory.length, 3);
   assert.equal(saved.inventory[0].definitionId, "cutlass");
   assert.equal(saved.loadout.mainHand, saved.inventory[0].instanceId);
   assert.equal(made.result.equipmentDerived.attacks[0].trained, true);
@@ -83,7 +94,7 @@ test("create, equip, unequip and patch use server inventory with revision and ow
     },
   });
   assert.ifError(added.error);
-  assert.equal(saved.inventory.length, 4);
+  assert.equal(saved.inventory.length, 6);
   assert.equal(saved.documentRevision, 1);
   const shield = saved.inventory.find((i) => i.definitionId === "shield"),
     armor = saved.inventory.find((i) => i.definitionId === "leather-armor");
@@ -150,7 +161,7 @@ test("create, equip, unequip and patch use server inventory with revision and ow
   assert.deepEqual(saved.advancement, snapshot.advancement);
   const info = await invoke(controller.getEquipment);
   assert.ifError(info.error);
-  assert.equal(info.result.inventory.length, 4);
+  assert.equal(info.result.inventory.length, 6);
 });
 test("HTTP validators reject obsolete direct inventory and forged mechanics", async () => {
   for (const body of [

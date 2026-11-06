@@ -7,7 +7,6 @@ module.exports = {
       "attributes",
       "training",
       "resources",
-      "abilities",
       "reputation",
       "inventory",
       "loadout",
@@ -29,7 +28,7 @@ module.exports = {
           enum: require("./training").map((entry) => entry.id),
         },
       },
-      abilities: { $ref: "#/schema/Abilities" },
+      progressionDerived: { type: "object", readOnly: true },
       resources: { $ref: "#/schema/Resources" },
       reputation: { $ref: "#/schema/Reputation" },
       inventory: { type: "array", items: { $ref: "#/schema/InventoryItem" } },
@@ -183,39 +182,27 @@ module.exports = {
   },
   Ability: {
     type: "object",
-    required: ["id", "name", "type", "cost", "scaling", "tags", "effect"],
+    readOnly: true,
+    required: [
+      "id",
+      "version",
+      "name",
+      "source",
+      "acquisition",
+      "timing",
+      "implementationStatus",
+    ],
     properties: {
-      id: { type: "string", example: "ability_storm_writ" },
-      name: { type: "string", example: "Storm Writ" },
-      type: {
-        type: "string",
-        enum: ["active", "passive", "reaction"],
-        example: "reaction",
-      },
-      cost: {
-        type: "object",
-        properties: {
-          resource: {
-            type: "string",
-            enum: ["stamina", "focus", "corruption", "health"],
-            example: "focus",
-          },
-          amount: { type: "number", example: 2 },
-        },
-      },
-      scaling: {
-        type: "object",
-        properties: {
-          attribute: { type: "string", example: "spirit" },
-          skill: { type: "string", example: "invoke" },
-        },
-      },
-      tags: { type: "array", items: { type: "string" } },
-      effect: {
-        type: "string",
-        example:
-          "Compel a marked witness to answer one direct question or suffer visible backlash.",
-      },
+      id: { type: "string" },
+      version: { type: "integer" },
+      name: { type: "string" },
+      description: { type: "string" },
+      source: { type: "object" },
+      minimumLevel: { type: ["integer", "null"] },
+      prerequisites: { type: "object" },
+      acquisition: { enum: ["automatic", "selected", "unassigned"] },
+      timing: { type: "string" },
+      implementationStatus: { type: "string" },
     },
   },
   ResourceTrack: {

@@ -55,6 +55,16 @@ function fromCharacter(character, owner) {
       character.training.some((id) => typeof id !== "string"))
   )
     invalid("Character Training is malformed");
+  const progression =
+    character.advancement?.version === 2
+      ? require("../system/advancement").summarize(
+          character.advancement,
+          level,
+          { training: character.training }
+        )
+      : null;
+  if (progression && !progression.complete)
+    invalid("Complete required advancement decisions before entering combat");
   const resolved = require("../equipment").derive(character);
   const state = createFixture(owner);
   const combatant = {
@@ -79,6 +89,12 @@ function fromCharacter(character, owner) {
     guardInputs: resolved.guardInputs,
     guard: calculateGuard(attributes, resolved.guardInputs),
     actions: 1,
+    greatWeaponFighting:
+      progression?.combatCapabilities.greatWeaponFighting ?? false,
+    attacksPerAction: progression?.combatCapabilities.attacksPerAction ?? 1,
+    attacksRemaining: 0,
+    abilitySnapshot: progression?.abilities ?? [],
+    expertise: progression?.expertise ?? [],
   };
   state.combatants[0] = combatant;
   state.activeCombatant = "player";

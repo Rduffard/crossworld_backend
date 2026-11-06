@@ -127,6 +127,17 @@ function derive(character) {
     armor,
     shield: shield && training.armor.includes("shield"),
   };
+  const progression =
+    character.advancement?.version === 2
+      ? require("../system/advancement").summarize(
+          character.advancement,
+          character.progression.rank,
+          { training: character.training }
+        )
+      : null;
+  const defenseBonus =
+    progression?.combatCapabilities.defenseStyle && armor ? 1 : 0;
+  guardInputs.bonus = defenseBonus;
   const restrictions = {
     untrainedArmor,
     untrainedShield: shield && !training.armor.includes("shield"),
@@ -167,7 +178,11 @@ function derive(character) {
         definitionId: d.id,
         definitionVersion: d.version,
         name: i.customName || d.name,
-        weapon: structuredClone({ ...d, damage }),
+        weapon: structuredClone({
+          ...d,
+          damage,
+          heldHands: character.loadout.grip === "two" || d.hands === 2 ? 2 : 1,
+        }),
         trained,
         allowedAttributes,
         attribute,

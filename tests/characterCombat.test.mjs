@@ -69,7 +69,11 @@ test("actual identity, depleted Health, attributes, Training and temporary loado
   assert.deepEqual(player.training, original.training);
   assert.equal(player.modifiers.agility, 3);
   assert.equal(player.guard, 13);
-  assert.deepEqual(player.guardInputs, { armor: null, shield: false });
+  assert.deepEqual(player.guardInputs, {
+    armor: null,
+    shield: false,
+    bonus: 0,
+  });
   assert.deepEqual(player.weaponTraining, ["simple"]);
   assert.equal(player.weapon, "cutlass");
   assert.deepEqual(state.initialCharacterSnapshot, player);

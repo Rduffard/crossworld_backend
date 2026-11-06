@@ -1,0 +1,3 @@
+This work includes material from the System Reference Document 5.2 (“SRD 5.2”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+Official source: https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.pdf. Progression table references: Barbarian p.28; Fighter p.47; Paladin p.53; Ranger p.58; Rogue p.62; Sorcerer p.65. Fighting Style feats p.87–88. Page numbers are printed page numbers. Descriptions are original implementation/reference summaries; class mappings are provisional Archipelago adaptations.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import engine from "../src/modules/archipelago/system/advancement.js";
-import rules from "../src/modules/archipelago/system/blueprints/progression.js";
+import engine from "../src/modules/archipelago/system/advancementLegacy.js";
+import rules from "../src/modules/archipelago/system/blueprints/progressionLegacy.js";
 import packages from "../src/modules/archipelago/system/blueprints/startingProficiencies.js";
 import training from "../src/modules/archipelago/system/blueprints/training.js";
 import catalog from "../src/modules/archipelago/system/blueprints/catalogs.js";

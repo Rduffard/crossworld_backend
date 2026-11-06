@@ -16,7 +16,15 @@ const MAX_CHARACTERS_PER_USER = 20;
 function decorate(character) {
   const value = toPlainObject(character);
   return value.loadout
-    ? { ...value, equipmentDerived: equipment.derive(value) }
+    ? {
+        ...value,
+        equipmentDerived: equipment.derive(value),
+        progressionDerived: advancement.summarize(
+          value.advancement,
+          value.progression.rank,
+          { training: value.training }
+        ),
+      }
     : value;
 }
 function toPlainObject(value) {
@@ -50,7 +58,13 @@ function validateFinalAttributes(attributes, originId) {
 }
 
 function rejectDerivedInput(body, creating = false) {
-  for (const key of ["inventory", "loadout", "equipment", "relics"])
+  for (const key of [
+    "inventory",
+    "loadout",
+    "equipment",
+    "relics",
+    "abilities",
+  ])
     if (body[key] !== undefined)
       throw new BadRequestError("Use validated equipment operations");
   for (const field of [
@@ -151,13 +165,6 @@ function buildUpdatePayload(body, existingCharacter) {
       "Use advancement operations; Calling, origin, base attributes and reward history require an explicit respec"
     );
   }
-  if (
-    existingCharacter.advancement &&
-    body.abilities?.some((a) => a.source === "calling")
-  )
-    throw new BadRequestError(
-      "Calling abilities must be selected through advancement"
-    );
   if (!existingCharacter.advancement && advancementOperation !== undefined)
     throw new BadRequestError(
       "Historical progression requires an explicit reviewed upgrade"
@@ -172,7 +179,8 @@ function buildUpdatePayload(body, existingCharacter) {
       advanced = advancement.advance(
         existingCharacter.advancement,
         existingCharacter.progression.rank,
-        advancementOperation
+        advancementOperation,
+        { training: existingCharacter.training }
       );
     } catch (error) {
       throw new BadRequestError(error.message);
@@ -194,6 +202,15 @@ function buildUpdatePayload(body, existingCharacter) {
     }
   }
   if (body.origin !== undefined) validateOrigin(merged.origin);
+  if (merged.advancement?.version === 2) {
+    try {
+      advancement.summarize(merged.advancement, merged.progression.rank, {
+        training: merged.training,
+      });
+    } catch (e) {
+      throw new BadRequestError(e.message);
+    }
+  }
   const recalculate =
     Boolean(advanced) ||
     body.attributes !== undefined ||
@@ -253,8 +270,6 @@ function buildUpdatePayload(body, existingCharacter) {
 
 function buildCharacterPayload(body = {}) {
   rejectDerivedInput(body, true);
-  if (body.abilities?.some((a) => a.source === "calling"))
-    throw new BadRequestError("Calling ability content awaits review");
   if (body.advancementOperation !== undefined)
     throw new BadRequestError(
       "Advancement operations are not allowed at creation"
@@ -283,13 +298,27 @@ function buildCharacterPayload(body = {}) {
   }
   let ledger;
   try {
-    ledger = advancement.initialize(body.calling, attributes);
+    ledger = advancement.initialize(
+      body.calling,
+      attributes,
+      body.abilitySelections ?? {},
+      training
+    );
   } catch (error) {
     throw new BadRequestError(error.message);
   }
+  const summary = advancement.summarize(ledger, 1, { training });
+  if (!summary.complete)
+    throw new BadRequestError("Complete level-one ability choices");
+  const characterBody = { ...body };
+  delete characterBody.abilitySelections;
+  delete characterBody.startingEquipment;
   return {
-    ...body,
-    ...equipment.startingEquipment(),
+    ...characterBody,
+    ...require("../equipment/startingEquipment").resolve(
+      body.calling,
+      body.startingEquipment
+    ),
     advancement: ledger,
     documentRevision: 0,
     trainingRulesVersion: 1,

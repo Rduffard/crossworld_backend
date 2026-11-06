@@ -127,6 +127,8 @@ function transition(state, command, owner, roll) {
       const nextIndex = (index + 1) % state.combatants.length;
       next.activeCombatant = next.combatants[nextIndex].id;
       next.combatants[nextIndex].actions = 1;
+      next.combatants[nextIndex].attacksRemaining = 0;
+      next.combatants[index].attacksRemaining = 0;
       if (nextIndex === 0) next.round += 1;
       event = {
         actor: actor.id,
@@ -135,7 +137,10 @@ function transition(state, command, owner, roll) {
       };
     } else {
       const target = state.combatants.find((c) => c.id === command.target);
-      if (!["corsair", "player"].includes(actor.id) || actor.actions !== 1)
+      if (
+        !["corsair", "player"].includes(actor.id) ||
+        (actor.actions !== 1 && !(actor.attacksRemaining > 0))
+      )
         throw new Error("Attack Action unavailable");
       if (!target || target.id === actor.id || target.health.current <= 0)
         throw new Error("Invalid target");
@@ -150,7 +155,12 @@ function transition(state, command, owner, roll) {
         roll
       );
       event.instanceId = option.instanceId ?? null;
-      next.combatants.find((c) => c.id === actor.id).actions = 0;
+      const attacker = next.combatants.find((c) => c.id === actor.id);
+      attacker.actions = 0;
+      attacker.attacksRemaining =
+        actor.actions === 1
+          ? (actor.attacksPerAction ?? 1) - 1
+          : actor.attacksRemaining - 1;
       next.combatants.find((c) => c.id === target.id).health.current =
         event.healthAfter;
       if (event.healthAfter === 0) next.status = "completed";

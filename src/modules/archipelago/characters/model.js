@@ -56,91 +56,6 @@ const woundSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const abilityCostSchema = new mongoose.Schema(
-  {
-    resource: {
-      type: String,
-      enum: ["stamina", "focus", "corruption", "health", ""],
-      default: "",
-    },
-    amount: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-  },
-  { _id: false }
-);
-
-const abilityScalingSchema = new mongoose.Schema(
-  {
-    attribute: {
-      type: String,
-      enum: ["might", "agility", "wit", "spirit", "resolve", "instinct", ""],
-      default: "",
-    },
-    skill: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 80,
-    },
-  },
-  { _id: false }
-);
-
-const abilitySchema = new mongoose.Schema(
-  {
-    id: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 80,
-    },
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 80,
-    },
-    type: {
-      type: String,
-      enum: ["active", "passive", "reaction"],
-      default: "active",
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 500,
-    },
-    source: {
-      type: String,
-      enum: ["calling", "origin", "relic", "custom"],
-      default: "custom",
-    },
-    cost: {
-      type: abilityCostSchema,
-      default: () => ({}),
-    },
-    scaling: {
-      type: abilityScalingSchema,
-      default: () => ({}),
-    },
-    tags: {
-      type: [String],
-      default: [],
-    },
-    effect: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 500,
-    },
-  },
-  { _id: false }
-);
-
 const inventoryItemSchema = new mongoose.Schema(
   {
     instanceId: { type: String, required: true },
@@ -392,10 +307,6 @@ const characterSchema = new mongoose.Schema(
         message: "Choose exactly four distinct canonical Training IDs",
       },
     },
-    abilities: {
-      type: [abilitySchema],
-      default: [],
-    },
     resources: {
       type: resourceBundleSchema,
       default: () => ({}),
@@ -416,6 +327,10 @@ const characterSchema = new mongoose.Schema(
         message: "Invalid canonical inventory instances",
       },
       default: [],
+    },
+    startingEquipment: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
     },
     loadout: { type: loadoutSchema, default: undefined },
     progression: {

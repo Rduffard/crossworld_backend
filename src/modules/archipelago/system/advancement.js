@@ -1,105 +1,314 @@
-const rules = require('./blueprints/progression');
-const { callings, specializations } = require('./blueprints/catalogs');
-const packages = require('./blueprints/startingProficiencies');
-const attributes = ['might','agility','wit','spirit','resolve','instinct'];
-function fail(message) { throw new Error(message); }
-function level(value) { if (!Number.isInteger(value) || value < 1 || value > rules.levelCap) fail('Level must be 1–20'); return value; }
-function rewardsAt(value) {
- level(value);
- return [['calling',rules.callingLevels],['path',rules.pathLevels],['attribute',rules.attributeLevels]]
-  .flatMap(([kind,levels]) => levels.filter(n => n <= value).map(n => ({id:kind+':'+n,kind,level:n})))
-  .sort((a,b) => a.level-b.level || a.kind.localeCompare(b.kind));
+const legacy = require("./advancementLegacy");
+const catalog = require("./blueprints/abilities");
+const { proficiencyBonus } = require("./trainingChecks");
+const saves = require("./blueprints/startingProficiencies");
+const { calculateResourceMaximums } = require("./resources");
+function fail(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  throw error;
 }
-function initialize(calling, scores) {
- const definition = callings.find(c => c.id === calling);
- if (!definition) fail('Unknown Calling');
- if (!attributes.every(key => Number.isInteger(scores[key]) && scores[key] >= 1 && scores[key] <= 20)) fail('Invalid base attributes');
- return {version:1,revision:0,calling,baseAttributes:{...scores},spends:[],exchanges:[],
-  passive:{id:calling+':passive',name:definition.passive,status:'historical-text-pending-combat-review'},
-  savingThrows:[...packages.callings[calling].saves]};
+function level(n) {
+  proficiencyBonus(n);
+  return n;
 }
-function requireKeys(object, allowed) {
- if (!object || typeof object !== 'object' || Array.isArray(object) || Object.keys(object).some(k => !allowed.includes(k))) fail('Invalid advancement operation');
+function fields(value, allowed) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).some((k) => !allowed.includes(k))
+  )
+    fail("Invalid advancement fields");
 }
-function checkPrerequisites(definition, scores, callingIds, paths) {
- const p = definition.prerequisites ?? {};
- requireKeys(p,['attributes','callingAbilities','pathTiers']);
- for (const [key,value] of Object.entries(p.attributes ?? {})) {
-  if (!attributes.includes(key) || !Number.isInteger(value) || scores[key] < value) fail('Attribute prerequisite not met');
- }
- for (const id of p.callingAbilities ?? []) if (!callingIds.includes(id)) fail('Calling prerequisite not met');
- for (const [id,tier] of Object.entries(p.pathTiers ?? {})) if ((paths[id] ?? 0) < tier) fail('Path prerequisite not met');
+function rewardsAt(n, calling) {
+  level(n);
+  if (!calling) return legacy.rewardsAt(n);
+  if (!catalog.tables[calling]) fail("Unknown Calling");
+  return catalog.tables[calling]
+    .filter((row) => row.level <= n)
+    .flatMap((row) => [
+      ...row.selections,
+      ...(row.pathOpportunity
+        ? [
+            {
+              id: "path:" + row.level,
+              kind: "path",
+              level: row.level,
+              required: false,
+            },
+          ]
+        : []),
+    ]);
 }
-// Pure replay from server-owned base and catalog; callers cannot submit ownership or balances.
-function summarize(ledger, currentLevel, catalog = rules) {
- level(currentLevel);
- if (ledger?.version !== 1 || !Array.isArray(ledger.spends) || !callings.some(c=>c.id===ledger.calling)) fail('Progression upgrade requires explicit review');
- const rewards = rewardsAt(currentLevel), used = new Set(), scores = {...ledger.baseAttributes};
- const callingIds = [], paths = {}, converted = new Map();
- if (!Array.isArray(ledger.exchanges) || ledger.exchanges.length > rules.maximumExchanges) fail('Maximum two milestone exchanges');
- for (const exchange of ledger.exchanges) {
-  requireKeys(exchange,['rewardId','kind','spentAtLevel']);
-  const reward = rewards.find(r=>r.id===exchange.rewardId);
-  const at = level(exchange.spentAtLevel);
-  if (!reward || reward.kind !== 'attribute' || reward.level > at || at > currentLevel || converted.has(reward.id) || !['calling','path'].includes(exchange.kind)) fail('Invalid milestone exchange');
-  converted.set(reward.id,exchange);
- }
- for (const spend of ledger.spends) {
-  requireKeys(spend,['rewardId','kind','increases','abilityId','pathId','tier','spentAtLevel']);
-  const at = level(spend.spentAtLevel);
-  if (at > currentLevel) fail('Spend occurs above current level');
-  const reward = rewards.find(r=>r.id===spend.rewardId);
-  if (!reward || reward.level > at || used.has(reward.id)) fail('Reward unavailable or already spent');
-  used.add(reward.id);
-  const exchange = converted.get(reward.id);
-  if ((exchange?.kind ?? reward.kind) !== spend.kind || (exchange && exchange.spentAtLevel > at)) fail('Reward conversion is not allowed');
-  if (spend.kind === 'attribute') {
-   if (spend.abilityId !== undefined || spend.pathId !== undefined || spend.tier !== undefined) fail('Mixed reward spending');
-   const entries = Object.entries(spend.increases ?? {});
-   if (!(entries.length === 1 && entries[0][1] === 2) && !(entries.length === 2 && entries.every(([,n])=>n===1))) fail('Choose +2 to one or +1 to two attributes');
-   for (const [key,n] of entries) {
-    if (!attributes.includes(key) || !Number.isInteger(scores[key]) || scores[key]+n > 20) fail('Invalid attribute increase or maximum exceeded');
-    scores[key] += n;
-   }
-  } else {
-   if (spend.increases !== undefined) fail('Mixed reward spending');
-   let definition;
-   if (spend.kind === 'calling') {
-    if (spend.pathId !== undefined || spend.tier !== undefined) fail('Mixed reward spending');
-    definition = catalog.callingAbilities.find(d=>d.id===spend.abilityId && d.calling===ledger.calling);
-    if (!definition || !rules.callingBands.includes(definition.minimumLevel) || definition.minimumLevel > at || callingIds.includes(definition.id)) fail('Calling ability unavailable');
-   } else if (spend.kind === 'path') {
-    if (spend.abilityId !== undefined) fail('Mixed reward spending');
-    if (!specializations.some(p=>p.id===spend.pathId) || !Number.isInteger(spend.tier) || spend.tier !== (paths[spend.pathId] ?? 0)+1 || !rules.pathTierLevels[spend.tier-1] || at < rules.pathTierLevels[spend.tier-1]) fail('Path tiers require sequential ownership and minimum level');
-    definition = catalog.pathAbilities.find(d=>d.pathId===spend.pathId && d.tier===spend.tier);
-    if (!definition) fail('Path tier content awaits review');
-   } else fail('Unknown reward kind');
-   checkPrerequisites(definition,scores,callingIds,paths);
-   if (spend.kind === 'calling') callingIds.push(definition.id);
-   else paths[spend.pathId] = spend.tier;
+function initialize(calling, scores, selections = {}, training = []) {
+  if (!catalog.tables[calling]) fail("Unknown Calling");
+  for (const key of [
+    "might",
+    "agility",
+    "wit",
+    "spirit",
+    "resolve",
+    "instinct",
+  ])
+    if (!Number.isInteger(scores[key]) || scores[key] < 1 || scores[key] > 20)
+      fail("Invalid base attributes");
+  fields(
+    selections,
+    rewardsAt(1, calling)
+      .filter((r) => r.kind === "selection")
+      .map((r) => r.id)
+  );
+  const spends = Object.entries(selections).map(([rewardId, abilityIds]) => ({
+    rewardId,
+    kind: "selection",
+    abilityIds,
+    spentAtLevel: 1,
+  }));
+  const ledger = {
+    version: 2,
+    revision: 0,
+    calling,
+    baseAttributes: { ...scores },
+    spends,
+    exchanges: [],
+    passive: {
+      id: calling + ":passive",
+      name: catalog.items.find((a) => a.id === calling + ":passive").name,
+      status: "reference-only",
+    },
+    savingThrows: [...saves.callings[calling].saves],
+  };
+  summarize(ledger, 1, { training });
+  return ledger;
+}
+function checkPrerequisites(def, scores, acquired, paths, training) {
+  const p = def.prerequisites ?? {};
+  if (p.trainedSkill && !training.includes(p.trainedSkill))
+    fail("Expertise requires an acquired General Skill");
+  for (const [key, n] of Object.entries(p.attributes ?? {}))
+    if (!Number.isInteger(n) || !(key in scores) || scores[key] < n)
+      fail("Attribute prerequisite not met");
+  for (const id of p.abilities ?? [])
+    if (!acquired.has(id)) fail("Feature prerequisite not met");
+  for (const [id, tier] of Object.entries(p.pathTiers ?? {}))
+    if ((paths[id] ?? 0) < tier) fail("Path prerequisite not met");
+}
+function summarize(ledger, n, options = {}) {
+  if (ledger?.version !== 2)
+    return legacy.summarize(
+      ledger,
+      n,
+      options.callingAbilities ? options : undefined
+    );
+  level(n);
+  if (
+    !catalog.tables[ledger.calling] ||
+    !Array.isArray(ledger.spends) ||
+    !Array.isArray(ledger.exchanges)
+  )
+    fail("Invalid advancement ledger");
+  const training = options.training ?? ledger.training ?? [];
+  const rewards = rewardsAt(n, ledger.calling),
+    scores = { ...ledger.baseAttributes },
+    used = new Set(),
+    selected = new Set(),
+    paths = {};
+  const conversions = new Map();
+  if (ledger.exchanges.length > 2) fail("Maximum two milestone exchanges");
+  for (const e of ledger.exchanges) {
+    fields(e, ["rewardId", "kind", "spentAtLevel"]);
+    const r = rewards.find((r) => r.id === e.rewardId);
+    if (
+      !r ||
+      r.kind !== "attribute" ||
+      !["calling", "path"].includes(e.kind) ||
+      conversions.has(r.id) ||
+      e.spentAtLevel < r.level ||
+      e.spentAtLevel > n
+    )
+      fail("Invalid milestone exchange");
+    conversions.set(r.id, e);
   }
- }
- return {rewards,unspent:rewards.filter(r=>!used.has(r.id)).map(r=>({...r,kind:converted.get(r.id)?.kind ?? r.kind})),exchanges:ledger.exchanges.length,attributes:scores,callingAbilities:callingIds,pathTiers:paths};
+  const acquired = new Set();
+  const ordered = [...ledger.spends];
+  let previousLevel = 0;
+  for (const spend of ordered) {
+    fields(spend, [
+      "rewardId",
+      "kind",
+      "abilityIds",
+      "increases",
+      "pathId",
+      "tier",
+      "spentAtLevel",
+    ]);
+    level(spend.spentAtLevel);
+    if (spend.spentAtLevel < previousLevel || spend.spentAtLevel > n)
+      fail("Advancement history must be chronological");
+    previousLevel = spend.spentAtLevel;
+    const reward = rewards.find((r) => r.id === spend.rewardId);
+    if (!reward || reward.level > spend.spentAtLevel || used.has(reward.id))
+      fail("Unavailable or duplicate reward");
+    const conversion = conversions.get(reward.id);
+    if (conversion && conversion.spentAtLevel > spend.spentAtLevel)
+      fail("Exchange occurred after spending");
+    const kind = conversion?.kind ?? reward.kind;
+    if (kind !== spend.kind) fail("Wrong reward kind");
+    for (const row of catalog.tables[ledger.calling].filter(
+      (r) => r.level <= spend.spentAtLevel
+    ))
+      row.automatic.forEach((id) => acquired.add(id));
+    if (kind === "attribute") {
+      if (
+        spend.abilityIds !== undefined ||
+        spend.pathId !== undefined ||
+        spend.tier !== undefined
+      )
+        fail("Mixed reward fields");
+      const entries = Object.entries(spend.increases ?? {});
+      if (
+        !(entries.length === 1 && entries[0][1] === 2) &&
+        !(entries.length === 2 && entries.every(([, v]) => v === 1))
+      )
+        fail("Choose +2 or +1 to two attributes");
+      for (const [key, amount] of entries) {
+        if (
+          !(key in scores) ||
+          !Number.isInteger(scores[key]) ||
+          scores[key] + amount > 20
+        )
+          fail("Invalid attribute increase");
+        scores[key] += amount;
+      }
+    } else if (kind === "selection") {
+      if (
+        spend.increases !== undefined ||
+        spend.pathId !== undefined ||
+        spend.tier !== undefined ||
+        !Array.isArray(spend.abilityIds) ||
+        spend.abilityIds.length !== reward.count ||
+        new Set(spend.abilityIds).size !== reward.count
+      )
+        fail("Complete required ability selections");
+      for (const id of spend.abilityIds) {
+        const def = catalog.items.find((a) => a.id === id);
+        if (
+          !reward.options.includes(id) ||
+          !def ||
+          def.source.id !== ledger.calling ||
+          def.minimumLevel > spend.spentAtLevel ||
+          selected.has(id)
+        )
+          fail("Ability unavailable, duplicated or belongs to another Calling");
+        checkPrerequisites(def, scores, acquired, paths, training);
+        selected.add(id);
+        acquired.add(id);
+      }
+    } else
+      fail(
+        kind === "path"
+          ? "Path tier content awaits reviewed four-tier definitions"
+          : "Exchanged Calling choice requires a reviewed choice group; opportunity remains unspent"
+      );
+    used.add(reward.id);
+  }
+  for (const row of catalog.tables[ledger.calling].filter((r) => r.level <= n))
+    row.automatic.forEach((id) => acquired.add(id));
+  const definitions = [...acquired].map((id) =>
+    catalog.items.find((a) => a.id === id)
+  );
+  const row = catalog.tables[ledger.calling][n - 1];
+  const effects = require("./featureHandlers").derive(definitions, row);
+  const expertise = effects.expertise;
+  const unspent = rewards
+    .filter((r) => !used.has(r.id))
+    .map((r) => ({
+      ...r,
+      kind: conversions.get(r.id)?.kind ?? r.kind,
+      required: conversions.has(r.id) ? false : r.required,
+    }));
+  return {
+    level: n,
+    calling: ledger.calling,
+    trainingBonus: proficiencyBonus(n),
+    rewards,
+    unspent,
+    complete: !unspent.some((r) => r.required),
+    buildStatus: "supported-subset",
+    unresolvedSystems: [
+      "spell-preparation",
+      "weapon-mastery",
+      "metamagic",
+      "language-selection",
+      "other-feats",
+      "reference-only-source-features",
+    ],
+    attributes: scores,
+    callingAbilities: [...acquired],
+    abilities: definitions.map((a) => ({
+      ...a,
+      acquired: true,
+      executableInCombat: [
+        "extra-attack",
+        "defense-style",
+        "great-weapon-fighting",
+      ].includes(a.mechanicalHandler),
+      currentlyUsable: false,
+    })),
+    pathTiers: paths,
+    exchanges: ledger.exchanges.length,
+    expertise,
+    combatCapabilities: effects.combatCapabilities,
+    resources: calculateResourceMaximums(scores, n),
+    limitations: [
+      "Historical signatures are reference-only",
+      "Spell preparation, mastery and metamagic choices are reference-only; their gameplay is unavailable",
+      "No reviewed four-tier Path content",
+      "Only attribute improvement is available from feat opportunities",
+    ],
+    progression: catalog.tables[ledger.calling],
+  };
 }
-function advance(ledger, currentLevel, operation, catalog = rules) {
- requireKeys(operation,['expectedRevision','level','spends','exchanges']);
- summarize(ledger,currentLevel,catalog);
- if (operation.expectedRevision !== ledger.revision) fail('Progression changed; reload before advancing');
- const nextLevel = operation.level ?? currentLevel;
- level(nextLevel);
- if (nextLevel < currentLevel) fail('Level decreases require an explicit respec');
- if (operation.spends !== undefined && (!Array.isArray(operation.spends) || operation.spends.length > 19)) fail('Invalid reward spends');
- const spends = (operation.spends ?? []).map(spend=>{
-  requireKeys(spend,['rewardId','kind','increases','abilityId','pathId','tier']);
-  return {...spend,spentAtLevel:nextLevel};
- });
- if (operation.exchanges !== undefined && (!Array.isArray(operation.exchanges) || operation.exchanges.length > 2)) fail('Invalid milestone exchanges');
- const exchanges = (operation.exchanges ?? []).map(exchange=>{
-  requireKeys(exchange,['rewardId','kind']);
-  if (ledger.spends.some(s=>s.rewardId===exchange.rewardId)) fail('Spent milestones require an explicit respec');
-  return {...exchange,spentAtLevel:nextLevel};
- });
- const next = {...ledger,revision:ledger.revision+1,spends:[...ledger.spends,...spends],exchanges:[...ledger.exchanges,...exchanges]};
- return {ledger:next,level:nextLevel,summary:summarize(next,nextLevel,catalog)};
+function advance(ledger, currentLevel, operation, options = {}) {
+  if (ledger.version !== 2)
+    return legacy.advance(ledger, currentLevel, operation);
+  fields(operation, ["expectedRevision", "level", "spends", "exchanges"]);
+  if (operation.expectedRevision !== ledger.revision)
+    fail("Progression changed; reload before advancing");
+  const n = level(operation.level ?? currentLevel);
+  if (n < currentLevel) fail("Level decreases require respec");
+  summarize(ledger, currentLevel, options);
+  if (
+    (operation.spends !== undefined && !Array.isArray(operation.spends)) ||
+    (operation.exchanges !== undefined && !Array.isArray(operation.exchanges))
+  )
+    fail("Invalid advancement arrays");
+  const next = {
+    ...structuredClone(ledger),
+    revision: ledger.revision + 1,
+    spends: [
+      ...ledger.spends,
+      ...(operation.spends ?? []).map((s) => {
+        fields(s, [
+          "rewardId",
+          "kind",
+          "abilityIds",
+          "increases",
+          "pathId",
+          "tier",
+        ]);
+        return { ...s, spentAtLevel: n };
+      }),
+    ],
+    exchanges: [
+      ...ledger.exchanges,
+      ...(operation.exchanges ?? []).map((e) => {
+        fields(e, ["rewardId", "kind"]);
+        return { ...e, spentAtLevel: n };
+      }),
+    ],
+  };
+  return { ledger: next, level: n, summary: summarize(next, n, options) };
 }
-module.exports = {rewardsAt,initialize,summarize,advance};
+module.exports = { initialize, summarize, advance, rewardsAt };

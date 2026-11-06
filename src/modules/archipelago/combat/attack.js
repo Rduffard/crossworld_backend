@@ -49,8 +49,17 @@ function resolveAttack(actor, target, weapon, options = {}, roll) {
           rollDie(weapon.damage.sides, roll)
         )
       : [];
+  const adjustedDamageDice =
+    actor.greatWeaponFighting &&
+    (weapon.heldHands ?? weapon.hands) === 2 &&
+    weapon.properties.some((p) => ["two-handed", "versatile"].includes(p.id))
+      ? damageDice.map((n) => Math.max(3, n))
+      : damageDice;
   const damage = hit
-    ? Math.max(0, damageDice.reduce((a, b) => a + b, 0) + attributeModifier)
+    ? Math.max(
+        0,
+        adjustedDamageDice.reduce((a, b) => a + b, 0) + attributeModifier
+      )
     : 0;
   const after = Math.max(0, target.health.current - damage);
   return {
@@ -67,6 +76,7 @@ function resolveAttack(actor, target, weapon, options = {}, roll) {
     targetGuard: guard,
     result: critical ? "critical" : hit ? "hit" : "miss",
     damageDice,
+    adjustedDamageDice,
     damageModifier: hit ? attributeModifier : 0,
     damageType: weapon.damage.type,
     damageTotal: damage,
