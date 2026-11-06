@@ -15,6 +15,11 @@ const {
 
 router.get("/", getCharacters);
 router.post("/", validateCreateCharacter, createCharacter);
+router.get(
+  "/:characterId/equipment",
+  validateCharacterIdParam,
+  require("./controller").getEquipment
+);
 router.get("/:characterId", validateCharacterIdParam, getCharacterById);
 router.patch(
   "/:characterId",

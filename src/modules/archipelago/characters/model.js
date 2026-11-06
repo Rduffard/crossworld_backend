@@ -143,49 +143,23 @@ const abilitySchema = new mongoose.Schema(
 
 const inventoryItemSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 100,
-    },
-    quantity: {
-      type: Number,
-      min: 1,
-      default: 1,
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 500,
-    },
+    instanceId: { type: String, required: true },
+    definitionId: { type: String, default: null },
+    quantity: { type: Number, required: true, min: 1 },
+    customName: { type: String, default: "" },
+    notes: { type: String, default: "" },
   },
-  { _id: false }
+  { _id: false, strict: "throw" }
 );
-
-const relicSchema = new mongoose.Schema(
+const loadoutSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 100,
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 500,
-    },
-    bonded: {
-      type: Boolean,
-      default: false,
-    },
+    mainHand: { type: String, default: null },
+    offHand: { type: String, default: null },
+    armor: { type: String, default: null },
+    grip: { type: String, enum: ["one", "two"], default: "one" },
   },
-  { _id: false }
+  { _id: false, strict: "throw" }
 );
-
 const tagSchema = new mongoose.Schema(
   {
     type: {
@@ -315,70 +289,6 @@ const resourceBundleSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const equipmentItemSchema = new mongoose.Schema(
-  {
-    id: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 80,
-    },
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 100,
-    },
-    type: {
-      type: String,
-      enum: ["weapon", "armor", "tech", "relic", "cargo"],
-      default: "cargo",
-    },
-    skillLinks: {
-      type: [String],
-      default: [],
-    },
-    tags: {
-      type: [String],
-      default: [],
-    },
-    grants: {
-      type: [String],
-      default: [],
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 500,
-    },
-  },
-  { _id: false }
-);
-
-const equipmentSchema = new mongoose.Schema(
-  {
-    weapons: {
-      type: [equipmentItemSchema],
-      default: [],
-    },
-    armor: {
-      type: [equipmentItemSchema],
-      default: [],
-    },
-    techRelics: {
-      type: [equipmentItemSchema],
-      default: [],
-    },
-    cargo: {
-      type: [equipmentItemSchema],
-      default: [],
-    },
-  },
-  { _id: false }
-);
-
-// Unknown historical progression fields are inert and retained on explicit level edits.
 const progressionSchema = new mongoose.Schema(
   {
     rank: {
@@ -458,13 +368,29 @@ const characterSchema = new mongoose.Schema(
       type: [String],
       default: undefined,
       castNonArrays: false,
-      validate: { validator(value) {
-        if (value === undefined) return true; // Historical documents remain unconverted.
-        try { if (!Array.isArray(value) || value.length !== 4 || new Set(value).size !== 4) return false;
-        const known = [...require('../system/blueprints/training'), ...require('../system/blueprints/legacyTraining')].map(e=>e.id);
-        return value.every(id=>typeof id === 'string' && known.includes(id)); }
-        catch { return false; }
-      }, message: 'Choose exactly four distinct canonical Training IDs' },
+      validate: {
+        validator(value) {
+          if (value === undefined) return true; // Historical documents remain unconverted.
+          try {
+            if (
+              !Array.isArray(value) ||
+              value.length !== 4 ||
+              new Set(value).size !== 4
+            )
+              return false;
+            const known = [
+              ...require("../system/blueprints/training"),
+              ...require("../system/blueprints/legacyTraining"),
+            ].map((e) => e.id);
+            return value.every(
+              (id) => typeof id === "string" && known.includes(id)
+            );
+          } catch {
+            return false;
+          }
+        },
+        message: "Choose exactly four distinct canonical Training IDs",
+      },
     },
     abilities: {
       type: [abilitySchema],
@@ -476,16 +402,22 @@ const characterSchema = new mongoose.Schema(
     },
     inventory: {
       type: [inventoryItemSchema],
+      validate: {
+        validator(value) {
+          try {
+            require("../equipment").validateInventory(
+              value.map((i) => (i.toObject ? i.toObject() : i))
+            );
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        message: "Invalid canonical inventory instances",
+      },
       default: [],
     },
-    relics: {
-      type: [relicSchema],
-      default: [],
-    },
-    equipment: {
-      type: equipmentSchema,
-      default: () => ({}),
-    },
+    loadout: { type: loadoutSchema, default: undefined },
     progression: {
       type: progressionSchema,
       default: () => ({}),

@@ -9,7 +9,8 @@ module.exports = {
       "resources",
       "abilities",
       "reputation",
-      "equipment",
+      "inventory",
+      "loadout",
       "progression",
     ],
     properties: {
@@ -18,11 +19,21 @@ module.exports = {
       pronouns: { type: "string", example: "she/they" },
       identity: { $ref: "#/schema/Identity" },
       attributes: { $ref: "#/schema/Attributes" },
-      training: { type: "array", minItems: 4, maxItems: 4, uniqueItems: true, items: { type: "string", enum: require("./training").map((entry) => entry.id) } },
+      training: {
+        type: "array",
+        minItems: 4,
+        maxItems: 4,
+        uniqueItems: true,
+        items: {
+          type: "string",
+          enum: require("./training").map((entry) => entry.id),
+        },
+      },
       abilities: { $ref: "#/schema/Abilities" },
       resources: { $ref: "#/schema/Resources" },
       reputation: { $ref: "#/schema/Reputation" },
-      equipment: { $ref: "#/schema/Equipment" },
+      inventory: { type: "array", items: { $ref: "#/schema/InventoryItem" } },
+      loadout: { $ref: "#/schema/Loadout" },
       progression: { $ref: "#/schema/Progression" },
     },
   },
@@ -67,25 +78,29 @@ module.exports = {
       wit: {
         type: "number",
         range: "8–15 point buy, plus origin bonus",
-        description: "Planning, deduction, technical control, and procedural thinking.",
+        description:
+          "Planning, deduction, technical control, and procedural thinking.",
         example: 4,
       },
       spirit: {
         type: "number",
         range: "8–15 point buy, plus origin bonus",
-        description: "Presence, occult receptivity, emotional force, and ritual resonance.",
+        description:
+          "Presence, occult receptivity, emotional force, and ritual resonance.",
         example: 1,
       },
       resolve: {
         type: "number",
         range: "8–15 point buy, plus origin bonus",
-        description: "Composure, tenacity, pain tolerance, and pressure resistance.",
+        description:
+          "Composure, tenacity, pain tolerance, and pressure resistance.",
         example: 3,
       },
       instinct: {
         type: "number",
         range: "8–15 point buy, plus origin bonus",
-        description: "Reaction, situational sensing, navigation by feel, and gut reads.",
+        description:
+          "Reaction, situational sensing, navigation by feel, and gut reads.",
         example: 2,
       },
     },
@@ -128,14 +143,14 @@ module.exports = {
       frontierTribes: { type: "number", range: "-3 to +3", example: 0 },
     },
   },
-  Equipment: {
+  Loadout: {
     type: "object",
-    required: ["weapons", "armor", "techRelics"],
+    required: ["mainHand", "offHand", "armor", "grip"],
     properties: {
-      weapons: { type: "array", items: { $ref: "#/schema/EquipmentItem" } },
-      armor: { type: "array", items: { $ref: "#/schema/EquipmentItem" } },
-      techRelics: { type: "array", items: { $ref: "#/schema/EquipmentItem" } },
-      cargo: { type: "array", items: { $ref: "#/schema/EquipmentItem" } },
+      mainHand: { type: ["string", "null"] },
+      offHand: { type: ["string", "null"] },
+      armor: { type: ["string", "null"] },
+      grip: { enum: ["one", "two"] },
     },
   },
   Progression: {
@@ -227,27 +242,23 @@ module.exports = {
             statPenalty: { type: "string", example: "agility" },
             description: {
               type: "string",
-              example: "Shoulder shredded by deck shrapnel. Movement and climbing stay painful until treated.",
+              example:
+                "Shoulder shredded by deck shrapnel. Movement and climbing stay painful until treated.",
             },
           },
         },
       },
     },
   },
-  EquipmentItem: {
+  InventoryItem: {
     type: "object",
-    required: ["id", "name", "type"],
+    required: ["instanceId", "quantity"],
     properties: {
-      id: { type: "string", example: "weapon_harpoon_pistol" },
-      name: { type: "string", example: "Harpoon Pistol" },
-      type: {
-        type: "string",
-        enum: ["weapon", "armor", "tech", "relic", "cargo"],
-        example: "weapon",
-      },
-      skillLinks: { type: "array", items: { type: "string" } },
-      tags: { type: "array", items: { type: "string" } },
-      grants: { type: "array", items: { type: "string" } },
+      instanceId: { type: "string" },
+      definitionId: { type: ["string", "null"] },
+      quantity: { type: "integer", minimum: 1 },
+      customName: { type: "string" },
+      notes: { type: "string" },
     },
   },
 };
