@@ -1,5 +1,5 @@
 const { applyCommand, createFixture } = require('./state');
-function createService(Model) {
+function createService(Model, Characters) {
   async function load(id, owner) {
     const state = await Model.findOne({ _id: id, owner }).lean();
     if (!state) { const error = new Error('Encounter not found'); error.statusCode = 404; throw error; }
@@ -7,6 +7,11 @@ function createService(Model) {
   }
   return {
     create: owner => Model.create(createFixture(owner)),
+    async fromCharacter(owner, characterId, practiceProficiency) {
+      const character = await Characters.findOne({ _id: characterId, owner }).lean();
+      if (!character) { const error = new Error('Character not found'); error.statusCode = 404; throw error; }
+      return Model.create(require('./snapshot').fromCharacter(character, owner, practiceProficiency));
+    },
     load,
     async command(id, owner, command) {
       const state = await load(id, owner);

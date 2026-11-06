@@ -47,7 +47,7 @@ function transition(state, command, owner, roll) {
       event = { actor: actor.id, result: 'end-turn', nextActor: next.activeCombatant };
     } else {
       const target = state.combatants.find(c => c.id === command.target);
-      if (actor.id !== 'corsair' || actor.actions !== 1) throw new Error('Attack Action unavailable');
+      if (!['corsair', 'player'].includes(actor.id) || actor.actions !== 1) throw new Error('Attack Action unavailable');
       if (!target || target.id === actor.id || target.health.current <= 0) throw new Error('Invalid target');
       if (state.spatialMode !== 'fixed-in-range' || command.weapon !== actor.weapon || !weapons[command.weapon]) throw new Error('Invalid weapon or unsupported spatial configuration');
       event = resolveAttack(actor, target, weapons[command.weapon], {}, roll);
