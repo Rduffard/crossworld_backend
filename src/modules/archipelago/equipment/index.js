@@ -1,6 +1,6 @@
 const { randomUUID } = require("node:crypto");
 const catalog = require("../system/blueprints/equipment");
-const { resolveTraining, weaponTrained } = require("./training");
+const { weaponTrained } = require("./training");
 const { calculateCheckModifier } = require("../system/checkModifier");
 const { proficiencyBonus } = require("../system/trainingChecks");
 const { calculateGuard } = require("../combat/guard");
@@ -24,29 +24,37 @@ function keys(value, allowed) {
     fail("Invalid equipment fields");
 }
 function issue(input) {
-  keys(input, ["definitionId", "quantity", "customName", "notes"]);
+  keys(input, ["definitionId", "quantity", "customName", "notes",'spellId']);
   if (!Number.isSafeInteger(input.quantity ?? 1) || (input.quantity ?? 1) < 1)
     fail("Invalid item quantity");
   if (input.definitionId) {
     definition(input.definitionId);
-    if ((input.quantity ?? 1) !== 1)
+    if(definition(input.definitionId).purchaseScrollLevel!==undefined)fail('Choose an identified spell-scroll instance; priced scroll entries are purchase options only');
+    if ((input.quantity ?? 1) !== 1 && !definition(input.definitionId).stackable)
       fail("Canonical equipment needs individual instances");
   } else if (!input.customName?.trim())
     fail("Descriptive items require a name");
+  if(input.definitionId==='spell-scroll'?!require('../system/rules2024/rules').spells.some(s=>s.id===input.spellId):input.spellId!==undefined)fail('A Spell Scroll requires one registered spell identity');
   return {
     instanceId: randomUUID(),
     definitionId: input.definitionId ?? null,
     quantity: input.quantity ?? 1,
     customName: input.customName ?? "",
     notes: input.notes ?? "",
+    ...(input.definitionId==='spell-scroll'?{spellId:input.spellId}:{}),
+    ...(input.definitionId&&definition(input.definitionId).profile?.charges?{chargesCurrent:definition(input.definitionId).profile.charges}:{}),
+    ...(/healer.?s?\s*kit/i.test(input.customName??input.definitionId??'')||input.definitionId==='healer-kit'?{chargesCurrent:10}:{}),
   };
 }
 function validateInventory(inventory) {
-  if (!Array.isArray(inventory) || inventory.length > 200)
+  if (!Array.isArray(inventory) || inventory.length > 1000)
     fail("Invalid inventory");
   const ids = new Set();
   for (const i of inventory) {
-    keys(i, ["instanceId", "definitionId", "quantity", "customName", "notes"]);
+    keys(i, ["instanceId", "definitionId", "quantity", "customName", "notes", 'chargesCurrent','spellId','attuned','worn']);
+    if(i.definitionId==='spell-scroll'?!require('../system/rules2024/rules').spells.some(s=>s.id===i.spellId):i.spellId!==undefined)fail('Invalid Spell Scroll identity');
+    if(i.attuned!==undefined&&(typeof i.attuned!=='boolean'||!definition(i.definitionId).profile?.requiresAttunement)||i.worn!==undefined&&(typeof i.worn!=='boolean'||!definition(i.definitionId).profile?.wearSlot))fail('Invalid magic item wearing or attunement');
+    if(i.chargesCurrent!==undefined&&(!Number.isSafeInteger(i.chargesCurrent)||i.chargesCurrent<0||i.chargesCurrent>(i.definitionId?definition(i.definitionId).profile?.charges??10:10)))fail('Invalid item charges');
     if (
       typeof i.instanceId !== "string" ||
       !i.instanceId ||
@@ -58,7 +66,8 @@ function validateInventory(inventory) {
       fail("Invalid item quantity");
     if (i.definitionId) {
       definition(i.definitionId);
-      if (i.quantity !== 1)
+      if(definition(i.definitionId).purchaseScrollLevel!==undefined)fail('Priced scroll purchase options cannot be stored as unidentified inventory');
+      if (i.quantity !== 1 && !definition(i.definitionId).stackable)
         fail("Weapons and armor must have individual instances");
     } else if (!i.customName?.trim()) fail("Descriptive item requires name");
     for (const k of ["customName", "notes"])
@@ -88,7 +97,7 @@ function validateLoadout(inventory, loadout) {
     if (
       slot === "armor"
         ? d.kind !== "armor"
-        : !["weapon", "shield"].includes(d.kind)
+        : !["weapon", "shield"].includes(d.kind)&&!d.profile?.held
     )
       fail("Invalid item slot");
     resolved[slot] = { ...i, definition: d };
@@ -112,10 +121,20 @@ function validateLoadout(inventory, loadout) {
   return resolved;
 }
 function derive(character) {
+  const rules=require('../system/rules2024');
+  const baseProgression=rules.replay(character.rulesLedger);
+  const progression=character.rulesRuntime?rules.runtime.project(baseProgression,character.rulesRuntime,character):baseProgression;
+  character = { ...character, attributes: progression.attributes, progression: { rank: progression.totalLevel } };
   if (!character.loadout)
     fail("Equipment schema changed: recreate this experimental character");
   const slots = validateLoadout(character.inventory, character.loadout),
-    training = resolveTraining(character.calling);
+    training = (() => {
+          const grants = progression.equipmentTraining;
+          return { categories: grants.weapons.filter(w => ["simple", "martial"].includes(w)),
+            weapons: grants.weapons.filter(w => !["simple", "martial"].includes(w)),
+            groups: grants.weapons.includes("martial:finesse-or-light") ? ["martial:finesse-or-light"] : [],
+            armor: grants.armor };
+        })();
   const armor = slots.armor?.definition ?? null;
   const shield = [slots.mainHand, slots.offHand].some(
     (i) => i?.definition.kind === "shield"
@@ -127,17 +146,16 @@ function derive(character) {
     armor,
     shield: shield && training.armor.includes("shield"),
   };
-  const progression =
-    character.advancement?.version === 2
-      ? require("../system/advancement").summarize(
-          character.advancement,
-          character.progression.rank,
-          { training: character.training }
-        )
-      : null;
   const defenseBonus =
-    progression?.combatCapabilities.defenseStyle && armor ? 1 : 0;
-  guardInputs.bonus = defenseBonus;
+    progression?.fightingStyles.includes("defense") && armor ? 1 : 0;
+    if (!armor && progression) {
+      const agility = progression.attributeModifiers.agility;
+      const alternatives = [10 + agility];
+      if (progression.callingLevels.reaver) alternatives.push(10 + agility + progression.attributeModifiers.resolve);
+      if (progression.paths.tidecaller === "omen-diver") alternatives.push(10 + agility + progression.attributeModifiers.spirit);
+      if (alternatives.length > 1) guardInputs.unarmoredBase = Math.max(...alternatives);
+    }
+  guardInputs.bonus = defenseBonus + require('../system/rules2024/covenantOperations').guardBonus(character)+(progression.magicGuardBonus??0);
   const restrictions = {
     untrainedArmor,
     untrainedShield: shield && !training.armor.includes("shield"),
@@ -151,6 +169,8 @@ function derive(character) {
         : 0,
     pending: ["movement-speed", "donning-doffing-time", "spellcasting"],
   };
+  if(progression.paths.reaver==='reef-colossus'&&progression.callingLevels.reaver>=6&&progression.raging&&!progression.reefSkinSuppressed&&armor?.category!=='heavy')restrictions.speedPenaltyFeet+=5;
+  if(progression.paths.gunslinger==='brass-outrider'&&progression.callingLevels.gunslinger>=7&&armor?.category==='heavy')restrictions.speedPenaltyFeet+=10;
   const attacks = [slots.mainHand, slots.offHand]
     .filter((i) => i?.definition.kind === "weapon")
     .map((i) => {
@@ -188,7 +208,15 @@ function derive(character) {
         attribute,
         attackModifier:
           attributes[attribute] +
-          (trained ? proficiencyBonus(character.progression.rank) : 0),
+          (character.rulesRuntime?.effects.some(e=>e.sacredWeaponId===i.instanceId&&require('../system/rules2024/clock').active(character.rulesRuntime,e))?Math.max(1,progression.attributeModifiers.spirit):0) +
+          (trained ? proficiencyBonus(character.progression.rank) : 0) +
+          (d.type === "ranged" && progression.fightingStyles.includes("archery") ? 2 : 0) - 2*(progression.exhaustion??0),
+        damageModifier: attributes[attribute],
+        damageTypeOptions:character.rulesRuntime?.effects.some(e=>e.sacredWeaponId===i.instanceId&&require('../system/rules2024/clock').active(character.rulesRuntime,e))?[d.damage.type,'radiant']:[d.damage.type],
+        mastery: progression.weaponMastery.includes(d.baseWeaponId??d.id) ? d.mastery : null,
+        heavyDisadvantage: d.properties.some(p=>p.id==='heavy')&&character.attributes[d.type==='ranged'?'agility':'might']<13,
+        requiresTwoHandGrip: d.hands===2&&character.loadout.grip!=='two',
+        maxShotsPerAction: d.loading && !(progression.feats.includes('powder-drill')&&['pistol','musket'].includes(d.id)) ? 1 : progression.attacksPerAction,
         supported: d.automation.melee,
         unsupportedReason: d.automation.melee
           ? null
@@ -204,19 +232,10 @@ function derive(character) {
     guardInputs,
     guard: calculateGuard(character.attributes, guardInputs),
     attacks,
+    carrying:{capacityLb:15*character.attributes.might*(progression.colossus?.carryingMultiplier??1),pushDragLiftLb:30*character.attributes.might*(progression.colossus?.carryingMultiplier??1),
+      knownWeightLb:character.inventory.reduce((total,item)=>{const d=item.definitionId?definition(item.definitionId):null;return total+(d?.weightLb??0)*item.quantity/(d?.units??1);},0),
+      unknownWeightInstances:character.inventory.filter(i=>!i.definitionId||definition(i.definitionId).weightLb===null).map(i=>i.instanceId)},
     restrictions,
-  };
-}
-function startingEquipment() {
-  const item = issue({ definitionId: "cutlass" });
-  return {
-    inventory: [item],
-    loadout: {
-      mainHand: item.instanceId,
-      offHand: null,
-      armor: null,
-      grip: "one",
-    },
   };
 }
 function update(character, operation) {
@@ -253,7 +272,13 @@ function update(character, operation) {
   }
   const loadout = structuredClone(operation.loadout ?? character.loadout);
   validateLoadout(next, loadout);
-  return { inventory: next, loadout };
+  const changes={ inventory: next, loadout };
+  if(character.rulesRuntime?.effects.some(e=>e.featureId==='path:iron-covenant:covenant-of-steel:3')){
+    const updated={...character,inventory:next,loadout,rulesRuntime:structuredClone(character.rulesRuntime)};
+    require('../system/rules2024/covenantOperations').prune(updated);
+    if(updated.rulesRuntime.effects.length!==character.rulesRuntime.effects.length)changes.rulesRuntime=updated.rulesRuntime;
+  }
+  return changes;
 }
 module.exports = {
   definition,
@@ -261,6 +286,5 @@ module.exports = {
   validateInventory,
   validateLoadout,
   derive,
-  startingEquipment,
   update,
 };

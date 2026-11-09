@@ -1,3 +1,4 @@
+import { build } from './helpers/rules2024.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -47,6 +48,7 @@ test("Heavy melee threshold imposes disadvantage and versatile grip changes crit
       grip: "two",
     },
   };
+  Object.assign(c, build(c.calling, 1, c.attributes));
   const state = fromCharacter(c, "owner"),
     values = [20, 2, 3],
     sides = [];

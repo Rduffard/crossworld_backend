@@ -1606,9 +1606,9 @@ module.exports = [
     loading: false,
     hands: 1,
     versatileDamage: null,
-    mastery: null,
-    weightLb: null,
-    costCp: null,
+    mastery: 'nick',
+    weightLb: 3,
+    costCp: 2500,
     stackable: false,
     source: "archipelago",
     automation: {

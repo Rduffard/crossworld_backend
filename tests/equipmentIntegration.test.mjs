@@ -1,188 +1,67 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
-import { createRequire } from "node:module";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { build as buildPhase2, rules, creation } from './helpers/phase2.mjs';
+function build(id){const b=buildPhase2(id);return {...b.character,attributes:b.ledger.baseAttributes};}
 const require = createRequire(import.meta.url);
-const Character = require("../src/modules/archipelago/characters/model");
-const controller = require("../src/modules/archipelago/characters/controller");
-const validators = require("../src/modules/archipelago/characters/validators");
-const owner = "507f1f77bcf86cd799439011";
-const origin = require("../src/modules/archipelago/system/blueprints/catalogs")
-  .origins[0].id;
-async function invoke(handler, body = {}, user = owner) {
-  let result, error;
-  await handler(
-    { body, user: { _id: user }, params: { characterId: owner } },
-    {
-      status() {
-        return this;
-      },
-      send(value) {
-        result = value;
-      },
-    },
-    (e) => {
-      error = e;
+const persistence = require('../src/modules/archipelago/characters/rules2024');
+const equipment = require('../src/modules/archipelago/equipment');
+const packages = require('../src/modules/archipelago/system/rules2024/equipment');
+for (const calling of rules.blueprint.callings) {
+  test(`${calling.name}: every starting package has persistent inventory and valid item definitions`, async () => {
+    for (const selection of packages.options(calling.id)) {
+      const fixture = build(calling.id);
+      const firstLevel = fixture.rulesLedger.levels[0];
+      firstLevel.choices.equipment = [selection];
+      const character = persistence.build({ name: 'Sailor', origin: 'Yuma', attributes: fixture.attributes, firstLevel, creation:creation() });
+      const Model = require('../src/modules/archipelago/characters/model');
+      await new Model({ ...character, owner: '111111111111111111111111' }).validate();
+      assert.ok(Number.isInteger(character.goldCp));
+      assert.ok(character.inventory.length || selection === 'starting-gold');
+      const sheet = persistence.decorate(character);
+      assert.equal(sheet.equipment.guard, calling.id === 'reaver' ? 14 : 12);
+      assert.deepEqual(sheet.inventory, character.inventory);
+      const withSword = equipment.update(character, { expectedRevision: 0, add: [{ definitionId: 'cutlass' }] });
+      const sword = withSword.inventory.at(-1);
+      const equipped = { ...character, ...withSword, loadout: { ...character.loadout, mainHand: sword.instanceId } };
+      const derived = persistence.decorate(equipped).equipment;
+      assert.equal(derived.attacks[0].trained, ['corsair', 'gunslinger', 'navigator', 'warden', 'reaver', 'doctor'].includes(calling.id));
+      assert.throws(() => equipment.update(equipped, { expectedRevision: 1, remove: [sword.instanceId] }));
+      assert.throws(() => equipment.update(equipped, { expectedRevision: 0, remove: [sword.instanceId] }));
     }
-  );
-  return { result, error };
+  });
 }
-test("create, equip, unequip and patch use server inventory with revision and ownership protections", async (t) => {
-  let saved,
-    writes = 0;
-  t.mock.method(Character, "countDocuments", async () => 0);
-  t.mock.method(Character, "create", async (payload) => {
-    const doc = new Character(payload);
-    await doc.validate();
-    saved = JSON.parse(JSON.stringify(doc.toObject()));
-    writes++;
-    return doc;
-  });
-  t.mock.method(Character, "findById", () => ({
-    lean: async () => structuredClone(saved),
-  }));
-  t.mock.method(Character, "findOne", (filter) => ({
-    lean: async () => (filter.owner === owner ? structuredClone(saved) : null),
-  }));
-  t.mock.method(Character, "findOneAndUpdate", (filter, update) => ({
-    lean: async () => {
-      if (filter.documentRevision !== (saved.documentRevision ?? 0))
-        return null;
-      saved = { ...saved, ...JSON.parse(JSON.stringify(update)) };
-      writes++;
-      return structuredClone(saved);
-    },
-  }));
-  const made = await invoke(controller.createCharacter, {
-    startingEquipment: {
-      packageId: "corsair",
-      version: 1,
-      choices: { secondary: "dagger" },
-    },
-    abilitySelections: {
-      "choice:corsair:expertise:1": [
-        "corsair:expertise-climb",
-        "corsair:expertise-read",
-      ],
-    },
-    name: "Equipment Sailor",
-    calling: "corsair",
-    origin,
-    attributes: {
-      might: 15,
-      agility: 14,
-      wit: 13,
-      spirit: 12,
-      resolve: 10,
-      instinct: 8,
-    },
-    training: ["climb", "read", "lore", "attune"],
-  });
-  assert.ifError(made.error);
-  assert.equal(saved.inventory.length, 3);
-  assert.equal(saved.inventory[0].definitionId, "cutlass");
-  assert.equal(saved.loadout.mainHand, saved.inventory[0].instanceId);
-  assert.equal(made.result.equipmentDerived.attacks[0].trained, true);
-  const initial = saved.inventory[0].instanceId;
-  const added = await invoke(controller.updateCharacter, {
-    equipmentOperation: {
-      expectedRevision: 0,
-      add: [
-        { definitionId: "shield" },
-        { definitionId: "leather-armor" },
-        { definitionId: "dagger" },
-      ],
-    },
-  });
-  assert.ifError(added.error);
-  assert.equal(saved.inventory.length, 6);
-  assert.equal(saved.documentRevision, 1);
-  const shield = saved.inventory.find((i) => i.definitionId === "shield"),
-    armor = saved.inventory.find((i) => i.definitionId === "leather-armor");
-  const equip = await invoke(controller.updateCharacter, {
-    equipmentOperation: {
-      expectedRevision: 1,
-      loadout: {
-        mainHand: initial,
-        offHand: shield.instanceId,
-        armor: armor.instanceId,
-        grip: "one",
-      },
-    },
-  });
-  assert.ifError(equip.error);
-  assert.equal(equip.result.equipmentDerived.guard, 15);
-  const before = structuredClone(saved),
-    count = writes;
-  assert.ok(
-    (
-      await invoke(controller.updateCharacter, {
-        equipmentOperation: { expectedRevision: 1, remove: [initial] },
-      })
-    ).error
-  );
-  assert.deepEqual(saved, before);
-  assert.equal(writes, count);
-  assert.ok(
-    (
-      await invoke(controller.updateCharacter, {
-        equipmentOperation: {
-          expectedRevision: 2,
-          add: [{ definitionId: "cutlass", damage: 99 }],
-        },
-      })
-    ).error
-  );
-  assert.ok(
-    (
-      await invoke(
-        controller.updateCharacter,
-        { equipmentOperation: { expectedRevision: 2 } },
-        "other-owner"
-      )
-    ).error
-  );
-  assert.equal(writes, count);
-  const clear = await invoke(controller.updateCharacter, {
-    equipmentOperation: {
-      expectedRevision: 2,
-      loadout: { mainHand: null, offHand: null, armor: null, grip: "one" },
-    },
-  });
-  assert.ifError(clear.error);
-  assert.equal(clear.result.equipmentDerived.attacks.length, 0);
-  assert.equal(clear.result.equipmentDerived.guard, 12);
-  const snapshot = structuredClone(saved);
-  const notes = await invoke(controller.updateCharacter, {
-    notes: "Unrelated field",
-  });
-  assert.ifError(notes.error);
-  assert.deepEqual(saved.inventory, snapshot.inventory);
-  assert.deepEqual(saved.loadout, snapshot.loadout);
-  assert.deepEqual(saved.advancement, snapshot.advancement);
-  const info = await invoke(controller.getEquipment);
-  assert.ifError(info.error);
-  assert.equal(info.result.inventory.length, 6);
-});
-test("HTTP validators reject obsolete direct inventory and forged mechanics", async () => {
-  for (const body of [
-    { inventory: [] },
-    { loadout: {} },
-    { equipment: {} },
-    {
-      equipmentOperation: {
-        expectedRevision: 0,
-        add: [{ definitionId: "cutlass", trained: true }],
-      },
-    },
-  ]) {
-    let err;
-    await validators.validateUpdateCharacter(
-      { body, method: "PATCH", headers: {} },
-      {},
-      (e) => {
-        err = e;
-      }
-    );
-    assert.ok(err);
+test('equipment mutation is owner-scoped and detects concurrent writes', async () => {
+  let document = { _id: 'id', owner: 'owner', ...persistence.build({ name: 'Sailor', origin: 'Yuma',
+    attributes: build('gunslinger').attributes, firstLevel: build('gunslinger').rulesLedger.levels[0], creation:creation() }) };
+  let race = false;
+  let receipts=[];
+  const model = {
+    db:{startSession:async()=>({withTransaction:async fn=>{const before=structuredClone(document),count=receipts.length;try{await fn();}catch(error){document=before;receipts=receipts.slice(0,count);throw error;}},endSession:async()=>{}})},
+    findOne: query => ({ session(){return this;},lean: async () => query.owner === document.owner ? structuredClone(document) : null }),
+    findOneAndUpdate: (query, update) => ({ session(){return this;},lean: async () => {
+      if (race || query.documentRevision !== document.documentRevision || query.owner !== document.owner) return null;
+      document = { ...document, ...structuredClone(update.$set) }; return document;
+    } }),
+  };
+  const Receipt={findOne:q=>({session(){return this;},lean:async()=>structuredClone(receipts.find(r=>r.operationId===q.operationId&&r.owner===q.owner)??null)}),create:async rows=>receipts.push(...structuredClone(rows))},handler=require('../src/modules/archipelago/characters/commands').handler(model,Receipt);
+  async function save(body, owner = 'owner') {
+    let data, error;
+    const {expectedRevision,...payload}=body;
+    await handler({body:{operationId:require('node:crypto').randomUUID(),expectedRevision,rulesVersion:'SA-CHAR-1',type:'equipment.equip',payload},params:{characterId:'id'},user:{_id:owner}},
+      { send(value) { data = value; } }, e => { error = e; });
+    return { data, error };
   }
+  const armor=document.inventory.find(i=>i.definitionId==='chain-mail');
+  const operation = { expectedRevision: 0, loadout:{...document.loadout,armor:armor.instanceId} };
+  assert.equal((await save(operation, 'other')).error.statusCode, 404);
+  assert.equal((await save({expectedRevision:0,add:[{definitionId:'pistol'}]})).error.statusCode,422);
+  const result = await save(operation);
+  assert.equal(result.data.documentRevision, 1);
+  assert.equal(result.data.loadout.armor,armor.instanceId);
+  const before = structuredClone(document);
+  assert.ok((await save(operation)).error);
+  race = true;
+  assert.equal((await save({ ...operation, expectedRevision: 1 })).error.statusCode, 409);
+  assert.deepEqual(document, before);
 });

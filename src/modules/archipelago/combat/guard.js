@@ -2,10 +2,14 @@ const { calculateCheckModifier } = require("../system/checkModifier");
 // Armor inputs are structured definitions, never client-supplied defense totals.
 function calculateGuard(
   attributes,
-  { armor = null, shield = false, bonus = 0 } = {}
+  { armor = null, shield = false, bonus = 0, unarmoredBase = null } = {}
 ) {
   const agility = calculateCheckModifier(attributes, "agility");
   let base = 10 + agility;
+  if (unarmoredBase !== null) {
+    if (!Number.isSafeInteger(unarmoredBase) || unarmoredBase < 1) throw new Error("Invalid unarmored Guard");
+    if (!armor) base = Math.max(base, unarmoredBase);
+  }
   if (armor) {
     if (
       !["light", "medium", "heavy"].includes(armor.category) ||

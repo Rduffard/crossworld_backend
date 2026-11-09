@@ -2,7 +2,7 @@ const { calculateCheckModifier } = require("../system/checkModifier");
 const { proficiencyBonus } = require("../system/trainingChecks");
 const { calculateGuard } = require("./guard");
 const { createFixture } = require("./state");
-const callings = require("../system/blueprints/characters/callings");
+const rules = require("../system/rules2024");
 function fromCharacter(character, owner) {
   const invalid = (message) => {
     const error = new Error(message);
@@ -11,10 +11,18 @@ function fromCharacter(character, owner) {
   };
   if (!character || String(character.owner) !== String(owner))
     invalid("Character unavailable");
+  if (!character.rulesLedger) invalid("Recreate this experimental character with the current creator");
+  const progression = rules.replay(character.rulesLedger);
+  rules.runtime.validate(progression, character.rulesRuntime);
+  const projected = rules.runtime.project(progression, character.rulesRuntime, character);
+  character = { ...character, attributes: progression.attributes,
+    calling: character.rulesLedger.levels[0].callingId,
+    training: progression.training, progression: { rank: progression.totalLevel },
+    resources: { health: character.rulesRuntime.health } };
   if (
     typeof character.name !== "string" ||
     !character.name.trim() ||
-    !callings.some((c) => c.id === character.calling)
+    !rules.blueprint.callings.some((c) => c.id === character.calling)
   )
     invalid("Character identity is incompatible with practice combat");
   const level = character.progression?.rank;
@@ -55,15 +63,7 @@ function fromCharacter(character, owner) {
       character.training.some((id) => typeof id !== "string"))
   )
     invalid("Character Training is malformed");
-  const progression =
-    character.advancement?.version === 2
-      ? require("../system/advancement").summarize(
-          character.advancement,
-          level,
-          { training: character.training }
-        )
-      : null;
-  if (progression && !progression.complete)
+  if (!progression.decisionsComplete)
     invalid("Complete required advancement decisions before entering combat");
   const resolved = require("../equipment").derive(character);
   const state = createFixture(owner);
@@ -76,12 +76,12 @@ function fromCharacter(character, owner) {
     attributes,
     modifiers,
     training: structuredClone(character.training ?? []),
-    trainingRulesVersion: character.trainingRulesVersion ?? null,
     health: { current: health.current, max: health.max },
     weapon: resolved.attacks[0]?.definitionId ?? null,
     weaponTraining: [
       ...resolved.training.categories,
       ...resolved.training.weapons,
+      ...resolved.attacks.filter(attack => attack.trained).map(attack => attack.definitionId),
     ],
     equipmentSnapshot: structuredClone(resolved),
     attackOptions: structuredClone(resolved.attacks),
@@ -90,10 +90,11 @@ function fromCharacter(character, owner) {
     guard: calculateGuard(attributes, resolved.guardInputs),
     actions: 1,
     greatWeaponFighting:
-      progression?.combatCapabilities.greatWeaponFighting ?? false,
-    attacksPerAction: progression?.combatCapabilities.attacksPerAction ?? 1,
+      progression.fightingStyles.includes("great-weapon-fighting"),
+    criticalThreshold: projected.criticalThreshold,
+    attacksPerAction: progression.attacksPerAction,
     attacksRemaining: 0,
-    abilitySnapshot: progression?.abilities ?? [],
+    abilitySnapshot: [],
     expertise: progression?.expertise ?? [],
   };
   state.combatants[0] = combatant;

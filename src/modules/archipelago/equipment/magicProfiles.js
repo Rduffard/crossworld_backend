@@ -1,0 +1,12 @@
+// SRD 5.2.1, CC-BY-4.0; attribution in system/rules2024/NOTICE.md.
+const url='https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf';
+const rows=[
+  ['cloak-of-protection','Cloak of Protection',216,{wearSlot:'cloak',guardBonus:1,saveBonus:1,requiresAttunement:true},'While worn and attuned, gain +1 Guard and +1 to saving throws.'],
+  ['ring-of-protection','Ring of Protection',238,{wearSlot:'ring',guardBonus:1,saveBonus:1,requiresAttunement:true},'While worn and attuned, gain +1 Guard and +1 to saving throws.'],
+  ['cloak-of-the-manta-ray','Cloak of the Manta Ray',216,{wearSlot:'cloak',swimSpeed:60,waterBreathing:true,requiresAttunement:true},'While worn and attuned, breathe underwater and gain a Swim Speed of 60 feet.'],
+  ...[1,2,3].map(n=>['wand-of-the-war-mage-'+n,'Wand of the War Mage +'+n,251,{held:true,attunementFamily:'wand-of-the-war-mage',requiresAttunement:true,spellcasterPrerequisite:true,spellAttackBonus:n,ignoreHalfCover:true},'While held and attuned, gain +'+n+' to spell attack rolls and ignore Half Cover for spell attacks.']),
+  ['spell-scroll','Spell Scroll',244,{scroll:true},'One identified spell, normal casting time, no Material components. Eligible spell list required; higher-level scrolls require a spellcasting ability check. The scroll is destroyed on completed casting or a copying attempt.'],
+  ['wand-of-magic-missiles','Wand of Magic Missiles',251,{held:true,charges:7,recharge:{count:1,sides:6,bonus:1},spellId:'magic-missile',baseLevel:1},'While held, spend one to three charges to cast Magic Missile at level one plus additional charges. Recover 1d6 + 1 charges at dawn. After spending the last charge, a d20 result of 1 destroys the wand.'],
+  ['wand-of-fireballs','Wand of Fireballs',250,{held:true,requiresAttunement:true,spellcasterPrerequisite:true,charges:7,recharge:{count:1,sides:6,bonus:1},spellId:'fireball',baseLevel:3,saveDC:15},'While held and attuned by a spellcaster, spend one to three charges to cast Fireball at level three plus additional charges, save DC 15. Recover 1d6 + 1 charges at dawn. After spending the last charge, a d20 result of 1 destroys the wand.'],
+];
+module.exports=rows.map(([id,name,page,profile,description])=>({id,name,kind:'magic-item',category:profile.held?'wand':profile.scroll?'scroll':'wondrous',magic:true,profile,description,source:{document:'SRD',version:'5.2.1',page,url},weightLb:null,costCp:null,stackable:false}));

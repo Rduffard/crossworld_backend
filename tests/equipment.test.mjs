@@ -1,3 +1,4 @@
+import { build, testLoadout } from './helpers/rules2024.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -35,7 +36,9 @@ const character = (calling = "corsair") => ({
   training: ["climb", "read", "lore", "attune"],
   resources: { health: { current: 12, max: 20 } },
   documentRevision: 0,
-  ...gear.startingEquipment(),
+  goldCp: 0,
+  ...testLoadout(),
+  ...build(calling, 1, attrs),
 });
 const roll =
   (...values) =>
@@ -86,11 +89,11 @@ test("catalog contains every SRD table weapon and original cutlass, with unique 
     "cutlass",
   ];
   assert.deepEqual(
-    catalog.items.filter((i) => i.kind === "weapon").map((i) => i.id),
+    catalog.items.filter((i) => i.kind === "weapon" && !i.baseWeaponId).map((i) => i.id),
     expected
   );
-  assert.equal(catalog.items.length, 52);
-  assert.equal(new Set(catalog.items.map((i) => i.id)).size, 52);
+  assert.equal(catalog.items.filter(i=>i.kind!=='gear'&&!i.magic&&!i.baseWeaponId).length, 52);
+  assert.equal(new Set(catalog.items.map((i) => i.id)).size, catalog.items.length);
   const damage = [
     "1d4",
     "1d4",
@@ -171,7 +174,7 @@ test("catalog contains every SRD table weapon and original cutlass, with unique 
     2,
     10,
     3,
-    null,
+    3,
   ];
   const costs = [
     10,
@@ -212,7 +215,7 @@ test("catalog contains every SRD table weapon and original cutlass, with unique 
     5000,
     50000,
     25000,
-    null,
+    2500,
   ];
   expected.forEach((id, index) => {
     const d = gear.definition(id);
@@ -325,7 +328,7 @@ test("catalog contains every SRD table weapon and original cutlass, with unique 
   expected.forEach((id, i) => {
     const d = gear.definition(id);
     assert.equal(d.properties.map((p) => p.id).join(" "), props[i]);
-    assert.equal(d.mastery, masteries[i]);
+    assert.equal(d.mastery, id === 'cutlass' ? 'nick' : masteries[i]);
     assert.equal(d.category, i < 14 ? "simple" : "martial");
     assert.equal(
       d.type,
@@ -345,7 +348,7 @@ test("catalog contains every SRD table weapon and original cutlass, with unique 
     normal: 40,
     long: 120,
   });
-  assert.equal(gear.definition("cutlass").mastery, null);
+  assert.equal(gear.definition("cutlass").mastery, 'nick');
 });
 test("armor and shields exactly cover SRD Guard, requirements, weight, prices and timing", () => {
   const ids = [
@@ -455,9 +458,9 @@ test("Calling weapon/armor Training is explicit and never duplicated or granted 
     assert.ok(weaponTrained(t, gear.definition("dagger")));
     assert.equal(
       weaponTrained(t, gear.definition("cutlass")),
-      ["corsair", "warden"].includes(calling)
+      ["corsair", "gunslinger", "navigator", "warden", "reaver"].includes(calling)
     );
-    assert.equal(t.armor.includes("heavy"), calling === "warden");
+    assert.equal(t.armor.includes("heavy"), ["warden", "gunslinger"].includes(calling));
   }
   const t = resolveTraining("corsair", [
     { categories: ["simple"], weapons: ["cutlass"] },
@@ -465,7 +468,7 @@ test("Calling weapon/armor Training is explicit and never duplicated or granted 
   assert.equal(t.weapons.length, 1);
   const c = character("gunslinger");
   c.training = ["cutlass"];
-  assert.equal(gear.derive(c).attacks[0].trained, false);
+  assert.equal(gear.derive(c).attacks[0].trained, true);
 });
 test("equipped armor and shield determine Guard, untrained consequences and negative Agility", () => {
   for (const calling of ["warden", "tidecaller"]) {
@@ -491,6 +494,7 @@ test("equipped armor and shield determine Guard, untrained consequences and nega
   c.inventory.push(armor);
   c.loadout.armor = armor.instanceId;
   c.attributes.agility = 8;
+  c.rulesLedger.baseAttributes.agility = 8;
   assert.equal(gear.derive(c).guard, 14);
 });
 test("finesse permits lower Might/Agility selection, ordinary melee uses Might and unsupported attacks fail", () => {

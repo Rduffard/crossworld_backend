@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: registered campaign GM authorizes a milestone; only its owner commits it once and permission updates
+ok 1 - registered campaign GM authorizes a milestone; only its owner commits it once and permission updates
+  ---
+  duration_ms: 149.4722
+  type: 'test'
+  ...
+# Subtest: player checkboxes cannot authorize milestones, issue awards or grant GM Inspiration
+ok 2 - player checkboxes cannot authorize milestones, issue awards or grant GM Inspiration
+  ---
+  duration_ms: 25.9197
+  type: 'test'
+  ...
+# Subtest: GM identity and actual campaign registration are both required
+ok 3 - GM identity and actual campaign registration are both required
+  ---
+  duration_ms: 44.4837
+  type: 'test'
+  ...
+# Subtest: milestone retries return the stored result; changed payload and duplicate level fail without writes
+ok 4 - milestone retries return the stored result; changed payload and duplicate level fail without writes
+  ---
+  duration_ms: 41.6198
+  type: 'test'
+  ...
+# Subtest: authorized catalog and copper awards preserve ownership and cannot forge mechanics
+ok 5 - authorized catalog and copper awards preserve ownership and cannot forge mechanics
+  ---
+  duration_ms: 35.7917
+  type: 'test'
+  ...
+# Subtest: solo owner keeps advancement and GM control while a campaign GM cannot advance someone else directly
+ok 6 - solo owner keeps advancement and GM control while a campaign GM cannot advance someone else directly
+  ---
+  duration_ms: 66.569
+  type: 'test'
+  ...
+# Subtest: GM discovery and owner transcription use distinct roles; receipt retry cannot charge the owner twice
+ok 7 - GM discovery and owner transcription use distinct roles; receipt retry cannot charge the owner twice
+  ---
+  duration_ms: 79.5926
+  type: 'test'
+  ...
+# Subtest: rebuild approval uses the real campaign GM and immutable receipts; GM cannot commit the owner build
+ok 8 - rebuild approval uses the real campaign GM and immutable receipts; GM cannot commit the owner build
+  ---
+  duration_ms: 83.0976
+  type: 'test'
+  ...
+# Subtest: campaign creation and opening are membership scoped, with private invite codes and an atomic capacity check
+ok 9 - campaign creation and opening are membership scoped, with private invite codes and an atomic capacity check
+  ---
+  duration_ms: 47.6125
+  type: 'test'
+  ...
+# Subtest: registration rolls back a rejected roster write and drops solo approval while retaining the character owner
+ok 10 - registration rolls back a rejected roster write and drops solo approval while retaining the character owner
+  ---
+  duration_ms: 38.169
+  type: 'test'
+  ...
+# Subtest: isolated real MongoDB: martial/caster/complex-Path HTTP workflows, transaction receipts, reload and owner isolation
+ok 11 - isolated real MongoDB: martial/caster/complex-Path HTTP workflows, transaction receipts, reload and owner isolation # SKIP
+  ---
+  duration_ms: 0.3758
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 805.689

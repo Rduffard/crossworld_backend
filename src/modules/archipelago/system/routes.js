@@ -1,37 +1,27 @@
 const router = require("express").Router();
-
-const { getBlueprint } = require("./controller");
-
-router.get("/capabilities", (_req, res) =>
-  res.send({ playtestEnabled: require("./playtest").enabled() })
-);
-router.get("/blueprint", getBlueprint);
-const { celebrate, Joi } = require("celebrate");
-router.post(
-  "/draft-preview",
-  celebrate({
-    body: Joi.object({
-      calling: Joi.string().required(),
-      origin: Joi.string().required(),
-      attributes: Joi.object()
-        .pattern(Joi.string(), Joi.number().integer())
-        .required(),
-      training: Joi.array().items(Joi.string()).required(),
-      abilitySelections: Joi.object().pattern(
-        Joi.string(),
-        Joi.array().items(Joi.string())
-      ),
-      startingEquipment: Joi.object().required(),
-    }).unknown(false),
-  }),
-  (req, res, next) => {
-    try {
-      res.send(require("./draft").preview(req.body));
-    } catch (e) {
-      e.statusCode = e.statusCode ?? 400;
-      next(e);
-    }
-  }
-);
-
+router.get('/character-rules',(req,res,next)=>{
+  const registry=require('./rules2024').blueprint;
+  if(req.query.version!==undefined&&req.query.version!==registry.rulesVersion)return next(Object.assign(new Error('Unsupported character rules version'),{statusCode:409}));
+  res.set('ETag','"'+registry.contentHash+'"');
+  res.send(registry);
+});
+router.get("/capabilities", (_req, res) => res.send({ playtestEnabled: false }));
+router.get("/blueprint", (_req, res) => res.send({
+  ...require("./rules2024").blueprint,
+  catalogs: {
+    origins: require("./blueprints/characters/origins"),
+    originPaths: require("./blueprints/characters/originPaths"),
+    reputation: require("./blueprints/world/reputation"),
+  },
+}));
+router.get("/rules-2024", (_req, res) => res.send(require("./rules2024").blueprint));
+router.post("/rules-2024/preview", (req, res, next) => {
+  try {
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        Object.keys(body).some(key => key !== "ledger"))
+      throw Object.assign(new Error("Preview accepts only a rules ledger"), { statusCode: 400 });
+    res.send(require("./rules2024").replay(body.ledger));
+  } catch (error) { error.statusCode ??= 400; next(error); }
+});
 module.exports = router;

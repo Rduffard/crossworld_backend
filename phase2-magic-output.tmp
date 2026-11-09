@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: magic item awards are catalog-bound, never ordinary purchases or forged profiles
+ok 1 - magic item awards are catalog-bound, never ordinary purchases or forged profiles
+  ---
+  duration_ms: 81.0027
+  type: 'test'
+  ...
+# Subtest: attunement grants nothing before a full Short Rest and wearing gates real Guard and saves
+ok 2 - attunement grants nothing before a full Short Rest and wearing gates real Guard and saves
+  ---
+  duration_ms: 103.7643
+  type: 'test'
+  ...
+# Subtest: attunement enforces spellcaster prerequisites, duplicate items and ordinary limits
+ok 3 - attunement enforces spellcaster prerequisites, duplicate items and ordinary limits
+  ---
+  duration_ms: 29.8308
+  type: 'test'
+  ...
+# Subtest: Reef Knife fourth attunement works but a fifth fails before granting recovery
+ok 4 - Reef Knife fourth attunement works but a fifth fails before granting recovery
+  ---
+  duration_ms: 287.1182
+  type: 'test'
+  ...
+# Subtest: held attuned War Mage wand changes spell attacks and ignores Half Cover, never spell save DC
+ok 5 - held attuned War Mage wand changes spell attacks and ignores Half Cover, never spell save DC
+  ---
+  duration_ms: 48.191
+  type: 'test'
+  ...
+# Subtest: identified scroll casts an unprepared on-list spell without slots or Material components and consumes only itself
+ok 6 - identified scroll casts an unprepared on-list spell without slots or Material components and consumes only itself
+  ---
+  duration_ms: 51.943
+  type: 'test'
+  ...
+# Subtest: unreadable or invalid scroll actions preserve the item and all resources
+ok 7 - unreadable or invalid scroll actions preserve the item and all resources
+  ---
+  duration_ms: 24.7919
+  type: 'test'
+  ...
+# Subtest: higher-level scroll checks are accepted once and destroy the scroll on either outcome
+ok 8 - higher-level scroll checks are accepted once and destroy the scroll on either outcome
+  ---
+  duration_ms: 30.6414
+  type: 'test'
+  ...
+# Subtest: copying a scroll binds exact identity, costs time and copper, and destroys it after one real Arcana check
+ok 9 - copying a scroll binds exact identity, costs time and copper, and destroys it after one real Arcana check
+  ---
+  duration_ms: 21.2171
+  type: 'test'
+  ...
+# Subtest: War Mage rarity variants cannot bypass the duplicate item attunement rule
+ok 10 - War Mage rarity variants cannot bypass the duplicate item attunement rule
+  ---
+  duration_ms: 36.3579
+  type: 'test'
+  ...
+# Subtest: worn magic gear requires explicit unequip on sale and removes its derived benefit
+ok 11 - worn magic gear requires explicit unequip on sale and removes its derived benefit
+  ---
+  duration_ms: 57.5545
+  type: 'test'
+  ...
+# Subtest: movement bonuses from worn items cannot override a restrained Speed of zero
+ok 12 - movement bonuses from worn items cannot override a restrained Speed of zero
+  ---
+  duration_ms: 45.009
+  type: 'test'
+  ...
+# Subtest: charged wand casts spend exact charges without slots and generic consume cannot bypass its risk
+ok 13 - charged wand casts spend exact charges without slots and generic consume cannot bypass its risk
+  ---
+  duration_ms: 47.4293
+  type: 'test'
+  ...
+# Subtest: Reef Knife charge preservation is rolled once and accepted with the saved casting result
+ok 14 - Reef Knife charge preservation is rolled once and accepted with the saved casting result
+  ---
+  duration_ms: 134.147
+  type: 'test'
+  ...
+# Subtest: last-charge destruction is rolled, resolves the spell, and cannot leave a dangling held item
+ok 15 - last-charge destruction is rolled, resolves the spell, and cannot leave a dangling held item
+  ---
+  duration_ms: 77.2706
+  type: 'test'
+  ...
+# Subtest: only GM dawn restores item charges; ordinary rests do not and duplicate dawn is atomic
+ok 16 - only GM dawn restores item charges; ordinary rests do not and duplicate dawn is atomic
+  ---
+  duration_ms: 31.6832
+  type: 'test'
+  ...
+# Subtest: Fast Hands alone authorizes a Bonus Action charged-item casting
+ok 17 - Fast Hands alone authorizes a Bonus Action charged-item casting
+  ---
+  duration_ms: 85.5543
+  type: 'test'
+  ...
+# Subtest: projected speeds are finite across all Paths and Exhaustion affects granted speeds exactly once
+ok 18 - projected speeds are finite across all Paths and Exhaustion affects granted speeds exactly once
+  ---
+  duration_ms: 6123.1634
+  type: 'test'
+  ...
+# Subtest: Heavy armor removes conditional Outrider Speed and Tempest flight; Living Tempest still grants its own flight
+ok 19 - Heavy armor removes conditional Outrider Speed and Tempest flight; Living Tempest still grants its own flight
+  ---
+  duration_ms: 234.9937
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7788.3508

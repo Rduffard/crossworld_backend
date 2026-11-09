@@ -1,0 +1,3287 @@
+TAP version 13
+[dotenv@17.2.4] injecting env (3) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+# Subtest: actual identity, depleted Health, attributes, Training and temporary loadout copied without mutation
+ok 1 - actual identity, depleted Health, attributes, Training and temporary loadout copied without mutation
+  ---
+  duration_ms: 237.9248
+  type: 'test'
+  ...
+# Subtest: Calling entitlements control cutlass proficiency for every Calling
+ok 2 - Calling entitlements control cutlass proficiency for every Calling
+  ---
+  duration_ms: 515.7452
+  type: 'test'
+  ...
+# Subtest: malformed or unavailable saved values rejected without repair
+ok 3 - malformed or unavailable saved values rejected without repair
+  ---
+  duration_ms: 492.7382
+  type: 'test'
+  ...
+# Subtest: service authorizes character read, persists snapshot, never re-reads character for attacks
+ok 4 - service authorizes character read, persists snapshot, never re-reads character for attacks
+  ---
+  duration_ms: 79.367
+  type: 'test'
+  ...
+# Subtest: from-character endpoint rejects forged snapshots and other owners without leaking character data
+ok 5 - from-character endpoint rejects forged snapshots and other owners without leaking character data
+  ---
+  duration_ms: 5432.8143
+  type: 'test'
+  ...
+# Subtest: specified scores and odd scores for every attribute
+ok 6 - specified scores and odd scores for every attribute
+  ---
+  duration_ms: 1.0826
+  type: 'test'
+  ...
+# Subtest: reject invalid identifiers
+ok 7 - reject invalid identifiers
+  ---
+  duration_ms: 0.4729
+  type: 'test'
+  ...
+# Subtest: reject missing and malformed scores without coercion
+ok 8 - reject missing and malformed scores without coercion
+  ---
+  duration_ms: 0.6624
+  type: 'test'
+  ...
+# Subtest: only selected score matters and input stays unchanged
+ok 9 - only selected score matters and input stays unchanged
+  ---
+  duration_ms: 0.5629
+  type: 'test'
+  ...
+# Subtest: d20 normal, advantage, disadvantage, cancellation and invalid dice
+ok 10 - d20 normal, advantage, disadvantage, cancellation and invalid dice
+  ---
+  duration_ms: 5.704
+  type: 'test'
+  ...
+# Subtest: attack roll 4: miss
+ok 11 - attack roll 4: miss
+  ---
+  duration_ms: 5.8613
+  type: 'test'
+  ...
+# Subtest: attack roll 5: hit
+ok 12 - attack roll 5: hit
+  ---
+  duration_ms: 2.0439
+  type: 'test'
+  ...
+# Subtest: attack roll 6: hit
+ok 13 - attack roll 6: hit
+  ---
+  duration_ms: 1.7744
+  type: 'test'
+  ...
+# Subtest: attack roll 1: miss
+ok 14 - attack roll 1: miss
+  ---
+  duration_ms: 1.6336
+  type: 'test'
+  ...
+# Subtest: attack roll 20: critical
+ok 15 - attack roll 20: critical
+  ---
+  duration_ms: 1.7833
+  type: 'test'
+  ...
+# Subtest: finesse uses best attribute, explicit entitlement only, minimum zero damage
+ok 16 - finesse uses best attribute, explicit entitlement only, minimum zero damage
+  ---
+  duration_ms: 1.9887
+  type: 'test'
+  ...
+# Subtest: attack resolver applies advantage and disadvantage
+ok 17 - attack resolver applies advantage and disadvantage
+  ---
+  duration_ms: 1.9859
+  type: 'test'
+  ...
+# Subtest: Guard handles unarmored, light, medium, heavy and shield
+ok 18 - Guard handles unarmored, light, medium, heavy and shield
+  ---
+  duration_ms: 1.0183
+  type: 'test'
+  ...
+# Subtest: miss consumes Action; duplicate is unchanged; invalid commands never mutate inputs
+ok 19 - miss consumes Action; duplicate is unchanged; invalid commands never mutate inputs
+  ---
+  duration_ms: 4.7059
+  type: 'test'
+  ...
+# Subtest: turns refresh Action; pause/resume; defeated opponent ends fixture; zero clamp
+ok 20 - turns refresh Action; pause/resume; defeated opponent ends fixture; zero clamp
+  ---
+  duration_ms: 5.0801
+  type: 'test'
+  ...
+# Subtest: service persists, reloads through fresh service, rejects ownership and handles concurrent duplicates/stale writes
+ok 21 - service persists, reloads through fresh service, rejects ownership and handles concurrent duplicates/stale writes
+  ---
+  duration_ms: 5.0769
+  type: 'test'
+  ...
+# Subtest: authenticated HTTP workflow creates, attacks, reloads and rejects forged requests
+ok 22 - authenticated HTTP workflow creates, attacks, reloads and rejects forged requests
+  ---
+  duration_ms: 144.6228
+  type: 'test'
+  ...
+# Subtest: competing commands use compare-and-set; a failed command preserves storage
+ok 23 - competing commands use compare-and-set; a failed command preserves storage
+  ---
+  duration_ms: 4.1969
+  type: 'test'
+  ...
+# Subtest: catalog contains every SRD table weapon and original cutlass, with unique immutable definitions
+ok 24 - catalog contains every SRD table weapon and original cutlass, with unique immutable definitions
+  ---
+  duration_ms: 13.3034
+  type: 'test'
+  ...
+# Subtest: armor and shields exactly cover SRD Guard, requirements, weight, prices and timing
+ok 25 - armor and shields exactly cover SRD Guard, requirements, weight, prices and timing
+  ---
+  duration_ms: 0.9632
+  type: 'test'
+  ...
+# Subtest: inventory instances, forbidden mechanics, quantity and loadout validation
+ok 26 - inventory instances, forbidden mechanics, quantity and loadout validation
+  ---
+  duration_ms: 16.4427
+  type: 'test'
+  ...
+# Subtest: Calling weapon/armor Training is explicit and never duplicated or granted by skills
+ok 27 - Calling weapon/armor Training is explicit and never duplicated or granted by skills
+  ---
+  duration_ms: 51.3469
+  type: 'test'
+  ...
+# Subtest: equipped armor and shield determine Guard, untrained consequences and negative Agility
+ok 28 - equipped armor and shield determine Guard, untrained consequences and negative Agility
+  ---
+  duration_ms: 67.0277
+  type: 'test'
+  ...
+# Subtest: finesse permits lower Might/Agility selection, ordinary melee uses Might and unsupported attacks fail
+ok 29 - finesse permits lower Might/Agility selection, ordinary melee uses Might and unsupported attacks fail
+  ---
+  duration_ms: 4.6206
+  type: 'test'
+  ...
+# Subtest: snapshot uses owned weapon option, armor restrictions, frozen mechanics, revisions and duplicate protection
+ok 30 - snapshot uses owned weapon option, armor restrictions, frozen mechanics, revisions and duplicate protection
+  ---
+  duration_ms: 40.296
+  type: 'test'
+  ...
+# Subtest: equipment operations issue server IDs, preserve immutable definitions, and enforce revisions
+ok 31 - equipment operations issue server IDs, preserve immutable definitions, and enforce revisions
+  ---
+  duration_ms: 19.2416
+  type: 'test'
+  ...
+# Subtest: Corsair: every starting package has persistent inventory and valid item definitions
+ok 32 - Corsair: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 304.0845
+  type: 'test'
+  ...
+# Subtest: Gunslinger: every starting package has persistent inventory and valid item definitions
+ok 33 - Gunslinger: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 564.0222
+  type: 'test'
+  ...
+# Subtest: Navigator: every starting package has persistent inventory and valid item definitions
+ok 34 - Navigator: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 232.6969
+  type: 'test'
+  ...
+# Subtest: Tidecaller: every starting package has persistent inventory and valid item definitions
+ok 35 - Tidecaller: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 380.3839
+  type: 'test'
+  ...
+# Subtest: Warden: every starting package has persistent inventory and valid item definitions
+ok 36 - Warden: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 244.8851
+  type: 'test'
+  ...
+# Subtest: Reaver: every starting package has persistent inventory and valid item definitions
+ok 37 - Reaver: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 257.8325
+  type: 'test'
+  ...
+# Subtest: Doctor: every starting package has persistent inventory and valid item definitions
+ok 38 - Doctor: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 191.7529
+  type: 'test'
+  ...
+# Subtest: Shipwright: every starting package has persistent inventory and valid item definitions
+ok 39 - Shipwright: every starting package has persistent inventory and valid item definitions
+  ---
+  duration_ms: 187.2564
+  type: 'test'
+  ...
+# Subtest: equipment mutation is owner-scoped and detects concurrent writes
+ok 40 - equipment mutation is owner-scoped and detects concurrent writes
+  ---
+  duration_ms: 182.3002
+  type: 'test'
+  ...
+# Subtest: Heavy melee threshold imposes disadvantage and versatile grip changes critical damage dice
+ok 41 - Heavy melee threshold imposes disadvantage and versatile grip changes critical damage dice
+  ---
+  duration_ms: 23.3189
+  type: 'test'
+  ...
+# Subtest: all SRD ranged/thrown ranges and ammunition types are retained as metadata
+ok 42 - all SRD ranged/thrown ranges and ammunition types are retained as metadata
+  ---
+  duration_ms: 1.2134
+  type: 'test'
+  ...
+# Subtest: Reckless Attack must be chosen on the first attack and survives turn end until the next turn starts
+ok 43 - Reckless Attack must be chosen on the first attack and survives turn end until the next turn starts
+  ---
+  duration_ms: 103.0869
+  type: 'test'
+  ...
+# Subtest: Studied Attacks applies only to the next attack against its target and a new miss renews it
+ok 44 - Studied Attacks applies only to the next attack against its target and a new miss renews it
+  ---
+  duration_ms: 578.4439
+  type: 'test'
+  ...
+# Subtest: Studied Attacks survives into the next turn and expires at that turn end
+ok 45 - Studied Attacks survives into the next turn and expires at that turn end
+  ---
+  duration_ms: 390.524
+  type: 'test'
+  ...
+# Subtest: A recorded attack consumes Steady Aim, ends Hide and rejects duplicate IDs without changing state
+ok 46 - A recorded attack consumes Steady Aim, ends Hide and rejects duplicate IDs without changing state
+  ---
+  duration_ms: 85.0398
+  type: 'test'
+  ...
+# Subtest: off-turn misses grant Studied Attacks through the next owner turn and cannot choose Reckless Attack
+ok 47 - off-turn misses grant Studied Attacks through the next owner turn and cannot choose Reckless Attack
+  ---
+  duration_ms: 439.4068
+  type: 'test'
+  ...
+# Subtest: Bloodwake Frenzy adds scaled critical dice to only the first Might hit while Raging recklessly
+ok 48 - Bloodwake Frenzy adds scaled critical dice to only the first Might hit while Raging recklessly
+  ---
+  duration_ms: 299.3308
+  type: 'test'
+  ...
+# Subtest: audit pages are bounded, stable and contain operation results without character snapshots
+ok 49 - audit pages are bounded, stable and contain operation results without character snapshots
+  ---
+  duration_ms: 10.0704
+  type: 'test'
+  ...
+# Subtest: audit rejects foreign ownership before reading receipts
+ok 50 - audit rejects foreign ownership before reading receipts
+  ---
+  duration_ms: 0.7385
+  type: 'test'
+  ...
+# Subtest: audit rejects invalid cursors, bounds, arrays and unknown query keys
+ok 51 - audit rejects invalid cursors, bounds, arrays and unknown query keys
+  ---
+  duration_ms: 0.9784
+  type: 'test'
+  ...
+# Subtest: registered campaign GM authorizes a milestone; only its owner commits it once and permission updates
+ok 52 - registered campaign GM authorizes a milestone; only its owner commits it once and permission updates
+  ---
+  duration_ms: 194.1934
+  type: 'test'
+  ...
+# Subtest: player checkboxes cannot authorize milestones, issue awards or grant GM Inspiration
+ok 53 - player checkboxes cannot authorize milestones, issue awards or grant GM Inspiration
+  ---
+  duration_ms: 37.3885
+  type: 'test'
+  ...
+# Subtest: GM identity and actual campaign registration are both required
+ok 54 - GM identity and actual campaign registration are both required
+  ---
+  duration_ms: 149.4666
+  type: 'test'
+  ...
+# Subtest: milestone retries return the stored result; changed payload and duplicate level fail without writes
+ok 55 - milestone retries return the stored result; changed payload and duplicate level fail without writes
+  ---
+  duration_ms: 125.5442
+  type: 'test'
+  ...
+# Subtest: authorized catalog and copper awards preserve ownership and cannot forge mechanics
+ok 56 - authorized catalog and copper awards preserve ownership and cannot forge mechanics
+  ---
+  duration_ms: 92.9803
+  type: 'test'
+  ...
+# Subtest: solo owner keeps advancement and GM control while a campaign GM cannot advance someone else directly
+ok 57 - solo owner keeps advancement and GM control while a campaign GM cannot advance someone else directly
+  ---
+  duration_ms: 179.253
+  type: 'test'
+  ...
+# Subtest: GM discovery and owner transcription use distinct roles; receipt retry cannot charge the owner twice
+ok 58 - GM discovery and owner transcription use distinct roles; receipt retry cannot charge the owner twice
+  ---
+  duration_ms: 149.0698
+  type: 'test'
+  ...
+# Subtest: rebuild approval uses the real campaign GM and immutable receipts; GM cannot commit the owner build
+ok 59 - rebuild approval uses the real campaign GM and immutable receipts; GM cannot commit the owner build
+  ---
+  duration_ms: 223.8121
+  type: 'test'
+  ...
+# Subtest: Evasion applies before Resistance, succeeds for zero, fails for half and disables while Incapacitated
+ok 60 - Evasion applies before Resistance, succeeds for zero, fails for half and disables while Incapacitated
+  ---
+  duration_ms: 166.4031
+  type: 'test'
+  ...
+# Subtest: ordinary Agility half-damage saves are not given Evasion before level seven
+ok 61 - ordinary Agility half-damage saves are not given Evasion before level seven
+  ---
+  duration_ms: 162.7873
+  type: 'test'
+  ...
+# Subtest: Danger Sense and Elusive reflect Incapacitation, while Feral Senses projects its thirty-foot Blindsight
+ok 62 - Danger Sense and Elusive reflect Incapacitation, while Feral Senses projects its thirty-foot Blindsight
+  ---
+  duration_ms: 816.9567
+  type: 'test'
+  ...
+# Subtest: Reliable Talent affects actual trained tool checks, and Indomitable Might floors real Might checks
+ok 63 - Reliable Talent affects actual trained tool checks, and Indomitable Might floors real Might checks
+  ---
+  duration_ms: 1304.1168
+  type: 'test'
+  ...
+# Subtest: Precise Hunter uses only the actual live marked targets
+ok 64 - Precise Hunter uses only the actual live marked targets
+  ---
+  duration_ms: 528.4927
+  type: 'test'
+  ...
+# Subtest: Deadeye Survivor revives on an eighteen death save and Heroic Rally heals only a living Bloodied owner turn
+ok 65 - Deadeye Survivor revives on an eighteen death save and Heroic Rally heals only a living Bloodied owner turn
+  ---
+  duration_ms: 431.8142
+  type: 'test'
+  ...
+# Subtest: Restoring Touch spends five Lay On Hands per eligible condition and never refunds absent sources as healing
+ok 66 - Restoring Touch spends five Lay On Hands per eligible condition and never refunds absent sources as healing
+  ---
+  duration_ms: 307.7743
+  type: 'test'
+  ...
+# Subtest: Mindless Rage ends existing Charmed/Frightened and rejects those conditions while Rage remains active
+ok 67 - Mindless Rage ends existing Charmed/Frightened and rejects those conditions while Rage remains active
+  ---
+  duration_ms: 80.2123
+  type: 'test'
+  ...
+# Subtest: Sanctuary Supreme Healing maximizes Divine Spark healing dice at seventeen
+ok 68 - Sanctuary Supreme Healing maximizes Divine Spark healing dice at seventeen
+  ---
+  duration_ms: 317.161
+  type: 'test'
+  ...
+# Subtest: campaign creation and opening are membership scoped, with private invite codes and an atomic capacity check
+ok 69 - campaign creation and opening are membership scoped, with private invite codes and an atomic capacity check
+  ---
+  duration_ms: 78.2562
+  type: 'test'
+  ...
+# Subtest: registration rolls back a rejected roster write and drops solo approval while retaining the character owner
+ok 70 - registration rolls back a rejected roster write and drops solo approval while retaining the character owner
+  ---
+  duration_ms: 70.2116
+  type: 'test'
+  ...
+# Subtest: Borrowed Voice is a free own-turn single link and does not displace Concentration
+ok 71 - Borrowed Voice is a free own-turn single link and does not displace Concentration
+  ---
+  duration_ms: 115.6967
+  type: 'test'
+  ...
+# Subtest: Echo save adds one d6 to only a failed Spirit or Instinct save before consequences
+ok 72 - Echo save adds one d6 to only a failed Spirit or Instinct save before consequences
+  ---
+  duration_ms: 85.046
+  type: 'test'
+  ...
+# Subtest: Recalled Pattern validates the source Enchantment casting and never changes the save
+ok 73 - Recalled Pattern validates the source Enchantment casting and never changes the save
+  ---
+  duration_ms: 144.8109
+  type: 'test'
+  ...
+# Subtest: Shared Recollection replaces Concentration, lasts an hour and caps all participants at Training
+ok 74 - Shared Recollection replaces Concentration, lasts an hour and caps all participants at Training
+  ---
+  duration_ms: 303.2591
+  type: 'test'
+  ...
+# Subtest: Recalled Pattern rejects a saved Enchantment with no saving throw without changing state
+ok 75 - Recalled Pattern rejects a saved Enchantment with no saving throw without changing state
+  ---
+  duration_ms: 502.9929
+  type: 'test'
+  ...
+# Subtest: Unwritten Self changes an unresolved eligible save and ends exactly one real source
+ok 76 - Unwritten Self changes an unresolved eligible save and ends exactly one real source
+  ---
+  duration_ms: 434.3062
+  type: 'test'
+  ...
+# Subtest: Storm Pulse validates the latest same-turn levelled casting and carries an ally only at fourteen
+ok 77 - Storm Pulse validates the latest same-turn levelled casting and carries an ally only at fourteen
+  ---
+  duration_ms: 359.5754
+  type: 'test'
+  ...
+# Subtest: Conductive conversion applies only to the next Tidecaller spell and expires at owner-turn end
+ok 78 - Conductive conversion applies only to the next Tidecaller spell and expires at owner-turn end
+  ---
+  duration_ms: 149.6055
+  type: 'test'
+  ...
+# Subtest: Conductive conversion is forfeited when the next spell already deals only the selected storm type
+ok 79 - Conductive conversion is forfeited when the next spell already deals only the selected storm type
+  ---
+  duration_ms: 121.8645
+  type: 'test'
+  ...
+# Subtest: Conductive damage bonus applies to one matching spell roll once per damage turn
+ok 80 - Conductive damage bonus applies to one matching spell roll once per damage turn
+  ---
+  duration_ms: 107.1418
+  type: 'test'
+  ...
+# Subtest: Living Tempest grants real immunity and opposite Resistance for one minute
+ok 81 - Living Tempest grants real immunity and opposite Resistance for one minute
+  ---
+  duration_ms: 378.5633
+  type: 'test'
+  ...
+# Subtest: Somatic-only spells need a free hand even when holding an arcane staff and shield
+ok 82 - Somatic-only spells need a free hand even when holding an arcane staff and shield
+  ---
+  duration_ms: 36.5823
+  type: 'test'
+  ...
+# Subtest: a held focus performs S and unpriced M together; a narrative imitation or wrong-class focus cannot
+ok 83 - a held focus performs S and unpriced M together; a narrative imitation or wrong-class focus cannot
+  ---
+  duration_ms: 29.4844
+  type: 'test'
+  ...
+# Subtest: Subtle removes hand components but actual priced materials still need handling and inventory
+ok 84 - Subtle removes hand components but actual priced materials still need handling and inventory
+  ---
+  duration_ms: 30.8651
+  type: 'test'
+  ...
+# Subtest: two-hand grip occupies both hands while merely carrying a staff in one hand leaves the other available
+ok 85 - two-hand grip occupies both hands while merely carrying a staff in one hand leaves the other available
+  ---
+  duration_ms: 37.0461
+  type: 'test'
+  ...
+# Subtest: Spell Recall matches each slot level on a d4 without creating slots or consuming created-slot accounting
+ok 86 - Spell Recall matches each slot level on a d4 without creating slots or consuming created-slot accounting
+  ---
+  duration_ms: 0.5408
+  type: 'test'
+  ...
+# Subtest: Spell Recall does not apply without its feat, to level-five slots, or to an unavailable slot
+ok 87 - Spell Recall does not apply without its feat, to level-five slots, or to an unavailable slot
+  ---
+  duration_ms: 0.264
+  type: 'test'
+  ...
+# Subtest: Measured Charge at 3 has 2d6, exact DC and one Charge cost
+ok 88 - Measured Charge at 3 has 2d6, exact DC and one Charge cost
+  ---
+  duration_ms: 68.7297
+  type: 'test'
+  ...
+# Subtest: Measured Charge at 7 has 3d6, exact DC and one Charge cost
+ok 89 - Measured Charge at 7 has 3d6, exact DC and one Charge cost
+  ---
+  duration_ms: 123.5718
+  type: 'test'
+  ...
+# Subtest: Measured Charge at 10 has 3d6, exact DC and one Charge cost
+ok 90 - Measured Charge at 10 has 3d6, exact DC and one Charge cost
+  ---
+  duration_ms: 163.6705
+  type: 'test'
+  ...
+# Subtest: Measured Charge at 15 has 5d6, exact DC and one Charge cost
+ok 91 - Measured Charge at 15 has 5d6, exact DC and one Charge cost
+  ---
+  duration_ms: 275.2786
+  type: 'test'
+  ...
+# Subtest: Measured Charge at 20 has 5d6, exact DC and one Charge cost
+ok 92 - Measured Charge at 20 has 5d6, exact DC and one Charge cost
+  ---
+  duration_ms: 361.1561
+  type: 'test'
+  ...
+# Subtest: charges reject missing smith tools, occupied hands and invalid placement without changing state
+ok 93 - charges reject missing smith tools, occupied hands and invalid placement without changing state
+  ---
+  duration_ms: 159.7147
+  type: 'test'
+  ...
+# Subtest: Grand Battery pays both pools, rolls two 6d6 areas and affects an overlapping creature only once
+ok 94 - Grand Battery pays both pools, rolls two 6d6 areas and affects an overlapping creature only once
+  ---
+  duration_ms: 386.7334
+  type: 'test'
+  ...
+# Subtest: Shaped Detonation and Safe Handling enforce limits, target membership and independent save behavior
+ok 95 - Shaped Detonation and Safe Handling enforce limits, target membership and independent save behavior
+  ---
+  duration_ms: 264.0243
+  type: 'test'
+  ...
+# Subtest: Safe Handling always grants its owner save advantage without spending an ally selection
+ok 96 - Safe Handling always grants its owner save advantage without spending an ally selection
+  ---
+  duration_ms: 92.5673
+  type: 'test'
+  ...
+# Subtest: Breach doubles only unattended-object damage and gains resistance bypass at fifteen
+ok 97 - Breach doubles only unattended-object damage and gains resistance bypass at fifteen
+  ---
+  duration_ms: 336.4156
+  type: 'test'
+  ...
+# Subtest: Smoke records obscurement and upgraded duration without poisoning or recurrent damage
+ok 98 - Smoke records obscurement and upgraded duration without poisoning or recurrent damage
+  ---
+  duration_ms: 487.6497
+  type: 'test'
+  ...
+# Subtest: charge recovery restores Charges on Short Rest but the battery only on Long Rest
+ok 99 - charge recovery restores Charges on Short Rest but the battery only on Long Rest
+  ---
+  duration_ms: 350.9511
+  type: 'test'
+  ...
+# Subtest: transactional command receipts replay prior result, reject changed body and isolate ownership
+ok 100 - transactional command receipts replay prior result, reject changed body and isolate ownership
+  ---
+  duration_ms: 106.8202
+  type: 'test'
+  ...
+# Subtest: failed transactions do not save a character mutation or operation receipt
+ok 101 - failed transactions do not save a character mutation or operation receipt
+  ---
+  duration_ms: 37.1491
+  type: 'test'
+  ...
+# Subtest: manual resource expenditure uses receipts and cannot bypass revision conflicts or invoke an untyped recovery
+ok 102 - manual resource expenditure uses receipts and cannot bypass revision conflicts or invoke an untyped recovery
+  ---
+  duration_ms: 79.3786
+  type: 'test'
+  ...
+# Subtest: manual Initiative recovery requires a recorded Initiative and resolves only once per combat
+ok 103 - manual Initiative recovery requires a recorded Initiative and resolves only once per combat
+  ---
+  duration_ms: 267.7455
+  type: 'test'
+  ...
+# Subtest: rest start/completion persists its choices, enforces duration and the 24-hour Long Rest restriction
+ok 104 - rest start/completion persists its choices, enforces duration and the 24-hour Long Rest restriction
+  ---
+  duration_ms: 115.4626
+  type: 'test'
+  ...
+# Subtest: Triage uses scaled healing, exact kit charges and a persisted target rest lock
+ok 105 - Triage uses scaled healing, exact kit charges and a persisted target rest lock
+  ---
+  duration_ms: 124.071
+  type: 'test'
+  ...
+# Subtest: Triage finds a charged catalog kit and ignores a misleading custom name
+ok 106 - Triage finds a charged catalog kit and ignores a misleading custom name
+  ---
+  duration_ms: 130.7632
+  type: 'test'
+  ...
+# Subtest: barriers persist scaled object statistics and replace previous barriers
+ok 107 - barriers persist scaled object statistics and replace previous barriers
+  ---
+  duration_ms: 202.5884
+  type: 'test'
+  ...
+# Subtest: Second Wind heals from the server roll and does not mutate the input character
+ok 108 - Second Wind heals from the server roll and does not mutate the input character
+  ---
+  duration_ms: 71.0672
+  type: 'test'
+  ...
+# Subtest: firearm package and Powder Drill alter shot capacity without adding attacks or ignoring ammunition
+ok 109 - firearm package and Powder Drill alter shot capacity without adding attacks or ignoring ammunition
+  ---
+  duration_ms: 100.1253
+  type: 'test'
+  ...
+# Subtest: Blood Price 3 pays raw Health and grants 1d8 Shelter to one chosen target
+ok 110 - Blood Price 3 pays raw Health and grants 1d8 Shelter to one chosen target
+  ---
+  duration_ms: 71.5673
+  type: 'test'
+  ...
+# Subtest: Blood Price 6 pays raw Health and grants 2d8 Shelter to one chosen target
+ok 111 - Blood Price 6 pays raw Health and grants 2d8 Shelter to one chosen target
+  ---
+  duration_ms: 119.8819
+  type: 'test'
+  ...
+# Subtest: Blood Price 18 pays raw Health and grants 3d8 Shelter to one chosen target
+ok 112 - Blood Price 18 pays raw Health and grants 3d8 Shelter to one chosen target
+  ---
+  duration_ms: 448.848
+  type: 'test'
+  ...
+# Subtest: Blood Price rejects missing/multiple targets and Health that would fall below one atomically
+ok 113 - Blood Price rejects missing/multiple targets and Health that would fall below one atomically
+  ---
+  duration_ms: 89.9581
+  type: 'test'
+  ...
+# Subtest: self Shelter grants one pool with source metadata and never replaces a larger pool
+ok 114 - self Shelter grants one pool with source metadata and never replaces a larger pool
+  ---
+  duration_ms: 96.6324
+  type: 'test'
+  ...
+# Subtest: Measured Sacrifice pays six raw Health, restores at most two points and does not heal
+ok 115 - Measured Sacrifice pays six raw Health, restores at most two points and does not heal
+  ---
+  duration_ms: 60.6096
+  type: 'test'
+  ...
+# Subtest: Surge is attached once to the next damaging spell and failed casts cannot consume it
+ok 116 - Surge is attached once to the next damaging spell and failed casts cannot consume it
+  ---
+  duration_ms: 160.0363
+  type: 'test'
+  ...
+# Subtest: Surge is forfeited by a nondamaging spell and expires at the next owner turn
+ok 117 - Surge is forfeited by a nondamaging spell and expires at the next owner turn
+  ---
+  duration_ms: 281.1121
+  type: 'test'
+  ...
+# Subtest: Vital Circuit needs a real Blood Price grant, another recipient and an unused event/turn
+ok 118 - Vital Circuit needs a real Blood Price grant, another recipient and an unused event/turn
+  ---
+  duration_ms: 399.2199
+  type: 'test'
+  ...
+# Subtest: native Vital Circuit cannot accept client-authored evidence and rejects secondary/expiry events
+ok 119 - native Vital Circuit cannot accept client-authored evidence and rejects secondary/expiry events
+  ---
+  duration_ms: 555.7874
+  type: 'test'
+  ...
+# Subtest: Vital Circuit journal and outstanding grants survive Long Rest and advancement reconciliation
+ok 120 - Vital Circuit journal and outstanding grants survive Long Rest and advancement reconciliation
+  ---
+  duration_ms: 601.2917
+  type: 'test'
+  ...
+# Subtest: damage records a Blood Price loss only when damage actually reduces that pool
+ok 121 - damage records a Blood Price loss only when damage actually reduces that pool
+  ---
+  duration_ms: 418.7287
+  type: 'test'
+  ...
+# Subtest: Unbroken Current resolves before Unconscious, preserves Concentration pending its damage save and spends once
+ok 122 - Unbroken Current resolves before Unconscious, preserves Concentration pending its damage save and spends once
+  ---
+  duration_ms: 452.0616
+  type: 'test'
+  ...
+# Subtest: Unbroken Current cannot bypass massive death, an existing incapacitation or its level requirement
+ok 123 - Unbroken Current cannot bypass massive death, an existing incapacitation or its level requirement
+  ---
+  duration_ms: 1137.7829
+  type: 'test'
+  ...
+# Subtest: native Shelter, damage evidence and Circuit update recipients atomically and receipts replay without duplicate grants
+ok 124 - native Shelter, damage evidence and Circuit update recipients atomically and receipts replay without duplicate grants
+  ---
+  duration_ms: 693.8431
+  type: 'test'
+  ...
+# Subtest: external Blood Price grants remain usable from receipts after the recent-state cache rotates
+ok 125 - external Blood Price grants remain usable from receipts after the recent-state cache rotates
+  ---
+  duration_ms: 417.1081
+  type: 'test'
+  ...
+# Subtest: native Circuit rejects absent damage evidence and unauthorized recipient with no partial writes
+ok 126 - native Circuit rejects absent damage evidence and unauthorized recipient with no partial writes
+  ---
+  duration_ms: 553.81
+  type: 'test'
+  ...
+# Subtest: Indomitable rolls a new save, adds Calling level and persists exactly one spend for a failed test
+ok 127 - Indomitable rolls a new save, adds Calling level and persists exactly one spend for a failed test
+  ---
+  duration_ms: 243.2759
+  type: 'test'
+  ...
+# Subtest: Stroke of Luck turns the original die into twenty without changing its modifiers
+ok 128 - Stroke of Luck turns the original die into twenty without changing its modifiers
+  ---
+  duration_ms: 173.3146
+  type: 'test'
+  ...
+# Subtest: Uncanny Dodge halves attack damage before Resistance and needs confirmed visible attacker evidence
+ok 129 - Uncanny Dodge halves attack damage before Resistance and needs confirmed visible attacker evidence
+  ---
+  duration_ms: 57.8863
+  type: 'test'
+  ...
+# Subtest: Divine Spark damage scales at eighteen, chooses its type and records exact half-on-save damage
+ok 130 - Divine Spark damage scales at eighteen, chooses its type and records exact half-on-save damage
+  ---
+  duration_ms: 199.3285
+  type: 'test'
+  ...
+# Subtest: Turn Undead includes optional Sear damage and ends when its caster becomes Incapacitated
+ok 131 - Turn Undead includes optional Sear damage and ends when its caster becomes Incapacitated
+  ---
+  duration_ms: 72.0444
+  type: 'test'
+  ...
+# Subtest: Abjure Foes limits visible targets to Spirit and records one-choice turn restriction
+ok 132 - Abjure Foes limits visible targets to Spirit and records one-choice turn restriction
+  ---
+  duration_ms: 133.5449
+  type: 'test'
+  ...
+# Subtest: Take the Burden bypasses owner Resistance but uses temporary Health and triggers Concentration checks
+ok 133 - Take the Burden bypasses owner Resistance but uses temporary Health and triggers Concentration checks
+  ---
+  duration_ms: 234.0504
+  type: 'test'
+  ...
+# Subtest: Envoy commands scale range, require other allies and save a single reaction grant per target
+ok 134 - Envoy commands scale range, require other allies and save a single reaction grant per target
+  ---
+  duration_ms: 404.9122
+  type: 'test'
+  ...
+# Subtest: Crew Before Crown permits only the two printed conditions and grants Advantage on the original save
+ok 135 - Crew Before Crown permits only the two printed conditions and grants Advantage on the original save
+  ---
+  duration_ms: 106.1247
+  type: 'test'
+  ...
+# Subtest: All Hands spends two uses, caps three distinct allies and cannot duplicate a command
+ok 136 - All Hands spends two uses, caps three distinct allies and cannot duplicate a command
+  ---
+  duration_ms: 266.0992
+  type: 'test'
+  ...
+# Subtest: Binding Parley saves conditional charm, immunity, harm termination, repeat saves and exact duration
+ok 137 - Binding Parley saves conditional charm, immunity, harm termination, repeat saves and exact duration
+  ---
+  duration_ms: 96.0588
+  type: 'test'
+  ...
+# Subtest: Envoy rejects missing confirmation, command turns and event IDs without spending resources
+ok 138 - Envoy rejects missing confirmation, command turns and event IDs without spending resources
+  ---
+  duration_ms: 61.8275
+  type: 'test'
+  ...
+# Subtest: Read the Wake tracks only its chosen target and expires at the end of the next owner turn
+ok 139 - Read the Wake tracks only its chosen target and expires at the end of the next owner turn
+  ---
+  duration_ms: 62.3407
+  type: 'test'
+  ...
+# Subtest: Unmask the False grants a ten-minute conditional advantage; Bonus Action Search is free
+ok 140 - Unmask the False grants a ten-minute conditional advantage; Bonus Action Search is free
+  ---
+  duration_ms: 90.2145
+  type: 'test'
+  ...
+# Subtest: Lantern in the Fog suppresses unseen Advantage only for the marked target without revealing its later location
+ok 141 - Lantern in the Fog suppresses unseen Advantage only for the marked target without revealing its later location
+  ---
+  duration_ms: 161.5078
+  type: 'test'
+  ...
+# Subtest: Last Tell rerolls up to three actual saved Sneak Attack dice only when its target was studied
+ok 142 - Last Tell rerolls up to three actual saved Sneak Attack dice only when its target was studied
+  ---
+  duration_ms: 231.6831
+  type: 'test'
+  ...
+# Subtest: Last Tell rejects unstudied targets or unavailable dice without consuming its use
+ok 143 - Last Tell rejects unstudied targets or unavailable dice without consuming its use
+  ---
+  duration_ms: 166.6294
+  type: 'test'
+  ...
+# Subtest: Open Challenge computes one-attack Guard and only enables one Answer in Steel when it caused the miss
+ok 144 - Open Challenge computes one-attack Guard and only enables one Answer in Steel when it caused the miss
+  ---
+  duration_ms: 207.6208
+  type: 'test'
+  ...
+# Subtest: an attack already missing or still hitting after Open Challenge cannot enable Answer in Steel
+ok 145 - an attack already missing or still hitting after Open Challenge cannot enable Answer in Steel
+  ---
+  duration_ms: 368.0073
+  type: 'test'
+  ...
+# Subtest: Open Challenge cannot make a natural twenty miss or claim to have caused a natural-one miss
+ok 146 - Open Challenge cannot make a natural twenty miss or claim to have caused a natural-one miss
+  ---
+  duration_ms: 407.3176
+  type: 'test'
+  ...
+# Subtest: Saltglass Footwork requires the held signature weapon; Perfect Measure grants a noncritical hit and spends its use
+ok 147 - Saltglass Footwork requires the held signature weapon; Perfect Measure grants a noncritical hit and spends its use
+  ---
+  duration_ms: 279.6459
+  type: 'test'
+  ...
+# Subtest: Bulwark binds one held Shield, spends Channel Divinity and adds exactly one Guard for one minute
+ok 148 - Bulwark binds one held Shield, spends Channel Divinity and adds exactly one Guard for one minute
+  ---
+  duration_ms: 67.195
+  type: 'test'
+  ...
+# Subtest: Covenant rejects carried-only Shields and nonshield instances without spending
+ok 149 - Covenant rejects carried-only Shields and nonshield instances without spending
+  ---
+  duration_ms: 61.539
+  type: 'test'
+  ...
+# Subtest: releasing a Shield permanently ends Steel through both command and existing equipment paths
+ok 150 - releasing a Shield permanently ends Steel through both command and existing equipment paths
+  ---
+  duration_ms: 97.4544
+  type: 'test'
+  ...
+# Subtest: preset release and timed expiry both remove the Bulwark bonus
+ok 151 - preset release and timed expiry both remove the Bulwark bonus
+  ---
+  duration_ms: 152.1248
+  type: 'test'
+  ...
+# Subtest: Sentinel records one declared attack against another ally without an extra paid Shield use
+ok 152 - Sentinel records one declared attack against another ally without an extra paid Shield use
+  ---
+  duration_ms: 83.7397
+  type: 'test'
+  ...
+# Subtest: Sentinel requires live Steel on the held Shield
+ok 153 - Sentinel requires live Steel on the held Shield
+  ---
+  duration_ms: 94.3945
+  type: 'test'
+  ...
+# Subtest: Aura of Resolve has the correct radius and turns off on Incapacitation
+ok 154 - Aura of Resolve has the correct radius and turns off on Incapacitation
+  ---
+  duration_ms: 272.9977
+  type: 'test'
+  ...
+# Subtest: Standard grants physical Resistance and enemy forced-movement protection for exactly one minute
+ok 155 - Standard grants physical Resistance and enemy forced-movement protection for exactly one minute
+  ---
+  duration_ms: 301.2789
+  type: 'test'
+  ...
+# Subtest: Standard grants max-one-Spirit temporary Health once per ally turn and rejects an inactive aura
+ok 156 - Standard grants max-one-Spirit temporary Health once per ally turn and rejects an inactive aura
+  ---
+  duration_ms: 451.9383
+  type: 'test'
+  ...
+# Subtest: Standard restoration spends exactly a fifth-level slot without activation and cannot be done while Incapacitated
+ok 157 - Standard restoration spends exactly a fifth-level slot without activation and cannot be done while Incapacitated
+  ---
+  duration_ms: 354.6827
+  type: 'test'
+  ...
+# Subtest: creation retry returns the original result after response loss, later changes and character-limit exhaustion
+ok 158 - creation retry returns the original result after response loss, later changes and character-limit exhaustion
+  ---
+  duration_ms: 72.8883
+  type: 'test'
+  ...
+# Subtest: creation request digest ignores object key order but rejects changed choices for the same key
+ok 159 - creation request digest ignores object key order but rejects changed choices for the same key
+  ---
+  duration_ms: 72.9998
+  type: 'test'
+  ...
+# Subtest: concurrent identical creates converge on one character through the unique-key winner
+ok 160 - concurrent identical creates converge on one character through the unique-key winner
+  ---
+  duration_ms: 84.6585
+  type: 'test'
+  ...
+# Subtest: creation operation keys are owner-scoped and malformed keys fail before creation
+ok 161 - creation operation keys are owner-scoped and malformed keys fail before creation
+  ---
+  duration_ms: 85.6024
+  type: 'test'
+  ...
+# Subtest: creation validates all choices before writing a keyed request
+ok 162 - creation validates all choices before writing a keyed request
+  ---
+  duration_ms: 16.2203
+  type: 'test'
+  ...
+# Subtest: creation purchases use both package balances and issue canonical instances without changing the ledger
+ok 163 - creation purchases use both package balances and issue canonical instances without changing the ledger
+  ---
+  duration_ms: 46.4895
+  type: 'test'
+  ...
+# Subtest: unaffordable, forged and magic-item creation purchases fail with their basket field path
+ok 164 - unaffordable, forged and magic-item creation purchases fail with their basket field path
+  ---
+  duration_ms: 65.6579
+  type: 'test'
+  ...
+# Subtest: creation save and preview inventory totals agree and repeated previews never charge a draft
+ok 165 - creation save and preview inventory totals agree and repeated previews never charge a draft
+  ---
+  duration_ms: 74.9218
+  type: 'test'
+  ...
+# Subtest: priced scroll purchases require an exact matching spell and issue usable identified scrolls
+ok 166 - priced scroll purchases require an exact matching spell and issue usable identified scrolls
+  ---
+  duration_ms: 38.2647
+  type: 'test'
+  ...
+# Subtest: Hunter Mark damage uses its current source target, supports critical dice and upgrades to d10 at twenty
+ok 167 - Hunter Mark damage uses its current source target, supports critical dice and upgrades to d10 at twenty
+  ---
+  duration_ms: 494.14
+  type: 'test'
+  ...
+# Subtest: Relentless Hunter prevents damage breaking Mark Concentration at thirteen but not twelve or incapacitation
+ok 168 - Relentless Hunter prevents damage breaking Mark Concentration at thirteen but not twelve or incapacitation
+  ---
+  duration_ms: 451.6653
+  type: 'test'
+  ...
+# Subtest: moving Hunter Mark after a zero-Health target preserves duration, pool and slots and updates the source target
+ok 169 - moving Hunter Mark after a zero-Health target preserves duration, pool and slots and updates the source target
+  ---
+  duration_ms: 86.4498
+  type: 'test'
+  ...
+# Subtest: Radiant Strikes applies to every distinct melee hit and doubles only its own dice on a Critical Hit
+ok 170 - Radiant Strikes applies to every distinct melee hit and doubles only its own dice on a Critical Hit
+  ---
+  duration_ms: 186.8212
+  type: 'test'
+  ...
+# Subtest: Divine Strike is the selected branch, uses two dice at fourteen and is once on the owner turn
+ok 171 - Divine Strike is the selected branch, uses two dice at fourteen and is once on the owner turn
+  ---
+  duration_ms: 162.754
+  type: 'test'
+  ...
+# Subtest: Potent vitality requires its selected cantrip branch and grants exactly twice clinical modifier once per casting
+ok 172 - Potent vitality requires its selected cantrip branch and grants exactly twice clinical modifier once per casting
+  ---
+  duration_ms: 130.5733
+  type: 'test'
+  ...
+# Subtest: Elemental Affinity and Empowered Evocation bind their modifier to one real recorded spell casting
+ok 173 - Elemental Affinity and Empowered Evocation bind their modifier to one real recorded spell casting
+  ---
+  duration_ms: 294.3373
+  type: 'test'
+  ...
+# Subtest: Potent Cantrip halves avoided cantrip damage, adds no other effect and cannot repeat on a target
+ok 174 - Potent Cantrip halves avoided cantrip damage, adds no other effect and cannot repeat on a target
+  ---
+  duration_ms: 44.779
+  type: 'test'
+  ...
+# Subtest: Sculpt Spells protects a visible other target at cast time and rejects self, extra or unlisted targets atomically
+ok 175 - Sculpt Spells protects a visible other target at cast time and rejects self, extra or unlisted targets atomically
+  ---
+  duration_ms: 94.2829
+  type: 'test'
+  ...
+# Subtest: Battlefield Procedure applies the chosen discipline to a native Triage recipient
+ok 176 - Battlefield Procedure applies the chosen discipline to a native Triage recipient
+  ---
+  duration_ms: 281.4397
+  type: 'test'
+  ...
+# Subtest: a carried healer kit stabilizes a native zero-Health ally atomically and spends only one charge
+ok 177 - a carried healer kit stabilizes a native zero-Health ally atomically and spends only one charge
+  ---
+  duration_ms: 89.3456
+  type: 'test'
+  ...
+# Subtest: administering a potion to a dead native ally rolls inventory consumption back
+ok 178 - administering a potion to a dead native ally rolls inventory consumption back
+  ---
+  duration_ms: 84.7392
+  type: 'test'
+  ...
+# Subtest: recorded Cure Wounds heals a native recipient and Blessed Healer atomically, with an exact receipt retry
+ok 179 - recorded Cure Wounds heals a native recipient and Blessed Healer atomically, with an exact receipt retry
+  ---
+  duration_ms: 171.5475
+  type: 'test'
+  ...
+# Subtest: a dead native healing target rolls back the entire resolution and its Blessed Healer grant
+ok 180 - a dead native healing target rolls back the entire resolution and its Blessed Healer grant
+  ---
+  duration_ms: 107.7098
+  type: 'test'
+  ...
+# Subtest: Preserve Life allocates its finite budget to a native Bloodied ally and caps healing at half maximum
+ok 181 - Preserve Life allocates its finite budget to a native Bloodied ally and caps healing at half maximum
+  ---
+  duration_ms: 83.9033
+  type: 'test'
+  ...
+# Subtest: Preserve Life rejects non-Bloodied native recipients and over-allocation without spending Channel Divinity
+ok 182 - Preserve Life rejects non-Bloodied native recipients and over-allocation without spending Channel Divinity
+  ---
+  duration_ms: 107.2263
+  type: 'test'
+  ...
+# Subtest: Unyielding Standard grants native ally temporary Health atomically and receipt replay does not repeat it
+ok 183 - Unyielding Standard grants native ally temporary Health atomically and receipt replay does not repeat it
+  ---
+  duration_ms: 447.1818
+  type: 'test'
+  ...
+# Subtest: Alert swaps both native Initiative totals atomically and retries reproduce the same saved result
+ok 184 - Alert swaps both native Initiative totals atomically and retries reproduce the same saved result
+  ---
+  duration_ms: 81.7064
+  type: 'test'
+  ...
+# Subtest: Alert rejects forged ally Initiative or an Incapacitated native ally without partial changes
+ok 185 - Alert rejects forged ally Initiative or an Incapacitated native ally without partial changes
+  ---
+  duration_ms: 56.9875
+  type: 'test'
+  ...
+# Subtest: Field Responder stabilizes a native zero-Health ally and rolls kit expenditure back for an invalid target
+ok 186 - Field Responder stabilizes a native zero-Health ally and rolls kit expenditure back for an invalid target
+  ---
+  duration_ms: 84.0859
+  type: 'test'
+  ...
+# Subtest: Keeper stabilization and comfort temporary Health update one recipient atomically and replay without rerolling
+ok 187 - Keeper stabilization and comfort temporary Health update one recipient atomically and replay without rerolling
+  ---
+  duration_ms: 68.9362
+  type: 'test'
+  ...
+# Subtest: Witness Against Oblivion heals exactly twice level and rolls back when its target is not at zero
+ok 188 - Witness Against Oblivion heals exactly twice level and rolls back when its target is not at zero
+  ---
+  duration_ms: 131.4888
+  type: 'test'
+  ...
+# Subtest: One More Dawn prevents failed-save death but rejects massive damage without spending its counter
+ok 189 - One More Dawn prevents failed-save death but rejects massive damage without spending its counter
+  ---
+  duration_ms: 246.634
+  type: 'test'
+  ...
+# Subtest: Impossible Operation validates death, consent and all three costs in the same transaction
+ok 190 - Impossible Operation validates death, consent and all three costs in the same transaction
+  ---
+  duration_ms: 293.6688
+  type: 'test'
+  ...
+# Subtest: Plaguewarden ends actual condition records; Clean Bill spends one kit charge and cures its three conditions
+ok 191 - Plaguewarden ends actual condition records; Clean Bill spends one kit charge and cures its three conditions
+  ---
+  duration_ms: 291.8049
+  type: 'test'
+  ...
+# Subtest: Inoculated grants one actually healed native recipient a source-bound next Poisoned save and retry is idempotent
+ok 192 - Inoculated grants one actually healed native recipient a source-bound next Poisoned save and retry is idempotent
+  ---
+  duration_ms: 116.7103
+  type: 'test'
+  ...
+# Subtest: character validation errors expose a stable status, code and field path while unrelated error behavior stays unchanged
+ok 193 - character validation errors expose a stable status, code and field path while unrelated error behavior stays unchanged
+  ---
+  duration_ms: 0.7134
+  type: 'test'
+  ...
+# Subtest: stale commands report the authoritative revision and mismatch versions identify their exact field
+ok 194 - stale commands report the authoritative revision and mismatch versions identify their exact field
+  ---
+  duration_ms: 25.3721
+  type: 'test'
+  ...
+# Subtest: unexpected failures do not expose internal exception text
+ok 195 - unexpected failures do not expose internal exception text
+  ---
+  duration_ms: 0.2288
+  type: 'test'
+  ...
+# Subtest: Inspiration is Boolean, nonstacking, spends once and saves a replacement die
+ok 196 - Inspiration is Boolean, nonstacking, spends once and saves a replacement die
+  ---
+  duration_ms: 65.2339
+  type: 'test'
+  ...
+# Subtest: Deadeye Heroic Warrior refreshes Inspiration at each combat turn start but does not bank extra uses
+ok 197 - Deadeye Heroic Warrior refreshes Inspiration at each combat turn start but does not bank extra uses
+  ---
+  duration_ms: 238.8997
+  type: 'test'
+  ...
+# Subtest: Savage Attacker rolls weapon dice twice, excludes riders and rejects repeated use on a labelled turn
+ok 198 - Savage Attacker rolls weapon dice twice, excludes riders and rejects repeated use on a labelled turn
+  ---
+  duration_ms: 58.9281
+  type: 'test'
+  ...
+# Subtest: Alert swaps recorded Initiative only once for a confirmed willing ally; unknown feats fail atomically
+ok 199 - Alert swaps recorded Initiative only once for a confirmed willing ally; unknown feats fail atomically
+  ---
+  duration_ms: 55.3991
+  type: 'test'
+  ...
+# Subtest: Peerless Aim causes a hit rather than a natural twenty and refreshes only at next owner turn
+ok 200 - Peerless Aim causes a hit rather than a natural twenty and refreshes only at next owner turn
+  ---
+  duration_ms: 247.4733
+  type: 'test'
+  ...
+# Subtest: Improve Fate saves its signed 2d4 and recovers on Initiative or either rest
+ok 201 - Improve Fate saves its signed 2d4 and recovers on Initiative or either rest
+  ---
+  duration_ms: 345.6987
+  type: 'test'
+  ...
+# Subtest: Night Spirit projects only its allowed resistances in darkness and ends invisibility on action or bright light
+ok 202 - Night Spirit projects only its allowed resistances in darkness and ends invisibility on action or bright light
+  ---
+  duration_ms: 330.8976
+  type: 'test'
+  ...
+# Subtest: Dimensional Travel enforces immediate action provenance and a thirty-foot visible destination
+ok 203 - Dimensional Travel enforces immediate action provenance and a thirty-foot visible destination
+  ---
+  duration_ms: 266.3804
+  type: 'test'
+  ...
+# Subtest: Irresistible Offense uses the attribute increased by its own grant and preserves attack damage type
+ok 204 - Irresistible Offense uses the attribute increased by its own grant and preserves attack damage type
+  ---
+  duration_ms: 170.8586
+  type: 'test'
+  ...
+# Subtest: Field Responder consumes one real kit charge and stabilizes without healing; no kits refill on rest
+ok 205 - Field Responder consumes one real kit charge and stabilizes without healing; no kits refill on rest
+  ---
+  duration_ms: 43.0665
+  type: 'test'
+  ...
+# Subtest: Harbor Defender reduces confirmed attack damage by Training before Resistance
+ok 206 - Harbor Defender reduces confirmed attack damage by Training before Resistance
+  ---
+  duration_ms: 46.3031
+  type: 'test'
+  ...
+# Subtest: Punch and Grab requires own active turn, adds the Grapple choice and enforces one use
+ok 207 - Punch and Grab requires own active turn, adds the Grapple choice and enforces one use
+  ---
+  duration_ms: 70.5739
+  type: 'test'
+  ...
+# Subtest: feat and Inspiration state survive serialize/reload and advancement reconciliation
+ok 208 - feat and Inspiration state survive serialize/reload and advancement reconciliation
+  ---
+  duration_ms: 365.5475
+  type: 'test'
+  ...
+# Subtest: GM discovery, copying, exact copper and elapsed world time are saved once in the normal command result
+ok 209 - GM discovery, copying, exact copper and elapsed world time are saved once in the normal command result
+  ---
+  duration_ms: 50.6531
+  type: 'test'
+  ...
+# Subtest: copying rejects invented sources, insufficient time, overspending and backward clocks atomically
+ok 210 - copying rejects invented sources, insufficient time, overspending and backward clocks atomically
+  ---
+  duration_ms: 74.2774
+  type: 'test'
+  ...
+# Subtest: lost folio preserves prepared casting, blocks unprepared rituals and rebuilds only prepared memories
+ok 211 - lost folio preserves prepared casting, blocks unprepared rituals and rebuilds only prepared memories
+  ---
+  duration_ms: 75.4657
+  type: 'test'
+  ...
+# Subtest: lost unprepared rituals cannot be read from the missing folio
+ok 212 - lost unprepared rituals cannot be read from the missing folio
+  ---
+  duration_ms: 58.7053
+  type: 'test'
+  ...
+# Subtest: Mastery and Signature grants remain memorized after folio loss
+ok 213 - Mastery and Signature grants remain memorized after folio loss
+  ---
+  duration_ms: 365.4855
+  type: 'test'
+  ...
+# Subtest: all seven packs unpack exact components, retain per-unit quantities and never create an extra phantom pack
+ok 214 - all seven packs unpack exact components, retain per-unit quantities and never create an extra phantom pack
+  ---
+  duration_ms: 5.0283
+  type: 'test'
+  ...
+# Subtest: pack purchases charge once at pack price, expand multiple copies and reject overspending atomically
+ok 215 - pack purchases charge once at pack price, expand multiple copies and reject overspending atomically
+  ---
+  duration_ms: 36.0193
+  type: 'test'
+  ...
+# Subtest: every Calling starting package grants functional catalog pack contents and Shipwright gets a real arcane staff
+ok 216 - every Calling starting package grants functional catalog pack contents and Shipwright gets a real arcane staff
+  ---
+  duration_ms: 79.5686
+  type: 'test'
+  ...
+# Subtest: background gear is canonical where defined and instrument selection grants the selected instrument
+ok 217 - background gear is canonical where defined and instrument selection grants the selected instrument
+  ---
+  duration_ms: 4.723
+  type: 'test'
+  ...
+# Subtest: carried weight divides ammunition purchase weights across rounds and includes expanded pack contents
+ok 218 - carried weight divides ammunition purchase weights across rounds and includes expanded pack contents
+  ---
+  duration_ms: 29.1175
+  type: 'test'
+  ...
+# Subtest: catalog tool prices, weights, ability checks and instrument variants preserve source rules
+ok 219 - catalog tool prices, weights, ability checks and instrument variants preserve source rules
+  ---
+  duration_ms: 0.5354
+  type: 'test'
+  ...
+# Subtest: Colossus Slayer requires the chosen option and missing Health, doubles dice on critical and is once per turn
+ok 220 - Colossus Slayer requires the chosen option and missing Health, doubles dice on critical and is once per turn
+  ---
+  duration_ms: 134.8656
+  type: 'test'
+  ...
+# Subtest: Horde Breaker rejects a previously attacked target and spends one ammunition for its same-weapon extra attack
+ok 221 - Horde Breaker rejects a previously attacked target and spends one ammunition for its same-weapon extra attack
+  ---
+  duration_ms: 176.6982
+  type: 'test'
+  ...
+# Subtest: Multiattack Defense is source- and turn-specific and ends with the recorded enemy turn
+ok 222 - Multiattack Defense is source- and turn-specific and ends with the recorded enemy turn
+  ---
+  duration_ms: 91.0309
+  type: 'test'
+  ...
+# Subtest: Tactical Mind spends Second Wind for a successful check and never heals
+ok 223 - Tactical Mind spends Second Wind for a successful check and never heals
+  ---
+  duration_ms: 30.7454
+  type: 'test'
+  ...
+# Subtest: continued Tactical Mind failure refunds its use but cannot reroll the same check after reload
+ok 224 - continued Tactical Mind failure refunds its use but cannot reroll the same check after reload
+  ---
+  duration_ms: 65.5436
+  type: 'test'
+  ...
+# Subtest: Action Surge at seventeen has two uses but at most one use on any given turn
+ok 225 - Action Surge at seventeen has two uses but at most one use on any given turn
+  ---
+  duration_ms: 266.9936
+  type: 'test'
+  ...
+# Subtest: Tactical Shift is available only on Bonus Action Second Wind beginning at five
+ok 226 - Tactical Shift is available only on Bonus Action Second Wind beginning at five
+  ---
+  duration_ms: 193.6442
+  type: 'test'
+  ...
+# Subtest: Suppression scales dice and secondary target has control but no extra damage
+ok 227 - Suppression scales dice and secondary target has control but no extra damage
+  ---
+  duration_ms: 335.9633
+  type: 'test'
+  ...
+# Subtest: Crossing Denied spends real ammunition and cannot add Suppression to its granted attack
+ok 228 - Crossing Denied spends real ammunition and cannot add Suppression to its granted attack
+  ---
+  duration_ms: 140.4813
+  type: 'test'
+  ...
+# Subtest: Corridor restores the exact pool cap and its two-point DC bonus expires next turn
+ok 229 - Corridor restores the exact pool cap and its two-point DC bonus expires next turn
+  ---
+  duration_ms: 314.1411
+  type: 'test'
+  ...
+# Subtest: Entrenched cover is conditional on recorded movement and does not raise general Guard
+ok 230 - Entrenched cover is conditional on recorded movement and does not raise general Guard
+  ---
+  duration_ms: 92.056
+  type: 'test'
+  ...
+# Subtest: Passing Shot needs voluntary Speed movement, excludes earlier Recoil, and applies once
+ok 231 - Passing Shot needs voluntary Speed movement, excludes earlier Recoil, and applies once
+  ---
+  duration_ms: 533.3153
+  type: 'test'
+  ...
+# Subtest: Break Pursuit moves half current Speed without provoking and prevents repeated triggers
+ok 232 - Break Pursuit moves half current Speed without provoking and prevents repeated triggers
+  ---
+  duration_ms: 193.8635
+  type: 'test'
+  ...
+# Subtest: Horizon moves and grants one bonus-action attack with ammunition rather than another Action
+ok 233 - Horizon moves and grants one bonus-action attack with ammunition rather than another Action
+  ---
+  duration_ms: 197.836
+  type: 'test'
+  ...
+# Subtest: a real slotted Cure Wounds has exact healing dice, Disciple bonus and one Blessed Healer benefit
+ok 234 - a real slotted Cure Wounds has exact healing dice, Disciple bonus and one Blessed Healer benefit
+  ---
+  duration_ms: 88.0375
+  type: 'test'
+  ...
+# Subtest: Supreme Healing maximizes actual spell healing while free castings do not gain slot-only bonuses
+ok 235 - Supreme Healing maximizes actual spell healing while free castings do not gain slot-only bonuses
+  ---
+  duration_ms: 183.764
+  type: 'test'
+  ...
+# Subtest: Mass Heal enforces a seven-hundred-point budget and keeps condition removal tied to its healed recipients
+ok 236 - Mass Heal enforces a seven-hundred-point budget and keeps condition removal tied to its healed recipients
+  ---
+  duration_ms: 165.4018
+  type: 'test'
+  ...
+# Subtest: Power Word Heal restores full Health and its listed conditions, preserving Prone for the optional Reaction
+ok 237 - Power Word Heal restores full Health and its listed conditions, preserving Prone for the optional Reaction
+  ---
+  duration_ms: 126.9458
+  type: 'test'
+  ...
+# Subtest: Regeneration start-turn healing requires a live effect and a distinct recipient turn, without repeating Disciple
+ok 238 - Regeneration start-turn healing requires a live effect and a distinct recipient turn, without repeating Disciple
+  ---
+  duration_ms: 253.4916
+  type: 'test'
+  ...
+# Subtest: Prayer of Healing grants real Short Rest recovery once per recipient Long Rest epoch
+ok 239 - Prayer of Healing grants real Short Rest recovery once per recipient Long Rest epoch
+  ---
+  duration_ms: 53.2622
+  type: 'test'
+  ...
+# Subtest: healing cannot be forged from a damaging cast or redirected to unrecorded targets
+ok 240 - healing cannot be forged from a damaging cast or redirected to unrecorded targets
+  ---
+  duration_ms: 55.3399
+  type: 'test'
+  ...
+# Subtest: creation preserves each narrative field and validates the full saved model
+ok 241 - creation preserves each narrative field and validates the full saved model
+  ---
+  duration_ms: 35.8906
+  type: 'test'
+  ...
+# Subtest: identity command preserves mechanics, supports clearing optional fields and returns precise invalid fields
+ok 242 - identity command preserves mechanics, supports clearing optional fields and returns precise invalid fields
+  ---
+  duration_ms: 47.8609
+  type: 'test'
+  ...
+# Subtest: creation rejects invalid portrait or identity fields before saving
+ok 243 - creation rejects invalid portrait or identity fields before saving
+  ---
+  duration_ms: 10.3846
+  type: 'test'
+  ...
+# Subtest: Divine Intervention casts an unprepared Doctor spell as a Magic action without a slot or priced Material
+ok 244 - Divine Intervention casts an unprepared Doctor spell as a Magic action without a slot or priced Material
+  ---
+  duration_ms: 107.5537
+  type: 'test'
+  ...
+# Subtest: Intervention rejects unacquired use, wrong lists, spells above five, Reaction spells and slot overrides atomically
+ok 245 - Intervention rejects unacquired use, wrong lists, spells above five, Reaction spells and slot overrides atomically
+  ---
+  duration_ms: 553.3278
+  type: 'test'
+  ...
+# Subtest: ordinary Divine Intervention at twenty recovers after one Long Rest without manual override
+ok 246 - ordinary Divine Intervention at twenty recovers after one Long Rest without manual override
+  ---
+  duration_ms: 211.036
+  type: 'test'
+  ...
+# Subtest: Greater Intervention saves 2d4 Wish cooldown, persists across reload and counts only completed Long Rest recovery
+ok 247 - Greater Intervention saves 2d4 Wish cooldown, persists across reload and counts only completed Long Rest recovery
+  ---
+  duration_ms: 241.6575
+  type: 'test'
+  ...
+# Subtest: a Wish cooldown blocks all Intervention choices and duplicate failure preserves counters and slots
+ok 248 - a Wish cooldown blocks all Intervention choices and duplicate failure preserves counters and slots
+  ---
+  duration_ms: 261.1006
+  type: 'test'
+  ...
+# Subtest: mandatory supply prices, ammo pack sizes and exact copper purchases reject overspending atomically
+ok 249 - mandatory supply prices, ammo pack sizes and exact copper purchases reject overspending atomically
+  ---
+  duration_ms: 35.2265
+  type: 'test'
+  ...
+# Subtest: kit charges never refill when consuming or reloading; potion healing rolls are server-owned and capped
+ok 250 - kit charges never refill when consuming or reloading; potion healing rolls are server-owned and capped
+  ---
+  duration_ms: 24.145
+  type: 'test'
+  ...
+# Subtest: split and merge conserve exact ammunition and reject incompatible or self stacks
+ok 251 - split and merge conserve exact ammunition and reject incompatible or self stacks
+  ---
+  duration_ms: 35.4278
+  type: 'test'
+  ...
+# Subtest: presets validate every owned instance and incompatible hands before changing the loadout
+ok 252 - presets validate every owned instance and incompatible hands before changing the loadout
+  ---
+  duration_ms: 25.7727
+  type: 'test'
+  ...
+# Subtest: pistol Loading allows one shot per Action, requires a free hand and spends exactly one bullet
+ok 253 - pistol Loading allows one shot per Action, requires a free hand and spends exactly one bullet
+  ---
+  duration_ms: 46.3878
+  type: 'test'
+  ...
+# Subtest: an unequipped matching ranged weapon cannot masquerade as ammunition
+ok 254 - an unequipped matching ranged weapon cannot masquerade as ammunition
+  ---
+  duration_ms: 33.0499
+  type: 'test'
+  ...
+# Subtest: Powder Drill allows two level-five firearm shots but grants no attacks and does not bypass crossbow Loading
+ok 255 - Powder Drill allows two level-five firearm shots but grants no attacks and does not bypass crossbow Loading
+  ---
+  duration_ms: 72.9292
+  type: 'test'
+  ...
+# Subtest: magic item awards are catalog-bound, never ordinary purchases or forged profiles
+ok 256 - magic item awards are catalog-bound, never ordinary purchases or forged profiles
+  ---
+  duration_ms: 26.8272
+  type: 'test'
+  ...
+# Subtest: attunement grants nothing before a full Short Rest and wearing gates real Guard and saves
+ok 257 - attunement grants nothing before a full Short Rest and wearing gates real Guard and saves
+  ---
+  duration_ms: 99.4959
+  type: 'test'
+  ...
+# Subtest: attunement enforces spellcaster prerequisites, duplicate items and ordinary limits
+ok 258 - attunement enforces spellcaster prerequisites, duplicate items and ordinary limits
+  ---
+  duration_ms: 38.0334
+  type: 'test'
+  ...
+# Subtest: Reef Knife fourth attunement works but a fifth fails before granting recovery
+ok 259 - Reef Knife fourth attunement works but a fifth fails before granting recovery
+  ---
+  duration_ms: 250.1654
+  type: 'test'
+  ...
+# Subtest: held attuned War Mage wand changes spell attacks and ignores Half Cover, never spell save DC
+ok 260 - held attuned War Mage wand changes spell attacks and ignores Half Cover, never spell save DC
+  ---
+  duration_ms: 53.1806
+  type: 'test'
+  ...
+# Subtest: identified scroll casts an unprepared on-list spell without slots or Material components and consumes only itself
+ok 261 - identified scroll casts an unprepared on-list spell without slots or Material components and consumes only itself
+  ---
+  duration_ms: 58.1792
+  type: 'test'
+  ...
+# Subtest: unreadable or invalid scroll actions preserve the item and all resources
+ok 262 - unreadable or invalid scroll actions preserve the item and all resources
+  ---
+  duration_ms: 32.9349
+  type: 'test'
+  ...
+# Subtest: higher-level scroll checks are accepted once and destroy the scroll on either outcome
+ok 263 - higher-level scroll checks are accepted once and destroy the scroll on either outcome
+  ---
+  duration_ms: 36.8199
+  type: 'test'
+  ...
+# Subtest: copying a scroll binds exact identity, costs time and copper, and destroys it after one real Arcana check
+ok 264 - copying a scroll binds exact identity, costs time and copper, and destroys it after one real Arcana check
+  ---
+  duration_ms: 25.3126
+  type: 'test'
+  ...
+# Subtest: War Mage rarity variants cannot bypass the duplicate item attunement rule
+ok 265 - War Mage rarity variants cannot bypass the duplicate item attunement rule
+  ---
+  duration_ms: 37.0877
+  type: 'test'
+  ...
+# Subtest: worn magic gear requires explicit unequip on sale and removes its derived benefit
+ok 266 - worn magic gear requires explicit unequip on sale and removes its derived benefit
+  ---
+  duration_ms: 63.701
+  type: 'test'
+  ...
+# Subtest: movement bonuses from worn items cannot override a restrained Speed of zero
+ok 267 - movement bonuses from worn items cannot override a restrained Speed of zero
+  ---
+  duration_ms: 65.572
+  type: 'test'
+  ...
+# Subtest: charged wand casts spend exact charges without slots and generic consume cannot bypass its risk
+ok 268 - charged wand casts spend exact charges without slots and generic consume cannot bypass its risk
+  ---
+  duration_ms: 68.4205
+  type: 'test'
+  ...
+# Subtest: Reef Knife charge preservation is rolled once and accepted with the saved casting result
+ok 269 - Reef Knife charge preservation is rolled once and accepted with the saved casting result
+  ---
+  duration_ms: 127.6562
+  type: 'test'
+  ...
+# Subtest: last-charge destruction is rolled, resolves the spell, and cannot leave a dangling held item
+ok 270 - last-charge destruction is rolled, resolves the spell, and cannot leave a dangling held item
+  ---
+  duration_ms: 49.9981
+  type: 'test'
+  ...
+# Subtest: only GM dawn restores item charges; ordinary rests do not and duplicate dawn is atomic
+ok 271 - only GM dawn restores item charges; ordinary rests do not and duplicate dawn is atomic
+  ---
+  duration_ms: 40.0933
+  type: 'test'
+  ...
+# Subtest: Fast Hands alone authorizes a Bonus Action charged-item casting
+ok 272 - Fast Hands alone authorizes a Bonus Action charged-item casting
+  ---
+  duration_ms: 105.8162
+  type: 'test'
+  ...
+# Subtest: projected speeds are finite across all Paths and Exhaustion affects granted speeds exactly once
+ok 273 - projected speeds are finite across all Paths and Exhaustion affects granted speeds exactly once
+  ---
+  duration_ms: 6509.2874
+  type: 'test'
+  ...
+# Subtest: Heavy armor removes conditional Outrider Speed and Tempest flight; Living Tempest still grants its own flight
+ok 274 - Heavy armor removes conditional Outrider Speed and Tempest flight; Living Tempest still grants its own flight
+  ---
+  duration_ms: 212.9912
+  type: 'test'
+  ...
+# Subtest: every priced spell has a typed material profile and every referenced purchasable component has a server definition
+ok 275 - every priced spell has a typed material profile and every referenced purchasable component has a server definition
+  ---
+  duration_ms: 0.5073
+  type: 'test'
+  ...
+# Subtest: Revivify rejects wrong or undervalued items without spending slots, and consumes exactly one valid diamond
+ok 276 - Revivify rejects wrong or undervalued items without spending slots, and consumes exactly one valid diamond
+  ---
+  duration_ms: 66.568
+  type: 'test'
+  ...
+# Subtest: Bless retains its actual Holy Symbol and rejects narrative items masquerading as one
+ok 277 - Bless retains its actual Holy Symbol and rejects narrative items masquerading as one
+  ---
+  duration_ms: 49.1024
+  type: 'test'
+  ...
+# Subtest: compound Legend Lore materials consume incense and retain exactly four sufficiently valuable ivory strips
+ok 278 - compound Legend Lore materials consume incense and retain exactly four sufficiently valuable ivory strips
+  ---
+  duration_ms: 108.8636
+  type: 'test'
+  ...
+# Subtest: per-target Astral Projection materials scale by declared targets and reject incomplete sets atomically
+ok 279 - per-target Astral Projection materials scale by declared targets and reject incomplete sets atomically
+  ---
+  duration_ms: 190.5846
+  type: 'test'
+  ...
+# Subtest: Gentle Repose consumes two copper exactly and duplicate component instance IDs cannot double-count inventory
+ok 280 - Gentle Repose consumes two copper exactly and duplicate component instance IDs cannot double-count inventory
+  ---
+  duration_ms: 104.3017
+  type: 'test'
+  ...
+# Subtest: typed management profiles cover the complete spell catalog and repaired rules keep statblocks with their spells
+ok 281 - typed management profiles cover the complete spell catalog and repaired rules keep statblocks with their spells
+  ---
+  duration_ms: 0.9571
+  type: 'test'
+  ...
+# Subtest: Distant doubles numeric range and converts Touch without changing the source spell; rejects Self atomically
+ok 282 - Distant doubles numeric range and converts Touch without changing the source spell; rejects Self atomically
+  ---
+  duration_ms: 782.4619
+  type: 'test'
+  ...
+# Subtest: Extended saves duration, expiry and Concentration advantage and rejects instantaneous spells
+ok 283 - Extended saves duration, expiry and Concentration advantage and rejects instantaneous spells
+  ---
+  duration_ms: 606.5172
+  type: 'test'
+  ...
+# Subtest: Careful and Heightened save exact targets and reject invalid target membership and excess or duplicate exemptions
+ok 284 - Careful and Heightened save exact targets and reject invalid target membership and excess or duplicate exemptions
+  ---
+  duration_ms: 504.0025
+  type: 'test'
+  ...
+# Subtest: Memory Echo integration build rejects Careful Detect Magic and accepts Careful Burning Hands
+ok 285 - Memory Echo integration build rejects Careful Detect Magic and accepts Careful Burning Hands
+  ---
+  duration_ms: 325.9872
+  type: 'test'
+  ...
+# Subtest: Subtle removes components but preserves priced Material and consumed components
+ok 286 - Subtle removes components but preserves priced Material and consumed components
+  ---
+  duration_ms: 252.0108
+  type: 'test'
+  ...
+# Subtest: Transmuted validates original damage, rejects same type and returns changed element
+ok 287 - Transmuted validates original damage, rejects same type and returns changed element
+  ---
+  duration_ms: 231.2613
+  type: 'test'
+  ...
+# Subtest: Twinned increases only target scaling level, not slot spend or duration; rejects ineligible spells
+ok 288 - Twinned increases only target scaling level, not slot spend or duration; rejects ineligible spells
+  ---
+  duration_ms: 414.6357
+  type: 'test'
+  ...
+# Subtest: Quickened changes action and prevents another levelled cast on the recorded turn
+ok 289 - Quickened changes action and prevents another levelled cast on the recorded turn
+  ---
+  duration_ms: 251.8728
+  type: 'test'
+  ...
+# Subtest: Empowered uses saved casting damage dice, Spirit limits, replacement rolls and atomic event deduplication
+ok 290 - Empowered uses saved casting damage dice, Spirit limits, replacement rolls and atomic event deduplication
+  ---
+  duration_ms: 209.5513
+  type: 'test'
+  ...
+# Subtest: Seeking requires missed spell attack evidence, rerolls d20 with saved modifier, and does not spend another slot
+ok 291 - Seeking requires missed spell attack evidence, rerolls d20 with saved modifier, and does not spend another slot
+  ---
+  duration_ms: 454.6164
+  type: 'test'
+  ...
+# Subtest: reroll options apply after their triggers rather than prematurely charging on cast
+ok 292 - reroll options apply after their triggers rather than prematurely charging on cast
+  ---
+  duration_ms: 203.1425
+  type: 'test'
+  ...
+# Subtest: Arcane Apotheosis shares its once-per-turn free option across casts and triggered rerolls
+ok 293 - Arcane Apotheosis shares its once-per-turn free option across casts and triggered rerolls
+  ---
+  duration_ms: 212.1948
+  type: 'test'
+  ...
+# Subtest: isolated real MongoDB: martial/caster/complex-Path HTTP workflows, transaction receipts, reload and owner isolation
+ok 294 - isolated real MongoDB: martial/caster/complex-Path HTTP workflows, transaction receipts, reload and owner isolation # SKIP
+  ---
+  duration_ms: 0.0911
+  type: 'test'
+  ...
+# Subtest: Passage guides only other allies, upgrades speeds and replaces prior Concentration
+ok 295 - Passage guides only other allies, upgrades speeds and replaces prior Concentration
+  ---
+  duration_ms: 143.8872
+  type: 'test'
+  ...
+# Subtest: Converging Routes needs an active guided ally and cannot repeat in an owner turn
+ok 296 - Converging Routes needs an active guided ally and cannot repeat in an owner turn
+  ---
+  duration_ms: 229.1524
+  type: 'test'
+  ...
+# Subtest: Homeward requires distinct supporting destinations and ends Passage without moving unchosen allies
+ok 297 - Homeward requires distinct supporting destinations and ends Passage without moving unchosen allies
+  ---
+  duration_ms: 226.358
+  type: 'test'
+  ...
+# Subtest: Rooted Ambush requires the owner mark, scales dice and rejects repeat events atomically
+ok 298 - Rooted Ambush requires the owner mark, scales dice and rejects repeat events atomically
+  ---
+  duration_ms: 300.4766
+  type: 'test'
+  ...
+# Subtest: Patient Predator requires own turn, its marked target and the start-hidden trigger
+ok 299 - Patient Predator requires own turn, its marked target and the start-hidden trigger
+  ---
+  duration_ms: 140.644
+  type: 'test'
+  ...
+# Subtest: Vanish halves only the unresolved hit, provokes normally and rolls a real cover Hide
+ok 300 - Vanish halves only the unresolved hit, provokes normally and rolls a real cover Hide
+  ---
+  duration_ms: 203.8083
+  type: 'test'
+  ...
+# Subtest: thrown Acid spends one vial for one attack replacement with exact dice and Agility DC
+ok 301 - thrown Acid spends one vial for one attack replacement with exact dice and Agility DC
+  ---
+  duration_ms: 46.8791
+  type: 'test'
+  ...
+# Subtest: Basic Poison consumes its vial, coats an owned weapon and deals one d4 only once before expiry
+ok 302 - Basic Poison consumes its vial, coats an owned weapon and deals one d4 only once before expiry
+  ---
+  duration_ms: 62.2405
+  type: 'test'
+  ...
+# Subtest: Fast Hands changes Utilize to Bonus Action but cannot convert a thrown attack replacement
+ok 303 - Fast Hands changes Utilize to Bonus Action but cannot convert a thrown attack replacement
+  ---
+  duration_ms: 74.266
+  type: 'test'
+  ...
+# Subtest: deployed Ball Bearings leave inventory, require ten minutes to recover and cannot be duplicated
+ok 304 - deployed Ball Bearings leave inventory, require ten minutes to recover and cannot be duplicated
+  ---
+  duration_ms: 42.8073
+  type: 'test'
+  ...
+# Subtest: Antitoxin grants one-hour save Advantage without healing or ending existing Poisoned
+ok 305 - Antitoxin grants one-hour save Advantage without healing or ending existing Poisoned
+  ---
+  duration_ms: 61.1599
+  type: 'test'
+  ...
+# Subtest: Potion object use consumes one vial and heals the chosen owner with the accepted two dice
+ok 306 - Potion object use consumes one vial and heals the chosen owner with the accepted two dice
+  ---
+  duration_ms: 36.1689
+  type: 'test'
+  ...
+# Subtest: Oil fuel retains only actual unburned hours across extinguishing and relighting
+ok 307 - Oil fuel retains only actual unburned hours across extinguishing and relighting
+  ---
+  duration_ms: 55.2762
+  type: 'test'
+  ...
+# Subtest: Holy Water records zero damage to other creature types and ground Oil cannot be recovered as fresh inventory
+ok 308 - Holy Water records zero damage to other creature types and ground Oil cannot be recovered as fresh inventory
+  ---
+  duration_ms: 44.7794
+  type: 'test'
+  ...
+# Subtest: Overchannel first casting maximizes damage only on its saved turn with no Health backlash
+ok 309 - Overchannel first casting maximizes damage only on its saved turn with no Health backlash
+  ---
+  duration_ms: 140.7447
+  type: 'test'
+  ...
+# Subtest: second and third Overchannel casts roll 2d12 and 3d12 per actual slot level, bypassing Resistance and Immunity
+ok 310 - second and third Overchannel casts roll 2d12 and 3d12 per actual slot level, bypassing Resistance and Immunity
+  ---
+  duration_ms: 192.2179
+  type: 'test'
+  ...
+# Subtest: Overchannel rejects non-damaging, no-slot and level-six castings atomically
+ok 311 - Overchannel rejects non-damaging, no-slot and level-six castings atomically
+  ---
+  duration_ms: 164.2476
+  type: 'test'
+  ...
+# Subtest: only Long Rest resets the shared Overchannel escalation counter
+ok 312 - only Long Rest resets the shared Overchannel escalation counter
+  ---
+  duration_ms: 150.6178
+  type: 'test'
+  ...
+# Subtest: Harbor Geometry validates exact passers, dimensions and placement before spending
+ok 313 - Harbor Geometry validates exact passers, dimensions and placement before spending
+  ---
+  duration_ms: 142.0268
+  type: 'test'
+  ...
+# Subtest: high-level barrier damage distinguishes siege, Force and ordinary resistance; reduction requires a live barrier
+ok 314 - high-level barrier damage distinguishes siege, Force and ordinary resistance; reduction requires a live barrier
+  ---
+  duration_ms: 217.166
+  type: 'test'
+  ...
+# Subtest: Ghost salvage credits have exact capacity and cannot become gold or be consumed twice
+ok 315 - Ghost salvage credits have exact capacity and cannot become gold or be consumed twice
+  ---
+  duration_ms: 118.0156
+  type: 'test'
+  ...
+# Subtest: Ghost Patch records the object and scaled server healing; Silent Keel limits targets and shares Concentration
+ok 316 - Ghost Patch records the object and scaled server healing; Silent Keel limits targets and shares Concentration
+  ---
+  duration_ms: 399.446
+  type: 'test'
+  ...
+# Subtest: Silent Keel ends only for a confirmed creature and releases Concentration after the last creature leaves
+ok 317 - Silent Keel ends only for a confirmed creature and releases Concentration after the last creature leaves
+  ---
+  duration_ms: 164.7926
+  type: 'test'
+  ...
+# Subtest: a shrouded caster gains Stealth Advantage until their own recorded attack or non-Concentration spell
+ok 318 - a shrouded caster gains Stealth Advantage until their own recorded attack or non-Concentration spell
+  ---
+  duration_ms: 375.6839
+  type: 'test'
+  ...
+# Subtest: all 32 level-twenty builds keep automatic preparations outside their full ordinary preparation count
+ok 319 - all 32 level-twenty builds keep automatic preparations outside their full ordinary preparation count
+  ---
+  duration_ms: 7959.3318
+  type: 'test'
+  ...
+# Subtest: a Long Rest changes Spell Mastery and frees/replaces ordinary preparations in the same validated operation
+ok 320 - a Long Rest changes Spell Mastery and frees/replaces ordinary preparations in the same validated operation
+  ---
+  duration_ms: 212.1228
+  type: 'test'
+  ...
+# Subtest: Reaver Path hit accepts a confirmed Might finesse attack even when Agility is the higher default
+ok 321 - Reaver Path hit accepts a confirmed Might finesse attack even when Agility is the higher default
+  ---
+  duration_ms: 225.0342
+  type: 'test'
+  ...
+# Subtest: Bloodwake Retaliation validates a real melee weapon or Unarmed Strike and cannot repeat its damage trigger
+ok 322 - Bloodwake Retaliation validates a real melee weapon or Unarmed Strike and cannot repeat its damage trigger
+  ---
+  duration_ms: 114.0403
+  type: 'test'
+  ...
+# Subtest: Intimidating Presence records the Might-based save, selected targets and repeat-save duration
+ok 323 - Intimidating Presence records the Might-based save, selected targets and repeat-save duration
+  ---
+  duration_ms: 127.7918
+  type: 'test'
+  ...
+# Subtest: Stormhide leap works outside Rage but its landing rider requires Rage and level ten
+ok 324 - Stormhide leap works outside Rage but its landing rider requires Rage and level ten
+  ---
+  duration_ms: 169.0951
+  type: 'test'
+  ...
+# Subtest: Thunderhide type Resistance is conditional at three and permanent at six
+ok 325 - Thunderhide type Resistance is conditional at three and permanent at six
+  ---
+  duration_ms: 79.7223
+  type: 'test'
+  ...
+# Subtest: Walking Storm spends once per Rage, rolls three dice per target turn and expires at next owner turn
+ok 326 - Walking Storm spends once per Rage, rolls three dice per target turn and expires at next owner turn
+  ---
+  duration_ms: 365.9991
+  type: 'test'
+  ...
+# Subtest: Weather the Blow is a Rage-only source-bound retaliation with minimum-one Resolve damage
+ok 327 - Weather the Blow is a Rage-only source-bound retaliation with minimum-one Resolve damage
+  ---
+  duration_ms: 86.9164
+  type: 'test'
+  ...
+# Subtest: Chainbreaker escape uses the owner full Athletics modifier and never spends an ally action
+ok 328 - Chainbreaker escape uses the owner full Athletics modifier and never spends an ally action
+  ---
+  duration_ms: 67.2842
+  type: 'test'
+  ...
+# Subtest: Rally grants the same nonnegative temporary pool to at most three allies and ends Prone
+ok 329 - Rally grants the same nonnegative temporary pool to at most three allies and ends Prone
+  ---
+  duration_ms: 95.9235
+  type: 'test'
+  ...
+# Subtest: None Shall Kneel requires Rage and a failed eligible source save, succeeds instead and never heals
+ok 330 - None Shall Kneel requires Rage and a failed eligible source save, succeeds instead and never heals
+  ---
+  duration_ms: 153.7661
+  type: 'test'
+  ...
+# Subtest: Colossus carries as Large while Raging and Reef Skin suppression removes both reduction and Speed cost
+ok 331 - Colossus carries as Large while Raging and Reef Skin suppression removes both reduction and Speed cost
+  ---
+  duration_ms: 148.32
+  type: 'test'
+  ...
+# Subtest: Deckshaker is not the Attack action and scales from three to five dice with exact half damage
+ok 332 - Deckshaker is not the Attack action and scales from three to five dice with exact half damage
+  ---
+  duration_ms: 228.1454
+  type: 'test'
+  ...
+# Subtest: Thunderhide weapon rider validates a wielded Might attack and cannot repeat on the same turn
+ok 333 - Thunderhide weapon rider validates a wielded Might attack and cannot repeat on the same turn
+  ---
+  duration_ms: 81.0421
+  type: 'test'
+  ...
+# Subtest: rebuild previews full choices without granting levels or changing saved mechanics
+ok 334 - rebuild previews full choices without granting levels or changing saved mechanics
+  ---
+  duration_ms: 87.3312
+  type: 'test'
+  ...
+# Subtest: campaign commit requires exact registered GM approval and acknowledges resource consequences
+ok 335 - campaign commit requires exact registered GM approval and acknowledges resource consequences
+  ---
+  duration_ms: 90.3684
+  type: 'test'
+  ...
+# Subtest: a changed character invalidates approval and requires a fresh rebuild preview
+ok 336 - a changed character invalidates approval and requires a fresh rebuild preview
+  ---
+  duration_ms: 94.7305
+  type: 'test'
+  ...
+# Subtest: solo rebuild preserves expenditure and possessions while ending temporary effects and never healing
+ok 337 - solo rebuild preserves expenditure and possessions while ending temporary effects and never healing
+  ---
+  duration_ms: 117.7513
+  type: 'test'
+  ...
+# Subtest: partial draft returns required choices but cannot become a committable proposal
+ok 338 - partial draft returns required choices but cannot become a committable proposal
+  ---
+  duration_ms: 45.0553
+  type: 'test'
+  ...
+# Subtest: rebuild rejects combat and active rests without changing state
+ok 339 - rebuild rejects combat and active rests without changing state
+  ---
+  duration_ms: 34.3166
+  type: 'test'
+  ...
+# Subtest: rebuild previews and ends attunement when its spellcaster prerequisite is lost without removing the item
+ok 340 - rebuild previews and ends attunement when its spellcaster prerequisite is lost without removing the item
+  ---
+  duration_ms: 74.9203
+  type: 'test'
+  ...
+# Subtest: same-Calling rebuild preserves lost-folio availability and cannot restore unprepared lost spells
+ok 341 - same-Calling rebuild preserves lost-folio availability and cannot restore unprepared lost spells
+  ---
+  duration_ms: 89.8538
+  type: 'test'
+  ...
+# Subtest: relay creation has exact object statistics, one-relay limit and no partial spend on bad placement
+ok 342 - relay creation has exact object statistics, one-relay limit and no partial spend on bad placement
+  ---
+  duration_ms: 59.4025
+  type: 'test'
+  ...
+# Subtest: Twin Circuit enforces two relays and an explicit third-relay replacement without extra expenditure
+ok 343 - Twin Circuit enforces two relays and an explicit third-relay replacement without extra expenditure
+  ---
+  duration_ms: 228.814
+  type: 'test'
+  ...
+# Subtest: Grounding Circuit ends immediately when the selected relay is destroyed and respects damage immunity
+ok 344 - Grounding Circuit ends immediately when the selected relay is destroyed and respects damage immunity
+  ---
+  duration_ms: 82.352
+  type: 'test'
+  ...
+# Subtest: mobile relay movement rejects grounded objects and requires bounded confirmed movement
+ok 345 - mobile relay movement rejects grounded objects and requires bounded confirmed movement
+  ---
+  duration_ms: 140.8151
+  type: 'test'
+  ...
+# Subtest: Discharge at 10 consumes one use, destroys only its relay and rolls 4d8
+ok 346 - Discharge at 10 consumes one use, destroys only its relay and rolls 4d8
+  ---
+  duration_ms: 121.4794
+  type: 'test'
+  ...
+# Subtest: Discharge at 14 consumes one use, destroys only its relay and rolls 6d8
+ok 347 - Discharge at 14 consumes one use, destroys only its relay and rolls 6d8
+  ---
+  duration_ms: 202.9835
+  type: 'test'
+  ...
+# Subtest: relay cantrip origin and Twin Circuit teleport are independently once per turn and reject dead or foreign relay IDs
+ok 348 - relay cantrip origin and Twin Circuit teleport are independently once per turn and reject dead or foreign relay IDs
+  ---
+  duration_ms: 290.0951
+  type: 'test'
+  ...
+# Subtest: Dragon Companion spends one free use, waives materials and preserves existing Concentration in its one-minute form
+ok 349 - Dragon Companion spends one free use, waives materials and preserves existing Concentration in its one-minute form
+  ---
+  duration_ms: 214.2118
+  type: 'test'
+  ...
+# Subtest: Dragon Companion slot casting also waives materials and its special form is rejected below eighteen
+ok 350 - Dragon Companion slot casting also waives materials and its special form is rejected below eighteen
+  ---
+  duration_ms: 368.9426
+  type: 'test'
+  ...
+# Subtest: Leviathan Smite of Protection grants conditional Half Cover through next turn start without changing ordinary Guard
+ok 351 - Leviathan Smite of Protection grants conditional Half Cover through next turn start without changing ordinary Guard
+  ---
+  duration_ms: 231.9447
+  type: 'test'
+  ...
+# Subtest: Squalls have typed effects and Captain Credit follows the approved off-turn once-per-combat-round rule
+ok 352 - Squalls have typed effects and Captain Credit follows the approved off-turn once-per-combat-round rule
+  ---
+  duration_ms: 329.1667
+  type: 'test'
+  ...
+# Subtest: Reef Knife Reflexes stores a first-round initiative offset and Initiative Advantage rolls two dice
+ok 353 - Reef Knife Reflexes stores a first-round initiative offset and Initiative Advantage rolls two dice
+  ---
+  duration_ms: 179.3963
+  type: 'test'
+  ...
+# Subtest: Superior Gray Net prey requires a real source damage event and applies once per turn to another creature
+ok 354 - Superior Gray Net prey requires a real source damage event and applies once per turn to another creature
+  ---
+  duration_ms: 225.0194
+  type: 'test'
+  ...
+# Subtest: Sacred Weapon binds one held Melee instance, adds its real Spirit attack bonus and ends when no longer carried
+ok 355 - Sacred Weapon binds one held Melee instance, adds its real Spirit attack bonus and ends when no longer carried
+  ---
+  duration_ms: 94.3283
+  type: 'test'
+  ...
+# Subtest: Holy Nimbus projects sunlight and Fiend/Undead save Advantage and rolls no save for distinct enemy-turn pulses
+ok 356 - Holy Nimbus projects sunlight and Fiend/Undead save Advantage and rolls no save for distinct enemy-turn pulses
+  ---
+  duration_ms: 435.3342
+  type: 'test'
+  ...
+# Subtest: Magic Initiate replaces one same-level spell from its own list on level gain and preserves free-cast expenditure
+ok 357 - Magic Initiate replaces one same-level spell from its own list on level gain and preserves free-cast expenditure
+  ---
+  duration_ms: 43.0252
+  type: 'test'
+  ...
+# Subtest: cantrip-style replacement is a level-bound, same-list one-for-one choice
+ok 358 - cantrip-style replacement is a level-bound, same-list one-for-one choice
+  ---
+  duration_ms: 50.674
+  type: 'test'
+  ...
+# Subtest: Magic Initiate can use ordinary slots without spending its independent free use
+ok 359 - Magic Initiate can use ordinary slots without spending its independent free use
+  ---
+  duration_ms: 111.3165
+  type: 'test'
+  ...
+# Subtest: single-creature healing cannot multiply targets or redirect personal recovery
+ok 360 - single-creature healing cannot multiply targets or redirect personal recovery
+  ---
+  duration_ms: 115.1404
+  type: 'test'
+  ...
+# Subtest: Quickening a cantrip still prohibits a levelled spell before or after it on that turn
+ok 361 - Quickening a cantrip still prohibits a levelled spell before or after it on that turn
+  ---
+  duration_ms: 186.7908
+  type: 'test'
+  ...
+# Subtest: a resumed Long Rest interruption grants completed Short Rest recovery once and adds one hour
+ok 362 - a resumed Long Rest interruption grants completed Short Rest recovery once and adds one hour
+  ---
+  duration_ms: 88.0426
+  type: 'test'
+  ...
+# Subtest: interrupted Short Rests and canceled rests grant nothing and cannot reuse their IDs
+ok 363 - interrupted Short Rests and canceled rests grant nothing and cannot reuse their IDs
+  ---
+  duration_ms: 38.6548
+  type: 'test'
+  ...
+# Subtest: damage and non-cantrip casting automatically interrupt an active Long Rest
+ok 364 - damage and non-cantrip casting automatically interrupt an active Long Rest
+  ---
+  duration_ms: 67.2932
+  type: 'test'
+  ...
+# Subtest: Long Rest expires timed effects, preserves lasting non-Concentration effects and removes temporary Health
+ok 365 - Long Rest expires timed effects, preserves lasting non-Concentration effects and removes temporary Health
+  ---
+  duration_ms: 28.8278
+  type: 'test'
+  ...
+# Subtest: Long Rest Exhaustion recovery needs nourishment, while Tireless Short Rest recovery does not
+ok 366 - Long Rest Exhaustion recovery needs nourishment, while Tireless Short Rest recovery does not
+  ---
+  duration_ms: 175.2265
+  type: 'test'
+  ...
+# Subtest: planned invalid recovery is rejected before rest start and neither zero-Health nor dead creatures can start
+ok 367 - planned invalid recovery is rejected before rest start and neither zero-Health nor dead creatures can start
+  ---
+  duration_ms: 27.6004
+  type: 'test'
+  ...
+# Subtest: selling part of a stack grants exact integer copper and leaves the rest unchanged
+ok 368 - selling part of a stack grants exact integer copper and leaves the rest unchanged
+  ---
+  duration_ms: 21.2287
+  type: 'test'
+  ...
+# Subtest: sale of equipped gear requires explicit unequip and invalidates presets without dangling loadout
+ok 369 - sale of equipped gear requires explicit unequip and invalidates presets without dangling loadout
+  ---
+  duration_ms: 70.7487
+  type: 'test'
+  ...
+# Subtest: sale rejects forged quantity, price, fields and campaign-player permission atomically
+ok 370 - sale rejects forged quantity, price, fields and campaign-player permission atomically
+  ---
+  duration_ms: 35.1778
+  type: 'test'
+  ...
+# Subtest: Sneak Attack rolls its full level-one dice before Cunning Strike unlocks and never adds the victim condition to the owner
+ok 371 - Sneak Attack rolls its full level-one dice before Cunning Strike unlocks and never adds the victim condition to the owner
+  ---
+  duration_ms: 81.6901
+  type: 'test'
+  ...
+# Subtest: Cunning Strike removes dice before rolling, scales to two options at eleven, and rejects over-budget choices
+ok 372 - Cunning Strike removes dice before rolling, scales to two options at eleven, and rejects over-budget choices
+  ---
+  duration_ms: 327.6443
+  type: 'test'
+  ...
+# Subtest: Poison requires a real carried kit, Trip rejects Huge targets, and invalid choices preserve state
+ok 373 - Poison requires a real carried kit, Trip rejects Huge targets, and invalid choices preserve state
+  ---
+  duration_ms: 132.9174
+  type: 'test'
+  ...
+# Subtest: Devious Strikes unlock at fourteen and critical hits double only remaining Sneak Attack dice
+ok 374 - Devious Strikes unlock at fourteen and critical hits double only remaining Sneak Attack dice
+  ---
+  duration_ms: 285.8858
+  type: 'test'
+  ...
+# Subtest: Sneak Attack cannot be spent twice on the same turn but is available on a different reaction turn
+ok 375 - Sneak Attack cannot be spent twice on the same turn but is available on a different reaction turn
+  ---
+  duration_ms: 118.9765
+  type: 'test'
+  ...
+# Subtest: Reef Knife Stealth Attack requires Hide Invisible and retains it only with sufficient end-of-turn cover
+ok 376 - Reef Knife Stealth Attack requires Hide Invisible and retains it only with sufficient end-of-turn cover
+  ---
+  duration_ms: 638.2535
+  type: 'test'
+  ...
+# Subtest: Brutal Strike requires own active Reckless turn and no Disadvantage, rolling its actual weapon type
+ok 377 - Brutal Strike requires own active Reckless turn and no Disadvantage, rolling its actual weapon type
+  ---
+  duration_ms: 196.1471
+  type: 'test'
+  ...
+# Subtest: Brutal options upgrade at thirteen and seventeen, double on a critical and expire at next owner turn
+ok 378 - Brutal options upgrade at thirteen and seventeen, double on a critical and expire at next owner turn
+  ---
+  duration_ms: 478.4446
+  type: 'test'
+  ...
+# Subtest: a missed selected Brutal Strike attack spends its turn choice without damage or effects
+ok 379 - a missed selected Brutal Strike attack spends its turn choice without damage or effects
+  ---
+  duration_ms: 161.9474
+  type: 'test'
+  ...
+# Subtest: strike state survives reload and rests clear bounded per-turn history without dropping audit receipts
+ok 380 - strike state survives reload and rests clear bounded per-turn history without dropping audit receipts
+  ---
+  duration_ms: 67.7075
+  type: 'test'
+  ...
+# Subtest: all 144 origin/Calling combinations apply origin bonuses, starting Health and saves, and offer all four Paths
+ok 381 - all 144 origin/Calling combinations apply origin bonuses, starting Health and saves, and offer all four Paths
+  ---
+  duration_ms: 2648.1998
+  type: 'test'
+  ...
+# Subtest: reef-knife: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 382 - reef-knife: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 206.5141
+  type: 'test'
+  ...
+# Subtest: black-flag-envoy: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 383 - black-flag-envoy: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 188.1822
+  type: 'test'
+  ...
+# Subtest: hollow-lantern: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 384 - hollow-lantern: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 209.2782
+  type: 'test'
+  ...
+# Subtest: saltglass-duelist: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 385 - saltglass-duelist: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 234.6274
+  type: 'test'
+  ...
+# Subtest: deadeye: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 386 - deadeye: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 259.4363
+  type: 'test'
+  ...
+# Subtest: iron-suppressor: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 387 - iron-suppressor: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 367.1078
+  type: 'test'
+  ...
+# Subtest: brass-outrider: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 388 - brass-outrider: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 262.0937
+  type: 'test'
+  ...
+# Subtest: cinder-artillerist: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 389 - cinder-artillerist: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 256.4531
+  type: 'test'
+  ...
+# Subtest: gray-net: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 390 - gray-net: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 275.6461
+  type: 'test'
+  ...
+# Subtest: storm-broker: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 391 - storm-broker: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 292.7925
+  type: 'test'
+  ...
+# Subtest: starwake-pilot: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 392 - starwake-pilot: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 325.3894
+  type: 'test'
+  ...
+# Subtest: mangrove-stalker: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 393 - mangrove-stalker: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 342.0081
+  type: 'test'
+  ...
+# Subtest: omen-diver: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 394 - omen-diver: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 281.0292
+  type: 'test'
+  ...
+# Subtest: memory-echo: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 395 - memory-echo: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 335.893
+  type: 'test'
+  ...
+# Subtest: tempest-heart: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 396 - tempest-heart: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 281.5615
+  type: 'test'
+  ...
+# Subtest: sanguine-conduit: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 397 - sanguine-conduit: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 254.3177
+  type: 'test'
+  ...
+# Subtest: leviathan-anchor: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 398 - leviathan-anchor: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 316.6584
+  type: 'test'
+  ...
+# Subtest: oath-of-the-free-port: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 399 - oath-of-the-free-port: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 416.8078
+  type: 'test'
+  ...
+# Subtest: iron-covenant: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 400 - iron-covenant: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 328.8499
+  type: 'test'
+  ...
+# Subtest: lantern-vigil: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 401 - lantern-vigil: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 276.4898
+  type: 'test'
+  ...
+# Subtest: bloodwake: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 402 - bloodwake: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 271.6469
+  type: 'test'
+  ...
+# Subtest: thunderhide: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 403 - thunderhide: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 208.5763
+  type: 'test'
+  ...
+# Subtest: chainbreaker: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 404 - chainbreaker: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 225.3278
+  type: 'test'
+  ...
+# Subtest: reef-colossus: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 405 - reef-colossus: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 252.9285
+  type: 'test'
+  ...
+# Subtest: sanctuary-hand: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 406 - sanctuary-hand: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 227.4439
+  type: 'test'
+  ...
+# Subtest: field-surgeon: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 407 - field-surgeon: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 252.5203
+  type: 'test'
+  ...
+# Subtest: plaguewarden: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 408 - plaguewarden: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 291.0962
+  type: 'test'
+  ...
+# Subtest: keeper-of-last-breaths: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 409 - keeper-of-last-breaths: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 245.908
+  type: 'test'
+  ...
+# Subtest: powder-saint: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 410 - powder-saint: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 357.7052
+  type: 'test'
+  ...
+# Subtest: drydock-ghost: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 411 - drydock-ghost: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 336.8788
+  type: 'test'
+  ...
+# Subtest: breakwater: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 412 - breakwater: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 350.8679
+  type: 'test'
+  ...
+# Subtest: sparkwrite-aetherist: level 1–20 replay matches every documented Calling/Path feature boundary
+ok 413 - sparkwrite-aetherist: level 1–20 replay matches every documented Calling/Path feature boundary
+  ---
+  duration_ms: 292.5601
+  type: 'test'
+  ...
+# Subtest: point-buy bounds, exact background allocation and no trusted client attributes
+ok 414 - point-buy bounds, exact background allocation and no trusted client attributes
+  ---
+  duration_ms: 1.0219
+  type: 'test'
+  ...
+# Subtest: all specified backgrounds complete their source choices, including Magic Initiate and Skilled
+ok 415 - all specified backgrounds complete their source choices, including Magic Initiate and Skilled
+  ---
+  duration_ms: 84.0986
+  type: 'test'
+  ...
+# Subtest: single Calling and fixed Health are enforced without mutating the saved ledger
+ok 416 - single Calling and fixed Health are enforced without mutating the saved ledger
+  ---
+  duration_ms: 11.9713
+  type: 'test'
+  ...
+# Subtest: command envelope rejects stale revisions, arbitrary derived-stat patches and version mismatches atomically
+ok 417 - command envelope rejects stale revisions, arbitrary derived-stat patches and version mismatches atomically
+  ---
+  duration_ms: 22.3423
+  type: 'test'
+  ...
+# Subtest: spell casting spends one source and exact Metamagic cost, rejects a second slot on the same turn
+ok 418 - spell casting spends one source and exact Metamagic cost, rejects a second slot on the same turn
+  ---
+  duration_ms: 58.2708
+  type: 'test'
+  ...
+# Subtest: the full Druid access list and all ten Metamagic choices are usable references
+ok 419 - the full Druid access list and all ten Metamagic choices are usable references
+  ---
+  duration_ms: 0.3566
+  type: 'test'
+  ...
+# Subtest: plural tool Training grant IDs match singular inventory IDs and add Training once with skill Advantage
+ok 420 - plural tool Training grant IDs match singular inventory IDs and add Training once with skill Advantage
+  ---
+  duration_ms: 26.7329
+  type: 'test'
+  ...
+# Subtest: Expertise doubles one Training Bonus even when both the tool and applicable skill are trained
+ok 421 - Expertise doubles one Training Bonus even when both the tool and applicable skill are trained
+  ---
+  duration_ms: 49.3591
+  type: 'test'
+  ...
+# Subtest: untrained tool checks use the GM-selected attribute without inventing Training
+ok 422 - untrained tool checks use the GM-selected attribute without inventing Training
+  ---
+  duration_ms: 39.1799
+  type: 'test'
+  ...
+# Subtest: Poisoned cancels skill/tool Advantage and Exhaustion subtracts its penalty exactly once
+ok 423 - Poisoned cancels skill/tool Advantage and Exhaustion subtracts its penalty exactly once
+  ---
+  duration_ms: 31.5933
+  type: 'test'
+  ...
+# Subtest: tool checks reject a duplicate event, preserve saved outcomes on reload, and never consume the tool
+ok 424 - tool checks reject a duplicate event, preserve saved outcomes on reload, and never consume the tool
+  ---
+  duration_ms: 35.0272
+  type: 'test'
+  ...
+# Subtest: Safe Handling grants automatic inspection Advantage only from level seven and cancels Disadvantage
+ok 425 - Safe Handling grants automatic inspection Advantage only from level seven and cancels Disadvantage
+  ---
+  duration_ms: 259.9595
+  type: 'test'
+  ...
+# Subtest: Reinforced Anchorage grants tool Advantage at six for reinforcing structures, without a Bastion cost
+ok 426 - Reinforced Anchorage grants tool Advantage at six for reinforcing structures, without a Bastion cost
+  ---
+  duration_ms: 107.5919
+  type: 'test'
+  ...
+# Subtest: Ghost Patch applies its chosen trade once per turn, survives reload, and never spends Ghost Work
+ok 427 - Ghost Patch applies its chosen trade once per turn, survives reload, and never spends Ghost Work
+  ---
+  duration_ms: 111.0928
+  type: 'test'
+  ...
+# Subtest: Barometer Instinct scopes tool Advantage to the selected discipline and required attribute
+ok 428 - Barometer Instinct scopes tool Advantage to the selected discipline and required attribute
+  ---
+  duration_ms: 88.9025
+  type: 'test'
+  ...
+# Subtest: Steady Aim cannot erase movement, grants one attack Advantage and keeps zero Speed after that attack
+ok 429 - Steady Aim cannot erase movement, grants one attack Advantage and keeps zero Speed after that attack
+  ---
+  duration_ms: 154.0222
+  type: 'test'
+  ...
+# Subtest: Cunning Dash and Disengage require the current owner turn and expire normally
+ok 430 - Cunning Dash and Disengage require the current owner turn and expire normally
+  ---
+  duration_ms: 86.3261
+  type: 'test'
+  ...
+# Subtest: Cunning Hide requires cover and uses a server Agility Stealth check rather than guaranteed invisibility
+ok 431 - Cunning Hide requires cover and uses a server Agility Stealth check rather than guaranteed invisibility
+  ---
+  duration_ms: 80.5425
+  type: 'test'
+  ...
+# Subtest: Fast Hands checks require the real tools for traps or locks and retain the accepted roll
+ok 432 - Fast Hands checks require the real tools for traps or locks and retain the accepted roll
+  ---
+  duration_ms: 70.7766
+  type: 'test'
+  ...
+# Subtest: ability checks cancel conflicting circumstances and apply Reliable Talent after selecting the die
+ok 433 - ability checks cancel conflicting circumstances and apply Reliable Talent after selecting the die
+  ---
+  duration_ms: 63.7019
+  type: 'test'
+  ...
+# Subtest: Superior Defense applies one type of real Resistance through the actual triggering turn
+ok 434 - Superior Defense applies one type of real Resistance through the actual triggering turn
+  ---
+  duration_ms: 245.176
+  type: 'test'
+  ...
+# Subtest: Eye of the Bargain spends a Squall for one visible Lightning or Thunder damage instance only
+ok 435 - Eye of the Bargain spends a Squall for one visible Lightning or Thunder damage instance only
+  ---
+  duration_ms: 252.4914
+  type: 'test'
+  ...
+# Subtest: Petrified stacks damage immunities, suppresses existing Poisoned and rejects new poison without deleting its source
+ok 436 - Petrified stacks damage immunities, suppresses existing Poisoned and rejects new poison without deleting its source
+  ---
+  duration_ms: 313.454
+  type: 'test'
+  ...
+# Subtest: damage absorbs one temporary pool, heals separately and a chosen lower pool does not stack
+ok 437 - damage absorbs one temporary pool, heals separately and a chosen lower pool does not stack
+  ---
+  duration_ms: 62.3835
+  type: 'test'
+  ...
+# Subtest: Reef Skin applies after physical Resistance and reduces a ten-damage attack to two at level six
+ok 438 - Reef Skin applies after physical Resistance and reduces a ten-damage attack to two at level six
+  ---
+  duration_ms: 121.3891
+  type: 'test'
+  ...
+# Subtest: death save natural one counts twice, natural twenty restores one Health and critical damage can cause death
+ok 439 - death save natural one counts twice, natural twenty restores one Health and critical damage can cause death
+  ---
+  duration_ms: 121.0127
+  type: 'test'
+  ...
+# Subtest: three successful death saves stabilize, damage breaks stability and massive remaining damage kills outright
+ok 440 - three successful death saves stabilize, damage breaks stability and massive remaining damage kills outright
+  ---
+  duration_ms: 143.5174
+  type: 'test'
+  ...
+# Subtest: damage creates an exact Concentration DC even when temporary Health absorbs it; failure ends the source
+ok 441 - damage creates an exact Concentration DC even when temporary Health absorbs it; failure ends the source
+  ---
+  duration_ms: 81.3591
+  type: 'test'
+  ...
+# Subtest: Concentration advantage rolls two dice, uses Resolve save Training and retains the source on success
+ok 442 - Concentration advantage rolls two dice, uses Resolve save Training and retains the source on success
+  ---
+  duration_ms: 109.0402
+  type: 'test'
+  ...
+# Subtest: condition sources remain distinct; Incapacitated ends Concentration and blocks action abilities
+ok 443 - condition sources remain distinct; Incapacitated ends Concentration and blocks action abilities
+  ---
+  duration_ms: 126.7762
+  type: 'test'
+  ...
+# Subtest: Exhaustion affects D20 modifiers and Speed, preserves DC and kills at level six
+ok 444 - Exhaustion affects D20 modifiers and Speed, preserves DC and kills at level six
+  ---
+  duration_ms: 42.5118
+  type: 'test'
+  ...
+# Subtest: world time expires active features and temporary Health, rejects rewind and survives reload
+ok 445 - world time expires active features and temporary Health, rejects rewind and survives reload
+  ---
+  duration_ms: 61.37
+  type: 'test'
+  ...
+# Subtest: Rage round extension uses owner turns, never exceeds ten minutes and Persistent Rage needs no extension
+ok 446 - Rage round extension uses owner turns, never exceeds ten minutes and Persistent Rage needs no extension
+  ---
+  duration_ms: 251.5406
+  type: 'test'
+  ...
+# Subtest: Relentless Rage resolves before Unconscious, restores twice level and increases DC after failed attempts
+ok 447 - Relentless Rage resolves before Unconscious, restores twice level and increases DC after failed attempts
+  ---
+  duration_ms: 168.1752
+  type: 'test'
+  ...
+# Subtest: Stable creatures recover one Health after the saved 1d4-hour deadline in the GM world calendar
+ok 448 - Stable creatures recover one Health after the saved 1d4-hour deadline in the GM world calendar
+  ---
+  duration_ms: 55.7839
+  type: 'test'
+  ...
+# Subtest: Break the Chain ends only its selected source, grants Liberty movement and spends once
+ok 449 - Break the Chain ends only its selected source, grants Liberty movement and spends once
+  ---
+  duration_ms: 54.9987
+  type: 'test'
+  ...
+# Subtest: Refuge grants level temporary Health to its recipient and magical checks use Spirit with default DC fifteen
+ok 450 - Refuge grants level temporary Health to its recipient and magical checks use Spirit with default DC fifteen
+  ---
+  duration_ms: 122.8556
+  type: 'test'
+  ...
+# Subtest: Break the Chain rejects missing source, invalid condition, unwilling targets and forged DC atomically
+ok 451 - Break the Chain rejects missing source, invalid condition, unwilling targets and forged DC atomically
+  ---
+  duration_ms: 84.7935
+  type: 'test'
+  ...
+# Subtest: No Captive Left rerolls a failed eligible save, spends five Lay On Hands and never heals
+ok 452 - No Captive Left rerolls a failed eligible save, spends five Lay On Hands and never heals
+  ---
+  duration_ms: 225.9368
+  type: 'test'
+  ...
+# Subtest: Open Harbor lasts ten minutes and Passage aura requires consciousness with correct radius
+ok 453 - Open Harbor lasts ten minutes and Passage aura requires consciousness with correct radius
+  ---
+  duration_ms: 311.011
+  type: 'test'
+  ...
+# Subtest: Light the Watch deals one scaled rider per owner turn and recasting cannot reset its turn limit
+ok 454 - Light the Watch deals one scaled rider per owner turn and recasting cannot reset its turn limit
+  ---
+  duration_ms: 720.1654
+  type: 'test'
+  ...
+# Subtest: Watch cannot produce weapon damage without an equipped weapon, an open turn or while Incapacitated
+ok 455 - Watch cannot produce weapon damage without an equipped weapon, an open turn or while Incapacitated
+  ---
+  duration_ms: 49.745
+  type: 'test'
+  ...
+# Subtest: Watchfire cures exactly one Undead charm source at five Lay On Hands points
+ok 456 - Watchfire cures exactly one Undead charm source at five Lay On Hands points
+  ---
+  duration_ms: 174.8919
+  type: 'test'
+  ...
+# Subtest: Clear Sight does not pierce magical darkness and Dawn resolves once per Undead turn without a save
+ok 457 - Clear Sight does not pierce magical darkness and Dawn resolves once per Undead turn without a save
+  ---
+  duration_ms: 321.4192
+  type: 'test'
+  ...
+# Subtest: fresh defaults cost zero and have 27 remaining
+ok 458 - fresh defaults cost zero and have 27 remaining
+  ---
+  duration_ms: 0.3872
+  type: 'test'
+  ...
+# Subtest: exact budget and nonlinear costs
+ok 459 - exact budget and nonlinear costs
+  ---
+  duration_ms: 0.3572
+  type: 'test'
+  ...
+# Subtest: over budget is rejected; remaining exposes deficit
+ok 460 - over budget is rejected; remaining exposes deficit
+  ---
+  duration_ms: 0.2046
+  type: 'test'
+  ...
+# Subtest: illegal scores rejected
+ok 461 - illegal scores rejected
+  ---
+  duration_ms: 0.2901
+  type: 'test'
+  ...
+# Subtest: missing, inherited, extra and malformed allocations rejected
+ok 462 - missing, inherited, extra and malformed allocations rejected
+  ---
+  duration_ms: 0.3572
+  type: 'test'
+  ...
+# Subtest: Black Flag Envoy: distinct choices, parent inheritance, atomic action costs and recovery
+ok 463 - Black Flag Envoy: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 198.0771
+  type: 'test'
+  ...
+# Subtest: Hollow Lantern: distinct choices, parent inheritance, atomic action costs and recovery
+ok 464 - Hollow Lantern: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 247.9552
+  type: 'test'
+  ...
+# Subtest: Saltglass Duelist: distinct choices, parent inheritance, atomic action costs and recovery
+ok 465 - Saltglass Duelist: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 216.2375
+  type: 'test'
+  ...
+# Subtest: Iron Suppressor: distinct choices, parent inheritance, atomic action costs and recovery
+ok 466 - Iron Suppressor: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 218.4188
+  type: 'test'
+  ...
+# Subtest: Brass Outrider: distinct choices, parent inheritance, atomic action costs and recovery
+ok 467 - Brass Outrider: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 199.3728
+  type: 'test'
+  ...
+# Subtest: Cinder Artillerist: distinct choices, parent inheritance, atomic action costs and recovery
+ok 468 - Cinder Artillerist: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 264.6824
+  type: 'test'
+  ...
+# Subtest: Starwake Pilot: distinct choices, parent inheritance, atomic action costs and recovery
+ok 469 - Starwake Pilot: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 304.4224
+  type: 'test'
+  ...
+# Subtest: Mangrove Stalker: distinct choices, parent inheritance, atomic action costs and recovery
+ok 470 - Mangrove Stalker: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 281.731
+  type: 'test'
+  ...
+# Subtest: Memory Echo: distinct choices, parent inheritance, atomic action costs and recovery
+ok 471 - Memory Echo: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 242.896
+  type: 'test'
+  ...
+# Subtest: Tempest Heart: distinct choices, parent inheritance, atomic action costs and recovery
+ok 472 - Tempest Heart: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 306.0914
+  type: 'test'
+  ...
+# Subtest: Sanguine Conduit: distinct choices, parent inheritance, atomic action costs and recovery
+ok 473 - Sanguine Conduit: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 515.1088
+  type: 'test'
+  ...
+# Subtest: Oath of the Free Port: distinct choices, parent inheritance, atomic action costs and recovery
+ok 474 - Oath of the Free Port: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 378.4511
+  type: 'test'
+  ...
+# Subtest: Iron Covenant: distinct choices, parent inheritance, atomic action costs and recovery
+ok 475 - Iron Covenant: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 377.3181
+  type: 'test'
+  ...
+# Subtest: Lantern Vigil: distinct choices, parent inheritance, atomic action costs and recovery
+ok 476 - Lantern Vigil: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 419.4286
+  type: 'test'
+  ...
+# Subtest: Thunderhide: distinct choices, parent inheritance, atomic action costs and recovery
+ok 477 - Thunderhide: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 244.6151
+  type: 'test'
+  ...
+# Subtest: Chainbreaker: distinct choices, parent inheritance, atomic action costs and recovery
+ok 478 - Chainbreaker: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 228.6988
+  type: 'test'
+  ...
+# Subtest: Reef Colossus: distinct choices, parent inheritance, atomic action costs and recovery
+ok 479 - Reef Colossus: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 219.1657
+  type: 'test'
+  ...
+# Subtest: Plaguewarden: distinct choices, parent inheritance, atomic action costs and recovery
+ok 480 - Plaguewarden: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 219.9838
+  type: 'test'
+  ...
+# Subtest: Keeper of Last Breaths: distinct choices, parent inheritance, atomic action costs and recovery
+ok 481 - Keeper of Last Breaths: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 201.3677
+  type: 'test'
+  ...
+# Subtest: Sparkwrite Aetherist: distinct choices, parent inheritance, atomic action costs and recovery
+ok 482 - Sparkwrite Aetherist: distinct choices, parent inheritance, atomic action costs and recovery
+  ---
+  duration_ms: 307.2367
+  type: 'test'
+  ...
+# Subtest: advancement preserves rest preparations, temporary Health, counters and current mastery
+ok 483 - advancement preserves rest preparations, temporary Health, counters and current mastery
+  ---
+  duration_ms: 27.6583
+  type: 'test'
+  ...
+# Subtest: mastery and cantrip replacements enforce rest timing and survive replay projection
+ok 484 - mastery and cantrip replacements enforce rest timing and survive replay projection
+  ---
+  duration_ms: 32.1438
+  type: 'test'
+  ...
+# Subtest: temporary Health does not stack and alternate feature recovery spends the exact cost
+ok 485 - temporary Health does not stack and alternate feature recovery spends the exact cost
+  ---
+  duration_ms: 181.5793
+  type: 'test'
+  ...
+# Subtest: actual authenticated rules routes expose eight Callings and reject forged preview ownership
+ok 486 - actual authenticated rules routes expose eight Callings and reject forged preview ownership
+  ---
+  duration_ms: 194.985
+  type: 'test'
+  ...
+# Subtest: authenticated persistent routes save, reload and enforce ownership without a database connection
+ok 487 - authenticated persistent routes save, reload and enforce ownership without a database connection
+  ---
+  duration_ms: 122.3176
+  type: 'test'
+  ...
+# Subtest: Reef Knife: persistent advancement and automatic grants at every level through 20
+ok 488 - Reef Knife: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1848.5903
+  type: 'test'
+  ...
+# Subtest: Deadeye: persistent advancement and automatic grants at every level through 20
+ok 489 - Deadeye: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2079.1272
+  type: 'test'
+  ...
+# Subtest: Gray Net: persistent advancement and automatic grants at every level through 20
+ok 490 - Gray Net: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1812.0228
+  type: 'test'
+  ...
+# Subtest: Omen Diver: persistent advancement and automatic grants at every level through 20
+ok 491 - Omen Diver: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1494.2038
+  type: 'test'
+  ...
+# Subtest: Leviathan Anchor: persistent advancement and automatic grants at every level through 20
+ok 492 - Leviathan Anchor: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2029.3742
+  type: 'test'
+  ...
+# Subtest: Bloodwake: persistent advancement and automatic grants at every level through 20
+ok 493 - Bloodwake: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1590.7057
+  type: 'test'
+  ...
+# Subtest: Sanctuary Hand: persistent advancement and automatic grants at every level through 20
+ok 494 - Sanctuary Hand: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1319.3128
+  type: 'test'
+  ...
+# Subtest: Powder Saint: persistent advancement and automatic grants at every level through 20
+ok 495 - Powder Saint: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1796.3475
+  type: 'test'
+  ...
+# Subtest: Drydock Ghost: persistent advancement and automatic grants at every level through 20
+ok 496 - Drydock Ghost: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1761.13
+  type: 'test'
+  ...
+# Subtest: Storm Broker: persistent advancement and automatic grants at every level through 20
+ok 497 - Storm Broker: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1791.1716
+  type: 'test'
+  ...
+# Subtest: Field Surgeon: persistent advancement and automatic grants at every level through 20
+ok 498 - Field Surgeon: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1432.4163
+  type: 'test'
+  ...
+# Subtest: Breakwater: persistent advancement and automatic grants at every level through 20
+ok 499 - Breakwater: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1428.9513
+  type: 'test'
+  ...
+# Subtest: Black Flag Envoy: persistent advancement and automatic grants at every level through 20
+ok 500 - Black Flag Envoy: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1996.1225
+  type: 'test'
+  ...
+# Subtest: Hollow Lantern: persistent advancement and automatic grants at every level through 20
+ok 501 - Hollow Lantern: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2015.7275
+  type: 'test'
+  ...
+# Subtest: Saltglass Duelist: persistent advancement and automatic grants at every level through 20
+ok 502 - Saltglass Duelist: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1795.3672
+  type: 'test'
+  ...
+# Subtest: Iron Suppressor: persistent advancement and automatic grants at every level through 20
+ok 503 - Iron Suppressor: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1875.5086
+  type: 'test'
+  ...
+# Subtest: Brass Outrider: persistent advancement and automatic grants at every level through 20
+ok 504 - Brass Outrider: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2305.7894
+  type: 'test'
+  ...
+# Subtest: Cinder Artillerist: persistent advancement and automatic grants at every level through 20
+ok 505 - Cinder Artillerist: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2016.7913
+  type: 'test'
+  ...
+# Subtest: Starwake Pilot: persistent advancement and automatic grants at every level through 20
+ok 506 - Starwake Pilot: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2227.1618
+  type: 'test'
+  ...
+# Subtest: Mangrove Stalker: persistent advancement and automatic grants at every level through 20
+ok 507 - Mangrove Stalker: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 2501.4555
+  type: 'test'
+  ...
+# Subtest: Memory Echo: persistent advancement and automatic grants at every level through 20
+ok 508 - Memory Echo: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1955.4032
+  type: 'test'
+  ...
+# Subtest: Tempest Heart: persistent advancement and automatic grants at every level through 20
+ok 509 - Tempest Heart: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1487.886
+  type: 'test'
+  ...
+# Subtest: Sanguine Conduit: persistent advancement and automatic grants at every level through 20
+ok 510 - Sanguine Conduit: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1580.6077
+  type: 'test'
+  ...
+# Subtest: Oath of the Free Port: persistent advancement and automatic grants at every level through 20
+ok 511 - Oath of the Free Port: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1897.5546
+  type: 'test'
+  ...
+# Subtest: Iron Covenant: persistent advancement and automatic grants at every level through 20
+ok 512 - Iron Covenant: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1868.5002
+  type: 'test'
+  ...
+# Subtest: Lantern Vigil: persistent advancement and automatic grants at every level through 20
+ok 513 - Lantern Vigil: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1785.6151
+  type: 'test'
+  ...
+# Subtest: Thunderhide: persistent advancement and automatic grants at every level through 20
+ok 514 - Thunderhide: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1723.4955
+  type: 'test'
+  ...
+# Subtest: Chainbreaker: persistent advancement and automatic grants at every level through 20
+ok 515 - Chainbreaker: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1567.8786
+  type: 'test'
+  ...
+# Subtest: Reef Colossus: persistent advancement and automatic grants at every level through 20
+ok 516 - Reef Colossus: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1678.4831
+  type: 'test'
+  ...
+# Subtest: Plaguewarden: persistent advancement and automatic grants at every level through 20
+ok 517 - Plaguewarden: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1337.285
+  type: 'test'
+  ...
+# Subtest: Keeper of Last Breaths: persistent advancement and automatic grants at every level through 20
+ok 518 - Keeper of Last Breaths: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1453.7444
+  type: 'test'
+  ...
+# Subtest: Sparkwrite Aetherist: persistent advancement and automatic grants at every level through 20
+ok 519 - Sparkwrite Aetherist: persistent advancement and automatic grants at every level through 20
+  ---
+  duration_ms: 1468.0292
+  type: 'test'
+  ...
+# Subtest: corsair: complete level-one choices survive model validation and persistence reload
+ok 520 - corsair: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 62.0208
+  type: 'test'
+  ...
+# Subtest: gunslinger: complete level-one choices survive model validation and persistence reload
+ok 521 - gunslinger: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 62.4882
+  type: 'test'
+  ...
+# Subtest: navigator: complete level-one choices survive model validation and persistence reload
+ok 522 - navigator: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 45.2638
+  type: 'test'
+  ...
+# Subtest: tidecaller: complete level-one choices survive model validation and persistence reload
+ok 523 - tidecaller: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 39.0238
+  type: 'test'
+  ...
+# Subtest: warden: complete level-one choices survive model validation and persistence reload
+ok 524 - warden: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 51.9174
+  type: 'test'
+  ...
+# Subtest: reaver: complete level-one choices survive model validation and persistence reload
+ok 525 - reaver: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 44.9128
+  type: 'test'
+  ...
+# Subtest: doctor: complete level-one choices survive model validation and persistence reload
+ok 526 - doctor: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 38.3618
+  type: 'test'
+  ...
+# Subtest: shipwright: complete level-one choices survive model validation and persistence reload
+ok 527 - shipwright: complete level-one choices survive model validation and persistence reload
+  ---
+  duration_ms: 42.8048
+  type: 'test'
+  ...
+# Subtest: creation rejects incomplete choices, forged ownership, and submitted derived mechanics
+ok 528 - creation rejects incomplete choices, forged ownership, and submitted derived mechanics
+  ---
+  duration_ms: 3.2263
+  type: 'test'
+  ...
+# Subtest: owner-scoped reads and every mutation reject a different user
+ok 529 - owner-scoped reads and every mutation reject a different user
+  ---
+  duration_ms: 37.9756
+  type: 'test'
+  ...
+# Subtest: receipted identity edits preserve mechanics and reject stale or forged updates
+ok 530 - receipted identity edits preserve mechanics and reject stale or forged updates
+  ---
+  duration_ms: 91.366
+  type: 'test'
+  ...
+# Subtest: atomic advancement requires the level-three Path, preserves expenditure, and detects write races
+ok 531 - atomic advancement requires the level-three Path, preserves expenditure, and detects write races
+  ---
+  duration_ms: 122.528
+  type: 'test'
+  ...
+# Subtest: resource saves reject stale revisions and cannot bypass the timed rest planner
+ok 532 - resource saves reject stale revisions and cannot bypass the timed rest planner
+  ---
+  duration_ms: 46.7569
+  type: 'test'
+  ...
+# Subtest: intended roster is complete and every Path has its owning Calling schedule
+ok 533 - intended roster is complete and every Path has its owning Calling schedule
+  ---
+  duration_ms: 0.6452
+  type: 'test'
+  ...
+# Subtest: Path selections persist and influence derived casting, tools and resistances
+ok 534 - Path selections persist and influence derived casting, tools and resistances
+  ---
+  duration_ms: 956.5962
+  type: 'test'
+  ...
+# Subtest: level-twenty Signature Spells are always prepared, separately spendable and recover on Short Rest
+ok 535 - level-twenty Signature Spells are always prepared, separately spendable and recover on Short Rest
+  ---
+  duration_ms: 319.8082
+  type: 'test'
+  ...
+# Subtest: Arcane Recovery enforces individual Calling level, spent slots, level-five cap and once per Long Rest
+ok 536 - Arcane Recovery enforces individual Calling level, spent slots, level-five cap and once per Long Rest
+  ---
+  duration_ms: 89.1577
+  type: 'test'
+  ...
+# Subtest: sorcery conversion costs, temporary slots, restoration limits and Long Rest expiry are enforced
+ok 537 - sorcery conversion costs, temporary slots, restoration limits and Long Rest expiry are enforced
+  ---
+  duration_ms: 82.3631
+  type: 'test'
+  ...
+# Subtest: preparation changes respect class lists, rest type and the one-spell replacement limit
+ok 538 - preparation changes respect class lists, rest type and the one-spell replacement limit
+  ---
+  duration_ms: 151.6901
+  type: 'test'
+  ...
+# Subtest: all eight canonical Calling progressions independently match source schedules at every level
+ok 539 - all eight canonical Calling progressions independently match source schedules at every level
+  ---
+  duration_ms: 1340.3398
+  type: 'test'
+  ...
+# Subtest: Path choice is mandatory, Calling-owned and non-purchasable
+ok 540 - Path choice is mandatory, Calling-owned and non-purchasable
+  ---
+  duration_ms: 13.0332
+  type: 'test'
+  ...
+# Subtest: single Calling rejects multiclass entry while preserving original saves and attacks
+ok 541 - single Calling rejects multiclass entry while preserving original saves and attacks
+  ---
+  duration_ms: 12.8644
+  type: 'test'
+  ...
+# Subtest: spell slots use single Calling table or multiclass round-up contributions, preparation remains class-specific
+ok 542 - spell slots use single Calling table or multiclass round-up contributions, preparation remains class-specific
+  ---
+  duration_ms: 577.6266
+  type: 'test'
+  ...
+# Subtest: forged, duplicate and out-of-level choices reject; replay is deterministic and does not mutate ledgers
+ok 543 - forged, duplicate and out-of-level choices reject; replay is deterministic and does not mutate ledgers
+  ---
+  duration_ms: 5.1962
+  type: 'test'
+  ...
+# Subtest: all feature rules and spell descriptions have source provenance and distinguish readable rules from automation
+ok 544 - all feature rules and spell descriptions have source provenance and distinguish readable rules from automation
+  ---
+  duration_ms: 0.7024
+  type: 'test'
+  ...
+# Subtest: resources scale per Calling, track independently and recover without mutating source
+ok 545 - resources scale per Calling, track independently and recover without mutating source
+  ---
+  duration_ms: 779.4942
+  type: 'test'
+  ...
+# Subtest: recorded Health rolls, retrospective Resolve, Hit Dice and rest accounting remain bounded
+ok 546 - recorded Health rolls, retrospective Resolve, Hit Dice and rest accounting remain bounded
+  ---
+  duration_ms: 6.985
+  type: 'test'
+  ...
+1..546
+# tests 546
+# suites 0
+# pass 545
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 172208.8127

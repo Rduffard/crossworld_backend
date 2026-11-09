@@ -1,3 +1,4 @@
+import { build, testLoadout } from './helpers/rules2024.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -20,30 +21,12 @@ function applyCommand(state, command, owner, roll) {
   );
 }
 const { createService } = require("../src/modules/archipelago/combat/service");
-const equipment = require("../src/modules/archipelago/equipment");
-const character = () => ({
-  ...equipment.startingEquipment(),
-  _id: "0123456789abcdef01234567",
-  owner: "owner",
-  name: "Mara",
-  calling: "tidecaller",
-  progression: { rank: 3 },
-  attributes: {
-    might: 12,
-    agility: 16,
-    wit: 10,
-    spirit: 14,
-    resolve: 10,
-    instinct: 10,
-  },
-  training: ["attune", "lore", "read", "climb"],
-  trainingRulesVersion: 1,
-  resources: {
-    health: { current: 12, max: 20 },
-    focus: { current: 3, max: 12 },
-  },
-  equipmentNotes: "Plate is not mechanically inferred",
-});
+const character = (calling = 'tidecaller') => {
+  const c = { ...testLoadout(), ...build(calling, 3, { might: 13, agility: 16, wit: 10, spirit: 14, resolve: 10, instinct: 13 }),
+    _id: '0123456789abcdef01234567', owner: 'owner', name: 'Mara' };
+  c.rulesRuntime.health.current = 12;
+  return c;
+};
 const cmd = {
   id: "character-attack-01",
   expectedRevision: 0,
@@ -64,15 +47,16 @@ test("actual identity, depleted Health, attributes, Training and temporary loado
   assert.equal(player.name, "Mara");
   assert.equal(player.calling, "tidecaller");
   assert.equal(player.level, 3);
-  assert.deepEqual(player.health, { current: 12, max: 20 });
+  assert.deepEqual(player.health, { current: 12, max: 17 });
   assert.deepEqual(player.attributes, original.attributes);
   assert.deepEqual(player.training, original.training);
   assert.equal(player.modifiers.agility, 3);
-  assert.equal(player.guard, 13);
+  assert.equal(player.guard, 15);
   assert.deepEqual(player.guardInputs, {
     armor: null,
     shield: false,
     bonus: 0,
+    unarmoredBase: 15,
   });
   assert.deepEqual(player.weaponTraining, ["simple"]);
   assert.equal(player.weapon, "cutlass");
@@ -80,7 +64,7 @@ test("actual identity, depleted Health, attributes, Training and temporary loado
   assert.notStrictEqual(state.initialCharacterSnapshot, player);
   assert.deepEqual(original, before);
   original.attributes.agility = 8;
-  original.resources.health.current = 20;
+  original.rulesRuntime.health.current = 20;
   assert.equal(player.attributes.agility, 16);
   assert.equal(player.health.current, 12);
   const next = applyCommand(state, cmd, "owner", () => 1);
@@ -89,7 +73,7 @@ test("actual identity, depleted Health, attributes, Training and temporary loado
     next.initialCharacterSnapshot,
     state.initialCharacterSnapshot
   );
-  assert.deepEqual(original.resources.focus, { current: 3, max: 12 });
+
 });
 test("Calling entitlements control cutlass proficiency for every Calling", () => {
   for (const calling of [
@@ -100,29 +84,29 @@ test("Calling entitlements control cutlass proficiency for every Calling", () =>
     "warden",
     "reaver",
   ]) {
-    const c = { ...character(), calling };
+    const c = character(calling);
     const state = fromCharacter(c, "owner", true);
     assert.equal(
       state.combatants[0].attackOptions[0].trained,
-      ["corsair", "warden"].includes(calling)
+      ["corsair", "gunslinger", "navigator", "warden", "reaver"].includes(calling)
     );
     assert.equal(
       applyCommand(state, cmd, "owner", () => 1).events[0].proficiency,
-      ["corsair", "warden"].includes(calling) ? 2 : 0
+      ["corsair", "gunslinger", "navigator", "warden", "reaver"].includes(calling) ? 2 : 0
     );
   }
 });
 test("malformed or unavailable saved values rejected without repair", () => {
   for (const change of [
-    (c) => delete c.resources.health,
-    (c) => (c.resources.health.current = 0),
-    (c) => (c.resources.health.current = 21),
-    (c) => (c.resources.health.current = null),
-    (c) => (c.resources.health.max = -1),
-    (c) => (c.attributes.might = 0),
-    (c) => (c.progression.rank = 21),
-    (c) => (c.training = {}),
-    (c) => (c.calling = "unknown"),
+    (c) => delete c.rulesRuntime.health,
+    (c) => (c.rulesRuntime.health.current = 0),
+    (c) => (c.rulesRuntime.health.current = 21),
+    (c) => (c.rulesRuntime.health.current = null),
+    (c) => (c.rulesRuntime.health.max = -1),
+    (c) => (c.rulesLedger.baseAttributes.might = 0),
+    (c) => (c.rulesLedger.levels = Array(21).fill(c.rulesLedger.levels[0])),
+    (c) => (c.rulesLedger.levels[0].choices.skills = ["not-a-skill"]),
+    (c) => (c.rulesLedger.levels[0].callingId = "unknown"),
   ]) {
     const c = character();
     change(c);
@@ -169,7 +153,7 @@ test("service authorizes character read, persists snapshot, never re-reads chara
   await service.fromCharacter("owner", c._id, true);
   assert.deepEqual(c, original);
   c.attributes.agility = 8;
-  c.resources.health.current = 20;
+  c.rulesRuntime.health.current = 20;
   const before = structuredClone(c),
     readCount = reads;
   const result = await service.command("encounter", "owner", cmd);
@@ -189,7 +173,7 @@ test("service authorizes character read, persists snapshot, never re-reads chara
   assert.equal(reloaded.sourceCharacter, c._id);
   assert.deepEqual(reloaded.initialCharacterSnapshot.health, {
     current: 12,
-    max: 20,
+    max: 17,
   });
   assert.equal(createFixture("owner").activeCombatant, "corsair");
 });
@@ -262,9 +246,9 @@ test("from-character endpoint rejects forged snapshots and other owners without 
     assert.equal(response.body.combatants[0].name, "Mara");
     assert.deepEqual(created.initialCharacterSnapshot.health, {
       current: 12,
-      max: 20,
+      max: 17,
     });
-    c.resources.health.current = null;
+    c.rulesRuntime.health.current = null;
     assert.equal((await call(body)).status, 400);
   } finally {
     Encounter.create = oldCreate;

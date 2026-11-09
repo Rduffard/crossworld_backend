@@ -1,0 +1,5357 @@
+{
+  "guidance": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "light": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mending": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "resistance": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sacred-flame": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "spare-the-dying": {
+    "range": {
+      "kind": "distance",
+      "feet": 15
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "thaumaturgy": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "bane": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "bless": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "command": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "create-or-destroy-water": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "cure-wounds": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "detect-evil-and-good": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "detect-magic": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "detect-poison-and-disease": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "guiding-bolt": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 6,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "healing-word": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "inflict-wounds": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "protection-from-evil-and-good": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "purify-food-and-drink": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sanctuary": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shield-of-faith": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "aid": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "augury": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "blindness-deafness": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "calm-emotions": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "continual-flame": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "enhance-ability": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "find-traps": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "gentle-repose": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 864000,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "hold-person": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "lesser-restoration": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "locate-object": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "prayer-of-healing": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "protection-from-poison": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "poison"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "silence": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "thunder"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "spiritual-weapon": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "warding-bond": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "zone-of-truth": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "animate-dead": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "beacon-of-hope": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "bestow-curse": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "clairvoyance": {
+    "range": {
+      "kind": "distance",
+      "feet": 5280
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "create-food-and-water": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "daylight": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dispel-magic": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "glyph-of-warding": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "thunder"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "magic-circle": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "mass-healing-word": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "meld-into-stone": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "protection-from-energy": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "remove-curse": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "revivify": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "sending": {
+    "range": {
+      "kind": "unlimited"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "speak-with-dead": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "spirit-guardians": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "radiant",
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "tongues": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "water-walk": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "aura-of-life": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "banishment": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "control-water": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "death-ward": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "divination": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "freedom-of-movement": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "guardian-of-faith": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "locate-creature": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "stone-shape": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "commune": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "contagion": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 604800,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dispel-evil-and-good": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "flame-strike": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire",
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "geas": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 2592000,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "greater-restoration": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "hallow": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "insect-plague": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "piercing"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "legend-lore": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "mass-cure-wounds": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "planar-binding": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "raise-dead": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "scrying": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "blade-barrier": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "create-undead": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "find-the-path": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "forbiddance": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "harm": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "heal": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "heroes-feast": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "poison"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "planar-ally": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sunbeam": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "true-seeing": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "word-of-recall": {
+    "range": {
+      "kind": "distance",
+      "feet": 5
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "conjure-celestial": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "divine-word": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "etherealness": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fire-storm": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "plane-shift": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "regenerate": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "resurrection": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "symbol": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "antimagic-field": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "control-weather": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "earthquake": {
+    "range": {
+      "kind": "distance",
+      "feet": 500
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "holy-aura": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sunburst": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "astral-projection": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "gate": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mass-heal": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "power-word-heal": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "true-resurrection": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "divine-favor": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "divine-smite": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "heroism": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "searing-smite": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "find-steed": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "magic-weapon": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shining-smite": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "alarm": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "animal-friendship": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "ensnaring-strike": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "piercing"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "entangle": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fog-cloud": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "goodberry": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "hunter-s-mark": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "jump": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "longstrider": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "speak-with-animals": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "animal-messenger": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "barkskin": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "darkvision": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "gust-of-wind": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "locate-animals-or-plants": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "pass-without-trace": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "spike-growth": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "piercing"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "conjure-animals": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "slashing"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "nondetection": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "plant-growth": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "speak-with-plants": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "water-breathing": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "wind-wall": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "conjure-woodland-beings": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dominate-beast": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "stoneskin": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "slashing"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "commune-with-nature": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "tree-stride": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "acid-splash": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "acid"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "chill-touch": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dancing-lights": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "elementalism": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fire-bolt": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mage-hand": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "message": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 6,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "minor-illusion": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "poison-spray": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "poison"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "prestidigitation": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "ray-of-frost": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "cold"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shocking-grasp": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "lightning"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sorcerous-burst": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "acid",
+      "cold",
+      "fire",
+      "lightning",
+      "poison",
+      "psychic",
+      "thunder"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "true-strike": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "radiant"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "burning-hands": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "charm-person": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "chromatic-orb": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "acid",
+      "cold",
+      "fire",
+      "lightning",
+      "poison",
+      "thunder"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "color-spray": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "comprehend-languages": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "disguise-self": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "expeditious-retreat": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "false-life": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "feather-fall": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "grease": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "ice-knife": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "piercing",
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mage-armor": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "magic-missile": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "ray-of-sickness": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "poison"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shield": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 6,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "silent-image": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sleep": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "thunderwave": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "thunder"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "alter-self": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "blur": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "darkness": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "detect-thoughts": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dragon-s-breath": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "enlarge-reduce": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "flame-blade": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "flaming-sphere": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "invisibility": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "knock": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "levitate": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mirror-image": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "misty-step": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "scorching-ray": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "see-invisibility": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shatter": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "thunder"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "spider-climb": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "suggestion": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "web": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "blink": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "counterspell": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fear": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fireball": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fly": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "gaseous-form": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "slashing"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "haste": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "hypnotic-pattern": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "lightning-bolt": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "lightning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "major-image": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sleet-storm": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "slow": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "stinking-cloud": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "vampiric-touch": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "blight": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "charm-monster": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "confusion": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dimension-door": {
+    "range": {
+      "kind": "distance",
+      "feet": 500
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fire-shield": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "cold",
+      "fire"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "greater-invisibility": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "ice-storm": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "bludgeoning",
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "polymorph": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "vitriolic-sphere": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "acid"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "wall-of-fire": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "animate-objects": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "arcane-hand": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "force",
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "cloudkill": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "poison"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "cone-of-cold": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "creation": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dominate-person": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "hold-monster": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "seeming": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "telekinesis": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "teleportation-circle": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 6,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "wall-of-stone": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "chain-lightning": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "lightning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "circle-of-death": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "disintegrate": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "eyebite": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "flesh-to-stone": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "freezing-sphere": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "globe-of-invulnerability": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mass-suggestion": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "move-earth": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 7200,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "delayed-blast-fireball": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "finger-of-death": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "prismatic-spray": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire",
+      "acid",
+      "lightning",
+      "poison",
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "reverse-gravity": {
+    "range": {
+      "kind": "distance",
+      "feet": 100
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "teleport": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "demiplane": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dominate-monster": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "incendiary-cloud": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "power-word-stun": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "meteor-swarm": {
+    "range": {
+      "kind": "distance",
+      "feet": 5280
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "fire",
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "power-word-kill": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "time-stop": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "wish": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "necrotic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "find-familiar": {
+    "range": {
+      "kind": "distance",
+      "feet": 10
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "floating-disk": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "hideous-laughter": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": true,
+    "consumedMaterial": false
+  },
+  "identify": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "illusory-script": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "S",
+      "M"
+    ],
+    "durationSeconds": 864000,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "unseen-servant": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "acid-arrow": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "acid"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "arcane-lock": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "arcanist-s-magic-aura": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "magic-mouth": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "mind-spike": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "ray-of-enfeeblement": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "rope-trick": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "phantom-steed": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "tiny-hut": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "arcane-eye": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "black-tentacles": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "bludgeoning"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "conjure-minor-elementals": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "acid",
+      "cold",
+      "fire",
+      "lightning"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "fabricate": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "faithful-hound": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "hallucinatory-terrain": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "phantasmal-killer": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "private-sanctum": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "resilient-sphere": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "secret-chest": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "conjure-elemental": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "lightning",
+      "thunder",
+      "fire",
+      "cold"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "contact-other-plane": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "dream": {
+    "range": {
+      "kind": "special"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mislead": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "S"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "modify-memory": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "passwall": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "summon-dragon": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [
+      "piercing"
+    ],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "telepathic-bond": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "wall-of-force": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "contingency": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 864000,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "guards-and-wards": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "instant-summons": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "irresistible-dance": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "magic-jar": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "programmed-illusion": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "wall-of-ice": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "cold",
+      "psychic",
+      "fire"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "arcane-sword": {
+    "range": {
+      "kind": "distance",
+      "feet": 90
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "force"
+    ],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "forcecage": {
+    "range": {
+      "kind": "distance",
+      "feet": 100
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "magnificent-mansion": {
+    "range": {
+      "kind": "distance",
+      "feet": 300
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mirage-arcane": {
+    "range": {
+      "kind": "sight"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 864000,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "project-image": {
+    "range": {
+      "kind": "distance",
+      "feet": 2640000
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "sequester": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "simulacrum": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "antipathy-sympathy": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 864000,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "befuddlement": {
+    "range": {
+      "kind": "distance",
+      "feet": 150
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "clone": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": true
+  },
+  "maze": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "mind-blank": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 86400,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "foresight": {
+    "range": {
+      "kind": "touch",
+      "feet": 0
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 28800,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "imprisonment": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "prismatic-wall": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [
+      "fire",
+      "cold",
+      "acid",
+      "lightning",
+      "force",
+      "poison"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shapechange": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "true-polymorph": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 3600,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "weird": {
+    "range": {
+      "kind": "distance",
+      "feet": 120
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [
+      "psychic"
+    ],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "druidcraft": {
+    "range": {
+      "kind": "distance",
+      "feet": 30
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "produce-flame": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 600,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "shillelagh": {
+    "range": {
+      "kind": "self"
+    },
+    "components": [
+      "V",
+      "S",
+      "M"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": false,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "starry-wisp": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V",
+      "S"
+    ],
+    "durationSeconds": 0,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": true,
+    "twinnable": false,
+    "consumedMaterial": false
+  },
+  "faerie-fire": {
+    "range": {
+      "kind": "distance",
+      "feet": 60
+    },
+    "components": [
+      "V"
+    ],
+    "durationSeconds": 60,
+    "damageTypes": [],
+    "savingThrow": true,
+    "spellAttack": false,
+    "twinnable": false,
+    "consumedMaterial": false
+  }
+}

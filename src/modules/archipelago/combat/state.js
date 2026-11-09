@@ -1,5 +1,4 @@
 const { isDeepStrictEqual } = require("node:util");
-const { calculateResourceMaximums } = require("../system/resources");
 const { resolveAttack } = require("./attack");
 const weapons = require("./weapons");
 const { calculateGuard } = require("./guard");
@@ -12,7 +11,8 @@ function createFixture(owner) {
     resolve: 12,
     instinct: 10,
   };
-  const health = calculateResourceMaximums(attributes, 1).health;
+  const health = require("../system/rules2024").create(attributes,
+    { callingId: "corsair", choices: {} }, { allowIncomplete: true }).summary.health.max;
   return {
     owner: String(owner),
     status: "active",

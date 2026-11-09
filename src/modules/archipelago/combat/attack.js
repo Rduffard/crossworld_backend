@@ -41,7 +41,7 @@ function resolveAttack(actor, target, weapon, options = {}, roll) {
   );
   const total = attack.selected + attributeModifier + proficiency;
   const guard = calculateGuard(target.attributes, target.guardInputs);
-  const critical = attack.selected === 20,
+  const critical = attack.selected >= (actor.criticalThreshold ?? 20),
     hit = critical || (attack.selected !== 1 && total >= guard);
   const damageDice =
     hit && weapon.damage.count

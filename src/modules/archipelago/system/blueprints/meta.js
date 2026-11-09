@@ -1,1 +1,0 @@
-module.exports = { version: '2026-11-04-training', title: 'Archipelago System Blueprint', designGoals: ['Attribute checks add proficiency once when relevant Training applies.', 'Choose exactly four binary Training proficiencies.', 'Identity, resources, reputation, and equipment retain their existing roles.'] };
