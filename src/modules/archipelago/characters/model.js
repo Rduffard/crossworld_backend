@@ -23,7 +23,7 @@ const characterSchema = new mongoose.Schema({
   status: { type: String, enum: ["active", "archived", "retired"], default: "active" },
 }, { timestamps: true, versionKey: false, strict: "throw", minimize: false });
 characterSchema.pre("validate", function () {
-  const rules = require("../system/rules2024");
+  const rules = require("../system/characterSystem");
   const summary = rules.replay(this.rulesLedger);
   if (!summary.decisionsComplete) throw Error("Incomplete character choices");
   if (this.calling !== this.rulesLedger.levels[0].callingId) throw Error("Calling differs from ledger");

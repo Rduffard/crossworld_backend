@@ -1,7 +1,8 @@
 const { isDeepStrictEqual } = require("node:util");
 const { resolveAttack } = require("./attack");
 const weapons = require("./weapons");
-const { calculateGuard } = require("./guard");
+const { calculateGuard } = require('@crossworld/sanguine-engine/equipment/guard');
+const { nextEncounterTurn, attackActionAvailable, attacksAfterAttack, startEncounterTurnBudget } = require('@crossworld/sanguine-engine/combat/encounter');
 function createFixture(owner) {
   const attributes = {
     might: 16,
@@ -11,7 +12,7 @@ function createFixture(owner) {
     resolve: 12,
     instinct: 10,
   };
-  const health = require("../system/rules2024").create(attributes,
+  const health = require("../system/characterSystem").create(attributes,
     { callingId: "corsair", choices: {} }, { allowIncomplete: true }).summary.health.max;
   return {
     owner: String(owner),
@@ -124,12 +125,11 @@ function transition(state, command, owner, roll) {
     if (state.status !== "active") throw new Error("Encounter is paused");
     if (command.type === "end-turn") {
       const index = state.combatants.findIndex((c) => c.id === actor.id);
-      const nextIndex = (index + 1) % state.combatants.length;
+      const { nextIndex, round } = nextEncounterTurn(index, state.combatants.length, state.round);
       next.activeCombatant = next.combatants[nextIndex].id;
-      next.combatants[nextIndex].actions = 1;
-      next.combatants[nextIndex].attacksRemaining = 0;
+      Object.assign(next.combatants[nextIndex], startEncounterTurnBudget());
       next.combatants[index].attacksRemaining = 0;
-      if (nextIndex === 0) next.round += 1;
+      next.round = round;
       event = {
         actor: actor.id,
         result: "end-turn",
@@ -139,7 +139,7 @@ function transition(state, command, owner, roll) {
       const target = state.combatants.find((c) => c.id === command.target);
       if (
         !["corsair", "player"].includes(actor.id) ||
-        (actor.actions !== 1 && !(actor.attacksRemaining > 0))
+        !attackActionAvailable(actor.actions, actor.attacksRemaining)
       )
         throw new Error("Attack Action unavailable");
       if (!target || target.id === actor.id || target.health.current <= 0)
@@ -157,10 +157,7 @@ function transition(state, command, owner, roll) {
       event.instanceId = option.instanceId ?? null;
       const attacker = next.combatants.find((c) => c.id === actor.id);
       attacker.actions = 0;
-      attacker.attacksRemaining =
-        actor.actions === 1
-          ? (actor.attacksPerAction ?? 1) - 1
-          : actor.attacksRemaining - 1;
+      attacker.attacksRemaining = attacksAfterAttack(actor.actions, actor.attacksPerAction, actor.attacksRemaining);
       next.combatants.find((c) => c.id === target.id).health.current =
         event.healthAfter;
       if (event.healthAfter === 0) next.status = "completed";

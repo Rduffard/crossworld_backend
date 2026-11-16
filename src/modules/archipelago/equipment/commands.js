@@ -1,9 +1,13 @@
 const {randomUUID,randomInt}=require('node:crypto');
-const gear=require('./index');
+const {sumDice}=require('@crossworld/sanguine-engine/dice');
+const { 'healing-potion': healingPotion } = require('@crossworld/sanguine-engine/equipment/object-use');
+const { purchaseQuote, canCatalogPurchase, catalogUnits } = require('@crossworld/sanguine-engine/equipment/commerce');
+const { ammunitionMatches, ammunitionActionOutcome, loadingHandAvailable } = require('@crossworld/sanguine-engine/equipment/ammunition');
+const gear=require('./inventory');
 function fail(message){throw Object.assign(new Error(message),{statusCode:422});}
 function fields(value,allowed){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!allowed.includes(k)))fail('Invalid inventory operation fields');}
 function quantity(value){if(!Number.isSafeInteger(value)||value<1||value>100000)fail('Choose a positive integer quantity');return value;}
-function apply(c,type,p){
+function apply(c,type,p,summary){
   const equipped=id=>['armor','mainHand','offHand'].some(slot=>c.loadout[slot]===id);
   const owned=id=>{const item=c.inventory.find(i=>i.instanceId===id);if(!item)fail('Item is not owned');return item;};
   const remove=item=>{c.inventory=c.inventory.filter(i=>i.instanceId!==item.instanceId);};
@@ -11,27 +15,29 @@ function apply(c,type,p){
   if(type==='equipment.buy'){
     fields(p,['definitionId','quantity','spellId']);const n=quantity(p.quantity??1),definition=gear.definition(p.definitionId);
     const scroll=definition.purchaseScrollLevel!==undefined;
-    if(scroll?!require('../system/rules2024/rules').spells.some(s=>s.id===p.spellId&&s.level===definition.purchaseScrollLevel):p.spellId!==undefined)fail('Choose the exact registered spell matching this scroll purchase level');
-    if(!Number.isSafeInteger(definition.costCp)||definition.costCp<0)fail('This item has no catalog purchase price');
-    const cost=definition.costCp*n,balance=c.goldCp;
-    if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(balance)||cost>balance)fail('Insufficient copper for this purchase');
+    if(scroll?!require('../system/rules').spells.some(s=>s.id===p.spellId&&s.level===definition.purchaseScrollLevel):p.spellId!==undefined)fail('Choose the exact registered spell matching this scroll purchase level');
+    if(!canCatalogPurchase(definition))fail('This item has no catalog purchase price');
+    const quote=purchaseQuote(definition.costCp,n,c.goldCp);
+    if(!quote)fail('Insufficient copper for this purchase');
     if(!definition.stackable&&n>50)fail('Buy at most 50 individual items at once');
-    const items=scroll?Array.from({length:n},()=>gear.issue({definitionId:'spell-scroll',spellId:p.spellId})):require('./bundles').issue(definition.id,n*(definition.units??1));
-    c.inventory.push(...items);c.goldCp=balance-cost;result.costCp=cost;result.instanceIds=items.map(i=>i.instanceId);
+    const items=scroll?Array.from({length:n},()=>gear.issue({definitionId:'spell-scroll',spellId:p.spellId})):require('./bundles').issue(definition.id,catalogUnits(n,definition.units??1));
+    c.inventory.push(...items);c.goldCp=quote.remainingCopper;result.costCp=quote.cost;result.instanceIds=items.map(i=>i.instanceId);
   }else if(type==='equipment.fire'){
     fields(p,['weaponId','ammunitionId','shots','actionId','actionType']);const shots=quantity(p.shots??1),weapon=owned(p.weaponId),ammunition=owned(p.ammunitionId);
     const definition=gear.definition(weapon.definitionId),ammoDefinition=ammunition.definitionId?gear.definition(ammunition.definitionId):null;
-    if(!equipped(weapon.instanceId)||definition.kind!=='weapon'||!definition.ammunitionType||!ammoDefinition||ammoDefinition.kind==='weapon'||ammoDefinition.ammunitionType!==definition.ammunitionType)fail('Choose an equipped ammunition weapon and matching ammunition');
-    if(definition.hands===1&&['mainHand','offHand'].filter(slot=>c.loadout[slot]).length>1)fail('A one-handed ammunition weapon needs a free loading hand');
+    if(!equipped(weapon.instanceId)||definition.kind!=='weapon'||!ammunitionMatches(definition,ammoDefinition))fail('Choose an equipped ammunition weapon and matching ammunition');
+    const heldCount=['mainHand','offHand'].filter(slot=>c.loadout[slot]).length;
+    if(!loadingHandAvailable(definition.hands,heldCount))fail('A one-handed ammunition weapon needs a free loading hand');
     if(typeof p.actionId!=='string'||!/^[a-zA-Z0-9-]{1,100}$/.test(p.actionId)||['constructor','prototype','__proto__'].includes(p.actionId)||!['attack','bonus','reaction'].includes(p.actionType))fail('Record a consistent action ID and action type');
-    const summary=require('../system/rules2024').replay(c.rulesLedger),actions=c.rulesRuntime.ammunitionActions??={},previous=actions[p.actionId]??{type:p.actionType,total:0,weapons:{}};
+    const actions=c.rulesRuntime.ammunitionActions??={},previous=actions[p.actionId]??{type:p.actionType,total:0,weapons:{}};
     if(previous.type!==p.actionType)fail('Action type cannot change');
-    const maximum=p.actionType==='attack'?summary.attacksPerAction:1;
-    const ignoresLoading=summary.feats.includes('powder-drill')&&['pistol','musket'].includes(definition.id);
-    if(previous.total+shots>maximum||definition.loading&&!ignoresLoading&&(previous.weapons[weapon.instanceId]??0)+shots>1)fail('Extra Attack and Loading limits exceeded for this action');
-    if(ammunition.quantity<shots)fail('Insufficient ammunition');
-    ammunition.quantity-=shots;if(!ammunition.quantity)remove(ammunition);
-    actions[p.actionId]={...previous,total:previous.total+shots,weapons:{...previous.weapons,[weapon.instanceId]:(previous.weapons[weapon.instanceId]??0)+shots}};
+    const outcome=ammunitionActionOutcome({
+      shots,actionType:p.actionType,attacksPerAction:summary.attacksPerAction,total:previous.total,
+      weaponTotal:previous.weapons[weapon.instanceId]??0,weapon:definition,feats:summary.feats,available:ammunition.quantity,
+    });
+    if(outcome.error)fail(outcome.error);
+    ammunition.quantity=outcome.remaining;if(!ammunition.quantity)remove(ammunition);
+    actions[p.actionId]={...previous,total:outcome.usedTotal,weapons:{...previous.weapons,[weapon.instanceId]:outcome.usedWeapon}};
     c.rulesRuntime.ammunitionActions=actions;c.rulesRuntime.revision++;result.shots=shots;
   }else if(type==='equipment.consume'){
     fields(p,['instanceId','quantity']);const n=quantity(p.quantity??1),item=owned(p.instanceId),definition=item.definitionId?gear.definition(item.definitionId):null;
@@ -43,9 +49,10 @@ function apply(c,type,p){
       if(definition&&!definition.ammunitionType&&!definition.consumable)fail('This item is not a consumable');
       if(definition?.consumable==='healing-potion'){
         if(n!==1)fail('Drink one healing potion per Bonus Action');
-        result.rolls=[randomInt(1,5),randomInt(1,5)];result.healing=result.rolls[0]+result.rolls[1]+2;
-        if(require('../system/rules2024/vitality').incapacitated(c.rulesRuntime))fail('Cannot drink your own potion while Incapacitated');
-        require('../system/rules2024/vitality').heal(c.rulesRuntime,result.healing);c.rulesRuntime.revision++;
+        const [count,sides,bonus]=healingPotion.healing;
+        result.rolls=Array.from({length:count},()=>randomInt(1,sides+1));result.healing=sumDice(result.rolls,bonus);
+        if(require('../combat/vitality/vitality').incapacitated(c.rulesRuntime))fail('Cannot drink your own potion while Incapacitated');
+        require('../combat/vitality/vitality').heal(c.rulesRuntime,result.healing);c.rulesRuntime.revision++;
       }
       item.quantity-=n;if(!item.quantity)remove(item);
     }

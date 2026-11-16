@@ -4,7 +4,7 @@ The mandatory completion requirement is NOT satisfied. `tabletopReady` remains f
 
 ## Intended Path roster
 
-The roster was checked against the existing Path registry, reserved entries in `rules2024/sourceRules.json`, the inherited `originalPaths.js` designs, and project documentation. The old six-Path registry had Drydock Ghost, Storm Broker, Reef Knife, Powder Saint, Leviathan Anchor and Omen Diver. The canonical registry adds the established Calling-specific and reserved designs below. No additional Path name was invented during this integration.
+The roster was checked against the existing Path registry, reserved entries in `srd-provenance/sourceRules.json`, the inherited `originalPaths.js` designs, and project documentation. The old six-Path registry had Drydock Ghost, Storm Broker, Reef Knife, Powder Saint, Leviathan Anchor and Omen Diver. The canonical registry adds the established Calling-specific and reserved designs below. No additional Path name was invented during this integration.
 
 | Calling | Paths | Path feature levels |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ Combat targeting/effect automation is still GM-adjudicated. This does not waive 
 
 ## Validation
 
-Backend command: `node --test --experimental-test-isolation=none tests/*.test.mjs`.
+Backend command: `npm test`.
 Frontend uses the same test command. Vite-based SSR tests explicitly disable config-file loading and preserve symlinks to avoid a Windows subprocess blocked by this sandbox. The production build uses Vite's programmatic build API with `configFile:false`, the actual React plugin and `resolve.preserveSymlinks:true`; the ordinary CLI config loader hits `spawn EPERM` here.
 
 Final validation: 88 backend tests and 44 frontend tests pass; backend Archipelago/test lint, changed-frontend lint, production build and Git whitespace checks pass. All twelve Paths have individual persistence tests at every level through twenty and frontend level-twenty grant rendering. Independent roster/schedule tests prevent an omitted Path from silently reducing loop-based coverage. Resource tests cover recovery, conversion, immutable failures and preparation limits. Equipment tests cover all starting packages, ownership and concurrent writes.

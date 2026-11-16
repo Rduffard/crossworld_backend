@@ -4,9 +4,13 @@
   "description": "Backend for the Crossworld Creative project",
   "main": "src/app.js",
   "scripts": {
+    "test": "node scripts/test.mjs",
+    "test:mongo": "node scripts/test.mjs --mongo",
     "lint": "npx eslint .",
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "test:fast": "node scripts/test.mjs --fast",
+    "test:full": "node scripts/test.mjs --full"
   },
   "repository": {
     "type": "git",
@@ -16,6 +20,7 @@
   "license": "ISC",
   "homepage": "https://github.com/Rduffard/se_project_express#readme",
   "dependencies": {
+    "@crossworld/sanguine-engine": "file:vendor/crossworld-sanguine-engine-0.68.0.tgz",
     "bcryptjs": "^3.0.3",
     "celebrate": "^15.0.3",
     "cloudinary": "^2.9.0",

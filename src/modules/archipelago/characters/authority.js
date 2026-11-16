@@ -1,3 +1,5 @@
+const {leveledCallingSpellEligible}=require('@crossworld/sanguine-engine/spells/casting-sources');
+const {catalogUnits}=require('@crossworld/sanguine-engine/equipment/commerce');
 function fail(message,statusCode=403){throw Object.assign(new Error(message),{statusCode});}
 const gmCommands=['milestone.authorize','inspiration.grant','scene.record','equipment.award','equipment.sell','equipment.dawn','spells.discover','rebuild.approve','turn.start','turn.end','turn.external','contingency.trigger'];
 async function context(character,userId,Campaign,session){
@@ -13,7 +15,7 @@ function permissions(character,access){return {isOwner:access.isOwner,canGM:acce
 function apply(character,summary,type,p,access){
   if(!access.gmAllowed)fail('This operation requires the campaign GM or the owner of a solo character');
   if(type==='milestone.authorize'){
-    if(Object.keys(p).some(k=>!['level','reason'].includes(k))||p.level!==summary.totalLevel+1||p.level>20||typeof p.reason!=='string'||!p.reason.trim()||p.reason.length>500)fail('Authorize exactly the next level with a milestone reason',422);
+    if(Object.keys(p).some(k=>!['level','reason'].includes(k))||p.level!==summary.totalLevel+1||p.level>maximumCharacterLevel||typeof p.reason!=='string'||!p.reason.trim()||p.reason.length>500)fail('Authorize exactly the next level with a milestone reason',422);
     const list=character.rulesRuntime.milestones??=[];
     if(list.some(m=>m.level===p.level))fail('This milestone level is already authorized',422);
     const milestone={level:p.level,reason:p.reason.trim(),authorizedBy:access.userId,authorizedAt:Date.now(),used:false};list.push(milestone);character.rulesRuntime.revision++;
@@ -26,7 +28,7 @@ function apply(character,summary,type,p,access){
       const definition=gear.definition(p.definitionId),n=p.quantity??1;
       if(!Number.isSafeInteger(n)||n<1||n>(definition.stackable?100000:50))fail('Invalid award quantity',422);
       if(definition.magic){if(n!==1)fail('Award magic items as individual identified instances',422);items.push(gear.issue({definitionId:definition.id,...(p.spellId?{spellId:p.spellId}:{})}));}
-      else{if(p.spellId!==undefined)fail('Only a Spell Scroll has a spell identity',422);items.push(...require('../equipment/bundles').issue(definition.id,n*(definition.units??1)));}
+      else{if(p.spellId!==undefined)fail('Only a Spell Scroll has a spell identity',422);items.push(...require('../equipment/bundles').issue(definition.id,catalogUnits(n,definition.units??1)));}
     }else if(p.quantity!==undefined||p.spellId!==undefined)fail('Quantity or spell identity requires a catalog item',422);
     if(!items.length&&!p.goldCp)fail('Choose an item or a positive copper award',422);
     const balance=character.goldCp+(p.goldCp??0);if(!Number.isSafeInteger(balance))fail('Copper balance is too large',422);
@@ -34,7 +36,7 @@ function apply(character,summary,type,p,access){
     return {type,instanceIds:items.map(i=>i.instanceId),awardedCp:p.goldCp??0,reason:p.reason.trim(),authorizedBy:access.userId};
   }
   if(type==='spells.discover'){
-    if(Object.keys(p).some(k=>!['discoveryId','spellId','reason'].includes(k))||typeof p.discoveryId!=='string'||!p.discoveryId.trim()||p.discoveryId.length>100||typeof p.reason!=='string'||!p.reason.trim()||p.reason.length>500||!summary.spellcasting.shipwright||!require('../system/rules2024/rules').spells.some(s=>s.id===p.spellId&&s.level>0&&s.callings.includes('shipwright')))fail('Record a source ID, Shipwright spell and discovery reason',422);
+    if(Object.keys(p).some(k=>!['discoveryId','spellId','reason'].includes(k))||typeof p.discoveryId!=='string'||!p.discoveryId.trim()||p.discoveryId.length>100||typeof p.reason!=='string'||!p.reason.trim()||p.reason.length>500||!summary.spellcasting.shipwright||!require('../system/rules').spells.some(s=>s.id===p.spellId&&leveledCallingSpellEligible(s,'shipwright')))fail('Record a source ID, Shipwright spell and discovery reason',422);
     character.rulesRuntime.spellDiscoveries??=[];const list=character.rulesRuntime.spellDiscoveries;
     if(list.length>=1000||list.some(d=>d.discoveryId===p.discoveryId&&d.spellId===p.spellId))fail('Discovery is already recorded or the source journal is full',422);
     const discovery={discoveryId:p.discoveryId,spellId:p.spellId,reason:p.reason.trim(),authorizedBy:access.userId};list.push(discovery);character.rulesRuntime.revision++;
@@ -54,3 +56,4 @@ function apply(character,summary,type,p,access){
   fail('Unknown GM operation',422);
 }
 module.exports={context,permissions,apply,gmCommands};
+const {maximumCharacterLevel}=require('@crossworld/sanguine-engine/progression');

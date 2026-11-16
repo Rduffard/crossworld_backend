@@ -94,8 +94,8 @@ The following files were created or modified for this equipment implementation. 
 - crossworld_backend/src/modules/archipelago/system/blueprints/startingProficiencies.js
 - crossworld_backend/src/modules/archipelago/system/index.js
 - crossworld_backend/tests/advancement.test.mjs
-- crossworld_backend/tests/characterCombat.test.mjs
-- crossworld_backend/tests/equipment.test.mjs
-- crossworld_backend/tests/equipmentIntegration.test.mjs
+- crossworld_backend/tests/http/character-combat-routes.test.mjs
+- crossworld_backend/tests/equipment/catalog-and-loadout.test.mjs
+- crossworld_backend/tests/equipment/loadout-persistence.test.mjs
 
-- crossworld_backend/tests/equipmentProperties.test.mjs
+- crossworld_backend/tests/equipment/weapon-properties.test.mjs

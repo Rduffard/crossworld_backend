@@ -1,0 +1,419 @@
+{
+  "weaponGroups": {
+    "martial:finesse-or-light": [
+      "rapier",
+      "scimitar",
+      "shortsword",
+      "whip",
+      "hand-crossbow",
+      "cutlass"
+    ]
+  },
+  "corsairTraining": {
+    "categories": [
+      "simple"
+    ],
+    "weapons": [
+      "cutlass"
+    ],
+    "groups": [
+      "martial:finesse-or-light"
+    ],
+    "armor": [
+      "light",
+      "shield"
+    ]
+  },
+  "starting": {
+    "items": [
+      {
+        "definitionId": "leather-armor",
+        "quantity": 1
+      },
+      {
+        "definitionId": "pistol",
+        "quantity": 1
+      },
+      {
+        "definitionId": "bullets",
+        "quantity": 20
+      },
+      {
+        "definitionId": "dagger",
+        "quantity": 1
+      },
+      {
+        "definitionId": "backpack",
+        "quantity": 1
+      },
+      {
+        "definitionId": "bedroll",
+        "quantity": 1
+      },
+      {
+        "definitionId": "oil",
+        "quantity": 2
+      },
+      {
+        "definitionId": "rations",
+        "quantity": 10
+      },
+      {
+        "definitionId": "rope",
+        "quantity": 1
+      },
+      {
+        "definitionId": "tinderbox",
+        "quantity": 1
+      },
+      {
+        "definitionId": "torch",
+        "quantity": 10
+      },
+      {
+        "definitionId": "waterskin",
+        "quantity": 1
+      }
+    ],
+    "loadout": {
+      "mainHand": null,
+      "offHand": null,
+      "armor": null,
+      "grip": "one"
+    },
+    "goldCp": 0
+  },
+  "warden": {
+    "inventory": [
+      {
+        "instanceId": "fixture-mainHand",
+        "definitionId": "longsword",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "fixture-offHand",
+        "definitionId": "shield",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "fixture-armor",
+        "definitionId": "chain-mail",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      }
+    ],
+    "loadout": {
+      "mainHand": "fixture-mainHand",
+      "offHand": "fixture-offHand",
+      "armor": "fixture-armor",
+      "grip": "one"
+    },
+    "slots": {
+      "mainHand": "fixture-mainHand",
+      "offHand": "fixture-offHand",
+      "armor": "fixture-armor"
+    },
+    "training": {
+      "categories": [
+        "simple",
+        "martial"
+      ],
+      "weapons": [],
+      "groups": [],
+      "armor": [
+        "light",
+        "medium",
+        "heavy",
+        "shield"
+      ]
+    },
+    "guard": 18,
+    "guardInputs": {
+      "armor": "chain-mail",
+      "shield": true,
+      "bonus": 0
+    },
+    "attacks": [
+      {
+        "id": "fixture-mainHand",
+        "instanceId": "fixture-mainHand",
+        "definitionId": "longsword",
+        "definitionVersion": 1,
+        "name": "Longsword",
+        "trained": true,
+        "allowedAttributes": [
+          "might"
+        ],
+        "attribute": "might",
+        "attackModifier": 2,
+        "damageModifier": 0,
+        "damageTypeOptions": [
+          "slashing"
+        ],
+        "mastery": null,
+        "heavyDisadvantage": false,
+        "requiresTwoHandGrip": false,
+        "maxShotsPerAction": 1,
+        "supported": true,
+        "unsupportedReason": null,
+        "damage": {
+          "count": 1,
+          "sides": 8,
+          "type": "slashing"
+        },
+        "heldHands": 1
+      }
+    ],
+    "restrictions": {
+      "untrainedArmor": false,
+      "untrainedShield": false,
+      "physicalD20Disadvantage": false,
+      "spellcastingBlocked": false,
+      "stealthDisadvantage": true,
+      "speedPenaltyFeet": 10,
+      "pending": [
+        "movement-speed",
+        "donning-doffing-time",
+        "spellcasting"
+      ]
+    },
+    "carrying": {
+      "capacityLb": 150,
+      "pushDragLiftLb": 300,
+      "knownWeightLb": 64,
+      "unknownWeightInstances": []
+    }
+  },
+  "corsair": {
+    "inventory": [
+      {
+        "instanceId": "fixture-mainHand",
+        "definitionId": "rapier",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "fixture-offHand",
+        "definitionId": "shield",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "fixture-armor",
+        "definitionId": "chain-mail",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      }
+    ],
+    "loadout": {
+      "mainHand": "fixture-mainHand",
+      "offHand": "fixture-offHand",
+      "armor": "fixture-armor",
+      "grip": "one"
+    },
+    "slots": {
+      "mainHand": "fixture-mainHand",
+      "offHand": "fixture-offHand",
+      "armor": "fixture-armor"
+    },
+    "training": {
+      "categories": [
+        "simple"
+      ],
+      "weapons": [
+        "martial:finesse-or-light"
+      ],
+      "groups": [
+        "martial:finesse-or-light"
+      ],
+      "armor": [
+        "light"
+      ]
+    },
+    "guard": 16,
+    "guardInputs": {
+      "armor": "chain-mail",
+      "shield": false,
+      "bonus": 0
+    },
+    "attacks": [
+      {
+        "id": "fixture-mainHand",
+        "instanceId": "fixture-mainHand",
+        "definitionId": "rapier",
+        "definitionVersion": 1,
+        "name": "Rapier",
+        "trained": true,
+        "allowedAttributes": [
+          "might",
+          "agility"
+        ],
+        "attribute": "agility",
+        "attackModifier": 4,
+        "damageModifier": 2,
+        "damageTypeOptions": [
+          "piercing"
+        ],
+        "mastery": null,
+        "heavyDisadvantage": false,
+        "requiresTwoHandGrip": false,
+        "maxShotsPerAction": 1,
+        "supported": true,
+        "unsupportedReason": null,
+        "damage": {
+          "count": 1,
+          "sides": 8,
+          "type": "piercing"
+        },
+        "heldHands": 1
+      }
+    ],
+    "restrictions": {
+      "untrainedArmor": true,
+      "untrainedShield": true,
+      "physicalD20Disadvantage": true,
+      "spellcastingBlocked": true,
+      "stealthDisadvantage": true,
+      "speedPenaltyFeet": 10,
+      "pending": [
+        "movement-speed",
+        "donning-doffing-time",
+        "spellcasting"
+      ]
+    },
+    "carrying": {
+      "capacityLb": 150,
+      "pushDragLiftLb": 300,
+      "knownWeightLb": 63,
+      "unknownWeightInstances": []
+    }
+  },
+  "gunslinger": {
+    "inventory": [
+      {
+        "instanceId": "fixture-mainHand",
+        "definitionId": "musket",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      }
+    ],
+    "loadout": {
+      "mainHand": "fixture-mainHand",
+      "offHand": null,
+      "armor": null,
+      "grip": "two"
+    },
+    "slots": {
+      "mainHand": "fixture-mainHand",
+      "offHand": null,
+      "armor": null
+    },
+    "training": {
+      "categories": [
+        "simple",
+        "martial"
+      ],
+      "weapons": [],
+      "groups": [],
+      "armor": [
+        "light",
+        "medium",
+        "heavy",
+        "shield"
+      ]
+    },
+    "guard": 12,
+    "guardInputs": {
+      "armor": null,
+      "shield": false,
+      "bonus": 0
+    },
+    "attacks": [
+      {
+        "id": "fixture-mainHand",
+        "instanceId": "fixture-mainHand",
+        "definitionId": "musket",
+        "definitionVersion": 1,
+        "name": "Musket",
+        "trained": true,
+        "allowedAttributes": [
+          "agility"
+        ],
+        "attribute": "agility",
+        "attackModifier": 6,
+        "damageModifier": 2,
+        "damageTypeOptions": [
+          "piercing"
+        ],
+        "mastery": null,
+        "heavyDisadvantage": false,
+        "requiresTwoHandGrip": false,
+        "maxShotsPerAction": 1,
+        "supported": false,
+        "unsupportedReason": "Range, ammunition, thrown state, or mounted combat is not implemented",
+        "damage": {
+          "count": 1,
+          "sides": 12,
+          "type": "piercing"
+        },
+        "heldHands": 2
+      }
+    ],
+    "restrictions": {
+      "untrainedArmor": false,
+      "untrainedShield": false,
+      "physicalD20Disadvantage": false,
+      "spellcastingBlocked": false,
+      "stealthDisadvantage": false,
+      "speedPenaltyFeet": 0,
+      "pending": [
+        "movement-speed",
+        "donning-doffing-time",
+        "spellcasting"
+      ]
+    },
+    "carrying": {
+      "capacityLb": 150,
+      "pushDragLiftLb": 300,
+      "knownWeightLb": 10,
+      "unknownWeightInstances": []
+    }
+  },
+  "practice": {
+    "source": {
+      "type": "character",
+      "id": "0123456789abcdef01234567"
+    },
+    "guard": 18,
+    "weaponTraining": [
+      "simple",
+      "martial",
+      "longsword"
+    ],
+    "loadout": {
+      "mainHand": "fixture-mainHand",
+      "offHand": "fixture-offHand",
+      "armor": "fixture-armor",
+      "grip": "one"
+    },
+    "attack": {
+      "proficiency": 2,
+      "attackTotal": 17,
+      "damageTotal": 4,
+      "attackDice": [15],
+      "selectedD20": 15,
+      "damageDice": [4],
+      "attributeModifier": 0,
+      "result": "hit"
+    }
+  }
+}

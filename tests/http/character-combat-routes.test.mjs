@@ -1,0 +1,258 @@
+import { startHttp, stopHttp } from '../helpers/http.mjs';
+import { build, testLoadout } from '../helpers/rules2024.mjs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { fromCharacter } = require("../../src/modules/archipelago/combat/snapshot");
+const stateRules = require("../../src/modules/archipelago/combat/state");
+const { createFixture } = stateRules;
+function applyCommand(state, command, owner, roll) {
+  return stateRules.applyCommand(
+    state,
+    {
+      ...command,
+      weapon:
+        command.type === "attack"
+          ? state.combatants[0].attackOptions[0].id
+          : command.weapon,
+    },
+    owner,
+    roll
+  );
+}
+const { createService } = require("../../src/modules/archipelago/combat/service");
+const character = (calling = 'tidecaller') => {
+  const c = { ...testLoadout(), ...build(calling, 3, { might: 13, agility: 16, wit: 10, spirit: 14, resolve: 10, instinct: 13 }),
+    _id: '0123456789abcdef01234567', owner: 'owner', name: 'Mara' };
+  c.rulesRuntime.health.current = 12;
+  return c;
+};
+const cmd = {
+  id: "character-attack-01",
+  expectedRevision: 0,
+  type: "attack",
+  actor: "player",
+  weapon: "resolved-in-test",
+  target: "enemy",
+};
+test("actual identity, depleted Health, attributes, Training and temporary loadout copied without mutation", () => {
+  const original = character(),
+    before = structuredClone(original),
+    state = fromCharacter(original, "owner", false),
+    player = state.combatants[0];
+  assert.equal(player.id, "player");
+  assert.notEqual(player.id, original._id);
+  assert.equal(player.source.id, original._id);
+  assert.equal(state.owner, "owner");
+  assert.equal(player.name, "Mara");
+  assert.equal(player.calling, "tidecaller");
+  assert.equal(player.level, 3);
+  assert.deepEqual(player.health, { current: 12, max: 17 });
+  assert.deepEqual(player.attributes, original.attributes);
+  assert.deepEqual(player.training, original.training);
+  assert.equal(player.modifiers.agility, 3);
+  assert.equal(player.guard, 15);
+  assert.deepEqual(player.guardInputs, {
+    armor: null,
+    shield: false,
+    bonus: 0,
+    unarmoredBase: 15,
+  });
+  assert.deepEqual(player.weaponTraining, ["simple"]);
+  assert.equal(player.weapon, "cutlass");
+  assert.deepEqual(state.initialCharacterSnapshot, player);
+  assert.notStrictEqual(state.initialCharacterSnapshot, player);
+  assert.deepEqual(original, before);
+  original.attributes.agility = 8;
+  original.rulesRuntime.health.current = 20;
+  assert.equal(player.attributes.agility, 16);
+  assert.equal(player.health.current, 12);
+  const next = applyCommand(state, cmd, "owner", () => 1);
+  assert.equal(next.events[0].proficiency, 0);
+  assert.deepEqual(
+    next.initialCharacterSnapshot,
+    state.initialCharacterSnapshot
+  );
+
+});
+test("Calling entitlements control cutlass proficiency for every Calling", () => {
+  for (const calling of [
+    "corsair",
+    "gunslinger",
+    "navigator",
+    "tidecaller",
+    "warden",
+    "reaver",
+  ]) {
+    const c = character(calling);
+    const state = fromCharacter(c, "owner", true);
+    assert.equal(
+      state.combatants[0].attackOptions[0].trained,
+      ["corsair", "gunslinger", "navigator", "warden", "reaver"].includes(calling)
+    );
+    assert.equal(
+      applyCommand(state, cmd, "owner", () => 1).events[0].proficiency,
+      ["corsair", "gunslinger", "navigator", "warden", "reaver"].includes(calling) ? 2 : 0
+    );
+  }
+});
+test("malformed or unavailable saved values rejected without repair", () => {
+  for (const change of [
+    (c) => delete c.rulesRuntime.health,
+    (c) => (c.rulesRuntime.health.current = 0),
+    (c) => (c.rulesRuntime.health.current = 21),
+    (c) => (c.rulesRuntime.health.current = null),
+    (c) => (c.rulesRuntime.health.max = -1),
+    (c) => (c.rulesLedger.baseAttributes.might = 0),
+    (c) => (c.rulesLedger.levels = Array(21).fill(c.rulesLedger.levels[0])),
+    (c) => (c.rulesLedger.levels[0].choices.skills = ["not-a-skill"]),
+    (c) => (c.rulesLedger.levels[0].callingId = "unknown"),
+  ]) {
+    const c = character();
+    change(c);
+    const before = structuredClone(c);
+    assert.throws(() => fromCharacter(c, "owner", false));
+    assert.deepEqual(c, before);
+  }
+});
+test("service authorizes character read, persists snapshot, never re-reads character for attacks", async () => {
+  let stored,
+    reads = 0;
+  const c = character(),
+    original = structuredClone(c);
+  const Model = {
+    create: async (s) => (stored = { ...structuredClone(s), _id: "encounter" }),
+    findOne: (f) => ({
+      lean: async () =>
+        f.owner === stored.owner ? structuredClone(stored) : null,
+    }),
+    findOneAndUpdate: (f, u) => ({
+      lean: async () => {
+        if (f.revision !== stored.revision) return null;
+        stored = { ...stored, ...structuredClone(u.$set) };
+        return structuredClone(stored);
+      },
+    }),
+  };
+  const Characters = {
+    findOne: (f) => ({
+      lean: async () => {
+        reads++;
+        return f.owner === c.owner && f._id === c._id
+          ? structuredClone(c)
+          : null;
+      },
+    }),
+  };
+  const service = createService(Model, Characters);
+  cmd.weapon = c.inventory[0].instanceId;
+  await assert.rejects(
+    service.fromCharacter("intruder", c._id, true),
+    /Character not found/
+  );
+  await service.fromCharacter("owner", c._id, true);
+  assert.deepEqual(c, original);
+  c.attributes.agility = 8;
+  c.rulesRuntime.health.current = 20;
+  const before = structuredClone(c),
+    readCount = reads;
+  const result = await service.command("encounter", "owner", cmd);
+  assert.equal(reads, readCount);
+  assert.equal(result.combatants[0].attributes.agility, 16);
+  assert.equal(result.combatants[0].health.current, 12);
+  assert.deepEqual(c, before);
+  assert.deepEqual(await service.command("encounter", "owner", cmd), result);
+  await assert.rejects(
+    service.command("encounter", "owner", { ...cmd, id: "stale-command-02" })
+  );
+  const reloaded = await createService(Model, Characters).load(
+    "encounter",
+    "owner"
+  );
+  assert.deepEqual(reloaded, result);
+  assert.equal(reloaded.sourceCharacter, c._id);
+  assert.deepEqual(reloaded.initialCharacterSnapshot.health, {
+    current: 12,
+    max: 17,
+  });
+  assert.equal(createFixture("owner").activeCombatant, "corsair");
+});
+test("from-character endpoint rejects forged snapshots and other owners without leaking character data", async () => {
+  const express = require("express"),
+    jwt = require("jsonwebtoken");
+  const { JWT_SECRET } = require("../../src/config/env");
+  const Encounter = require("../../src/modules/archipelago/combat/model"),
+    Character = require("../../src/modules/archipelago/characters/model");
+  const oldCreate = Encounter.create,
+    oldFind = Character.findOne;
+  const c = character();
+  let created;
+  Encounter.create = async (value) => {
+    created = structuredClone(value);
+    return { ...created, _id: "encounter" };
+  };
+  Character.findOne = (filter) => ({
+    lean: async () =>
+      filter.owner === c.owner && filter._id === c._id
+        ? structuredClone(c)
+        : null,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use("/archipelago", require("../../src/modules/archipelago/routes"));
+  app.use((err, _req, res, _next) =>
+    res
+      .status(err.statusCode ?? (err.details ? 400 : 500))
+      .json({ message: err.message })
+  );
+  const server = await startHttp(app);
+  const call = async (body, owner = "owner") => {
+    const response = await fetch(
+      `http://127.0.0.1:${
+        server.address().port
+      }/archipelago/encounters/from-character`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt.sign({ _id: owner }, JWT_SECRET)}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const body = { characterId: c._id };
+    assert.equal(
+      (await call({ ...body, attributes: { might: 20 } })).status,
+      400
+    );
+    assert.equal(
+      (await call({ ...body, practiceProficiency: "true" })).status,
+      400
+    );
+    assert.equal(
+      (await call({ ...body, practiceProficiency: false })).status,
+      400
+    );
+    const denied = await call(body, "intruder");
+    assert.equal(denied.status, 404);
+    assert.equal(denied.body.message, "Character not found");
+    assert.equal(created, undefined);
+    const response = await call(body);
+    assert.equal(response.status, 201);
+    assert.equal(response.body.combatants[0].name, "Mara");
+    assert.deepEqual(created.initialCharacterSnapshot.health, {
+      current: 12,
+      max: 17,
+    });
+    c.rulesRuntime.health.current = null;
+    assert.equal((await call(body)).status, 400);
+  } finally {
+    Encounter.create = oldCreate;
+    Character.findOne = oldFind;
+    await stopHttp(server);
+  }
+});

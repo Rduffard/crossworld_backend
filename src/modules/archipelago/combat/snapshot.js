@@ -1,8 +1,8 @@
-const { calculateCheckModifier } = require("../system/checkModifier");
+const { calculateCheckModifier } = require("@crossworld/sanguine-engine/attributes");
 const { proficiencyBonus } = require("../system/trainingChecks");
-const { calculateGuard } = require("./guard");
+const { calculateGuard } = require('@crossworld/sanguine-engine/equipment/guard');
 const { createFixture } = require("./state");
-const rules = require("../system/rules2024");
+const rules = require("../system/characterSystem");
 function fromCharacter(character, owner) {
   const invalid = (message) => {
     const error = new Error(message);
@@ -65,7 +65,7 @@ function fromCharacter(character, owner) {
     invalid("Character Training is malformed");
   if (!progression.decisionsComplete)
     invalid("Complete required advancement decisions before entering combat");
-  const resolved = require("../equipment").derive(character);
+  const resolved = require("../equipment/equipmentView").derive(character, projected);
   const state = createFixture(owner);
   const combatant = {
     id: "player",

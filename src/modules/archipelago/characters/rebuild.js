@@ -1,5 +1,9 @@
 const {createHash}=require('node:crypto');
-const rules=require('../system/rules2024');
+const { reconcileHealthOnRebuild } = require('@crossworld/sanguine-engine/progression');
+const { wishInterventionUnlocked } = require('@crossworld/sanguine-engine/callings');
+const rules=require('../system/characterSystem');
+const { reconcileBalances, reconcileDice } = require('./runtime/resourceTransitions');
+const { reconcileSlotTotals } = require('../spells/spellSlotState');
 function fail(message,statusCode=422){throw Object.assign(new Error(message),{statusCode});}
 function hash(value){return createHash('sha256').update(JSON.stringify(value)).digest('hex');}
 function fingerprint(c){const runtime=structuredClone(c.rulesRuntime);delete runtime.rebuildProposal;delete runtime.revision;return hash({ledger:c.rulesLedger,runtime,inventory:c.inventory,loadout:c.loadout,presets:c.presets,goldCp:c.goldCp});}
@@ -7,21 +11,21 @@ function fields(p,allowed){if(Object.keys(p).some(k=>!allowed.includes(k)))fail(
 function available(c){if(c.rulesRuntime.inCombat||c.rulesRuntime.ownerTurn?.open||c.rulesRuntime.restSession)fail('Finish combat, the open turn and any active rest before rebuilding');}
 function plan(c,after,ledger=c.rulesLedger){
   const before=rules.replay(c.rulesLedger),old=c.rulesRuntime,next=rules.runtime.initialize(after);
-  next.revision=old.revision+1;next.health.current=Math.min(old.health.current,after.health.max);
+  next.revision=old.revision+1;next.health.current=reconcileHealthOnRebuild(old.health.current,after.health.max);
   for(const key of ['gearUses','prayerRestEpoch','magicDawns','lastMagicDawn','conditions','exhaustion','deathSaves','inspiration','inspirationSource','worldTime','lastLongRest','restEpoch','restHistory','milestones','conduitCircuit','conduitGrants','spellDiscoveries','toolChecks','ownerTurnHistory','counters'])if(old[key]!==undefined)next[key]=structuredClone(old[key]);
-  for(const [id,max]of Object.entries(after.resources))next.pools[id]=before.resources[id]?Math.max(0,Math.min(old.pools[id],max.max-(before.resources[id].max-old.pools[id]))):0;
-  next.slots=after.spellSlots.map((max,i)=>Math.max(0,Math.min(old.slots[i]??0,max-((before.spellSlots[i]??0)-(old.slots[i]??0)))));
-  for(const [die,max]of Object.entries(after.hitDice))next.hitDice[die]=Math.max(0,Math.min(old.hitDice[die]??0,max-((before.hitDice[die]??0)-(old.hitDice[die]??0))));
+  next.pools = reconcileBalances(before.resources, old.pools, after.resources, 'rebuild');
+  next.slots = reconcileSlotTotals(before.spellSlots, old, after.spellSlots, 'rebuild');
+  next.hitDice = reconcileDice(before.hitDice, old.hitDice, after.hitDice, 'rebuild');
   const newCharacter={...c,rulesLedger:ledger};
-  next.featState=Object.fromEntries(Object.values(old.featState??{}).filter(record=>after.feats.includes(record.featId)).map(record=>[require('../system/rules2024/featOperations').source(newCharacter,record.featId),structuredClone(record)]));
+  next.featState=Object.fromEntries(Object.values(old.featState??{}).filter(record=>after.feats.includes(record.featId)).map(record=>[require('./runtime/featState').source(newCharacter,record.featId),structuredClone(record)]));
   if(after.spellcasting.shipwright){for(const key of ['folio','folioUnavailable','folioMemory','folioBookId','folioHistory'])if(old[key]!==undefined)next[key]=structuredClone(old[key]);next.folio=(next.folio??[]).filter(id=>!after.spellcasting.shipwright.folio.includes(id));next.folioMemory=(next.folioMemory??[]).filter(id=>next.preparations.shipwright.includes(id)||after.spellcasting.shipwright.alwaysPrepared.includes(id));}
-  if(after.callingLevels.doctor===20&&old.interventionCooldown)next.interventionCooldown=structuredClone(old.interventionCooldown);
+  if(wishInterventionUnlocked(after.callingLevels.doctor)&&old.interventionCooldown)next.interventionCooldown=structuredClone(old.interventionCooldown);
   // Rebuild is a rules change, never a rest or a new equipment package.
   rules.runtime.validate(after,next);
   const inventory=structuredClone(c.inventory),endedAttunementIds=[];
   for(const item of inventory)if(item.attuned&&!require('../equipment/magic').eligible(item,after)){item.attuned=false;endedAttunementIds.push(item.instanceId);}
   require('../equipment/magic').validate({...c,inventory},after);
-  return {runtime:next,inventory,consequences:{health:{before:old.health.current,after:next.health.current,max:after.health.max},pools:next.pools,slots:next.slots,hitDice:next.hitDice,endedEffectIds:old.effects.map(e=>e.id??e.featureId),temporaryHealthLost:old.temporaryHealth??0,createdSlotsLost:old.createdSlots??[],endedAttunementIds,inventoryUnchanged:!endedAttunementIds.length,copperUnchanged:true,newPoolsStartEmpty:true}};
+  return {runtime:next,inventory,consequences:{health:{before:old.health.current,after:next.health.current,max:after.health.max},pools:next.pools,slots:next.slots,hitDice:next.hitDice,endedEffectIds:old.effects.map(e=>e.id),temporaryHealthLost:old.temporaryHealth??0,createdSlotsLost:old.createdSlots??[],endedAttunementIds,inventoryUnchanged:!endedAttunementIds.length,copperUnchanged:true,newPoolsStartEmpty:true}};
 }
 function apply(c,type,p,access={}){
   available(c);

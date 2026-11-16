@@ -467,9 +467,9 @@ Files below were created or modified. Obsolete custom ability logic was removed 
 - crossworld_backend/src/modules/archipelago/system/routes.js
 - crossworld_backend/src/modules/archipelago/system/trainingChecks.js
 - crossworld_backend/tests/advancement.test.mjs
-- crossworld_backend/tests/characterCombat.test.mjs
+- crossworld_backend/tests/http/character-combat-routes.test.mjs
 - crossworld_backend/tests/characterCreation.test.mjs
-- crossworld_backend/tests/equipmentIntegration.test.mjs
+- crossworld_backend/tests/equipment/loadout-persistence.test.mjs
 - crossworld_backend/tests/progressionV2.test.mjs
 
 ## Final validation results

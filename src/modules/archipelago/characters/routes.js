@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { celebrate, Joi } = require("celebrate");
 const Character = require("./model");
 const Campaign=require('../campaigns/model');
-const canonical = require("./rules2024").handlers(Character,Campaign);
+const canonical = require("./persistence").handlers(Character,Campaign);
 const controller = require("./controller");
 const id = celebrate({ params: Joi.object({ characterId: Joi.string().hex().length(24).required() }) });
 router.get("/", controller.getCharacters);

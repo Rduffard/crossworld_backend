@@ -1,0 +1,1655 @@
+[
+  {
+    "id": "path:black-flag-envoy:terms-of-surrender:3",
+    "name": "Terms of Surrender",
+    "level": 3,
+    "calling": "corsair",
+    "path": "black-flag-envoy",
+    "description": "Choose parley or intimidation. Gain Training in Persuade (parley) or Threaten (intimidation), or Expertise if already Trained. As a Bonus Action spend one Envoy use: an ally within 30 feet who hears you may use its Reaction to move half its Speed without provoking Opportunity Attacks. You cannot target yourself.",
+    "costs": [
+      {
+        "poolId": "black-flag-envoy:envoy",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:black-flag-envoy:terms-of-surrender:3#move",
+        "handler": "envoy-move",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "black-flag-envoy:envoy",
+            "amount": 1
+          }
+        ],
+        "description": "Choose parley or intimidation. Gain Training in Persuade (parley) or Threaten (intimidation), or Expertise if already Trained. As a Bonus Action spend one Envoy use: an ally within 30 feet who hears you may use its Reaction to move half its Speed without provoking Opportunity Attacks. You cannot target yourself."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:black-flag-envoy:crew-before-crown:9",
+    "name": "Crew Before Crown",
+    "level": 9,
+    "calling": "corsair",
+    "path": "black-flag-envoy",
+    "description": "Your Envoy action may instead let the ally repeat a saving throw against Charmed or Frightened, with advantage. On success that condition ends. Range becomes 60 feet.",
+    "costs": [
+      {
+        "poolId": "black-flag-envoy:envoy",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:black-flag-envoy:crew-before-crown:9#save",
+        "handler": "envoy-save",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "black-flag-envoy:envoy",
+            "amount": 1
+          }
+        ],
+        "description": "Your Envoy action may instead let the ally repeat a saving throw against Charmed or Frightened, with advantage. On success that condition ends. Range becomes 60 feet."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:black-flag-envoy:binding-parley:13",
+    "name": "Binding Parley",
+    "level": 13,
+    "calling": "corsair",
+    "path": "black-flag-envoy",
+    "description": "Once per Long Rest, as an Action address up to your Spirit modifier (minimum one) creatures within 60 feet that understand you. Each makes an Instinct save (DC 8 + Training Bonus + Spirit). On failure it cannot attack you for one minute unless you or your allies harm it. This is Charmed; repeat the save at the end of each turn.",
+    "costs": [
+      {
+        "poolId": "black-flag-envoy:parley",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:black-flag-envoy:binding-parley:13#parley",
+        "handler": "envoy-parley",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "black-flag-envoy:parley",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest, as an Action address up to your Spirit modifier (minimum one) creatures within 60 feet that understand you. Each makes an Instinct save (DC 8 + Training Bonus + Spirit). On failure it cannot attack you for one minute unless you or your allies harm it. This is Charmed; repeat the save at the end of each turn."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:black-flag-envoy:all-hands:17",
+    "name": "All Hands",
+    "level": 17,
+    "calling": "corsair",
+    "path": "black-flag-envoy",
+    "description": "As a Bonus Action spend two Envoy uses to apply Terms of Surrender to up to three different allies. Each still spends its own Reaction; a creature cannot benefit twice from the same command.",
+    "costs": [
+      {
+        "poolId": "black-flag-envoy:envoy",
+        "amount": 2
+      }
+    ],
+    "options": [
+      {
+        "id": "path:black-flag-envoy:all-hands:17#crew",
+        "handler": "envoy-all",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "black-flag-envoy:envoy",
+            "amount": 2
+          }
+        ],
+        "description": "As a Bonus Action spend two Envoy uses to apply Terms of Surrender to up to three different allies. Each still spends its own Reaction; a creature cannot benefit twice from the same command."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:hollow-lantern:read-the-wake:3",
+    "name": "Read the Wake",
+    "level": 3,
+    "calling": "corsair",
+    "path": "hollow-lantern",
+    "description": "Choose Investigate or Perception; gain Training, or Expertise if already Trained. As a Bonus Action spend one Lantern use to study one creature within 30 feet. Until the end of your next turn, you may Sneak Attack it without advantage if no other creature is within 5 feet of you, and you do not have disadvantage.",
+    "costs": [
+      {
+        "poolId": "hollow-lantern:lantern",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:hollow-lantern:read-the-wake:3#study",
+        "handler": "lantern-study",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "hollow-lantern:lantern",
+            "amount": 1
+          }
+        ],
+        "description": "Choose Investigate or Perception; gain Training, or Expertise if already Trained. As a Bonus Action spend one Lantern use to study one creature within 30 feet. Until the end of your next turn, you may Sneak Attack it without advantage if no other creature is within 5 feet of you, and you do not have disadvantage."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:hollow-lantern:unmask-the-false:9",
+    "name": "Unmask the False",
+    "level": 9,
+    "calling": "corsair",
+    "path": "hollow-lantern",
+    "description": "As an Action spend one Lantern use to gain advantage for ten minutes on checks to detect disguises, shapechanging and illusions. This does not reveal an illusion automatically. You can Search as a Bonus Action without spending a use.",
+    "costs": [
+      {
+        "poolId": "hollow-lantern:lantern",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:hollow-lantern:unmask-the-false:9#detect",
+        "handler": "lantern-detect",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "hollow-lantern:lantern",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action spend one Lantern use to gain advantage for ten minutes on checks to detect disguises, shapechanging and illusions. This does not reveal an illusion automatically. You can Search as a Bonus Action without spending a use."
+      },
+      {
+        "id": "path:hollow-lantern:unmask-the-false:9#search",
+        "handler": "lantern-search",
+        "action": "Bonus Action",
+        "costs": [],
+        "description": "As an Action spend one Lantern use to gain advantage for ten minutes on checks to detect disguises, shapechanging and illusions. This does not reveal an illusion automatically. You can Search as a Bonus Action without spending a use."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:hollow-lantern:lantern-in-the-fog:13",
+    "name": "Lantern in the Fog",
+    "level": 13,
+    "calling": "corsair",
+    "path": "hollow-lantern",
+    "description": "Gain Blindsight 10 feet. When a creature you can perceive within 30 feet becomes Invisible, you may use your Reaction and one Lantern use to mark its last location. Until your next turn it gains no advantage against you from being unseen; this does not reveal its later location.",
+    "costs": [
+      {
+        "poolId": "hollow-lantern:lantern",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:hollow-lantern:lantern-in-the-fog:13#mark",
+        "handler": "lantern-mark",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "hollow-lantern:lantern",
+            "amount": 1
+          }
+        ],
+        "description": "Gain Blindsight 10 feet. When a creature you can perceive within 30 feet becomes Invisible, you may use your Reaction and one Lantern use to mark its last location. Until your next turn it gains no advantage against you from being unseen; this does not reveal its later location."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:hollow-lantern:the-last-tell:17",
+    "name": "The Last Tell",
+    "level": 17,
+    "calling": "corsair",
+    "path": "hollow-lantern",
+    "description": "Once per Short or Long Rest when your Sneak Attack hits a creature studied by Read the Wake, reroll up to three Sneak Attack dice and use the new results. You decide after seeing the damage dice.",
+    "costs": [
+      {
+        "poolId": "hollow-lantern:last-tell",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:hollow-lantern:the-last-tell:17#reroll",
+        "handler": "lantern-reroll",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "hollow-lantern:last-tell",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Short or Long Rest when your Sneak Attack hits a creature studied by Read the Wake, reroll up to three Sneak Attack dice and use the new results. You decide after seeing the damage dice."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:saltglass-duelist:open-challenge:3",
+    "name": "Open Challenge",
+    "level": 3,
+    "calling": "corsair",
+    "path": "saltglass-duelist",
+    "description": "Choose rapier or cutlass as your signature weapon. When holding that weapon and no other weapon or Shield, you may Sneak Attack a target within 5 feet without advantage if no other creature is within 5 feet of you and you lack disadvantage. As a Reaction spend one Duel use to add your Training Bonus to Guard against one melee attack you can see, potentially causing it to miss.",
+    "costs": [
+      {
+        "poolId": "saltglass-duelist:duel",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:saltglass-duelist:open-challenge:3#parry",
+        "handler": "duelist-parry",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "saltglass-duelist:duel",
+            "amount": 1
+          }
+        ],
+        "description": "Choose rapier or cutlass as your signature weapon. When holding that weapon and no other weapon or Shield, you may Sneak Attack a target within 5 feet without advantage if no other creature is within 5 feet of you and you lack disadvantage. As a Reaction spend one Duel use to add your Training Bonus to Guard against one melee attack you can see, potentially causing it to miss."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:saltglass-duelist:perfect-measure:17",
+    "name": "Perfect Measure",
+    "level": 17,
+    "calling": "corsair",
+    "path": "saltglass-duelist",
+    "description": "Once per Long Rest when you miss with your signature weapon, turn that miss into a hit. It is not a Critical Hit. You must choose before damage is rolled.",
+    "costs": [
+      {
+        "poolId": "saltglass-duelist:perfect-measure",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:saltglass-duelist:perfect-measure:17#convert",
+        "handler": "duelist-perfect",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "saltglass-duelist:perfect-measure",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest when you miss with your signature weapon, turn that miss into a hit. It is not a Critical Hit. You must choose before damage is rolled."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-suppressor:suppressing-fire:3",
+    "name": "Suppressing Fire",
+    "level": 3,
+    "calling": "gunslinger",
+    "path": "iron-suppressor",
+    "description": "Choose push or slow. Once per turn when a Ranged weapon attack hits, spend one Suppression use to deal 1d6 extra damage and force a Resolve save (DC 8 + Training Bonus + Agility). On failure push moves the target 10 feet directly away; slow reduces its Speed by 10 feet until your next turn. Does not stack with the same mastery effect.",
+    "costs": [
+      {
+        "poolId": "iron-suppressor:suppression",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-suppressor:suppressing-fire:3#hit",
+        "handler": "suppressor-hit",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "iron-suppressor:suppression",
+            "amount": 1
+          }
+        ],
+        "description": "Choose push or slow. Once per turn when a Ranged weapon attack hits, spend one Suppression use to deal 1d6 extra damage and force a Resolve save (DC 8 + Training Bonus + Agility). On failure push moves the target 10 feet directly away; slow reduces its Speed by 10 feet until your next turn. Does not stack with the same mastery effect."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-suppressor:crossing-denied:10",
+    "name": "Crossing Denied",
+    "level": 10,
+    "calling": "gunslinger",
+    "path": "iron-suppressor",
+    "description": "As a Reaction when a creature you can see moves into a space within 30 feet, spend one Suppression use to make one Ranged weapon attack against it. The attack does not also apply Suppressing Fire.",
+    "costs": [
+      {
+        "poolId": "iron-suppressor:suppression",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-suppressor:crossing-denied:10#attack",
+        "handler": "suppressor-crossing",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "iron-suppressor:suppression",
+            "amount": 1
+          }
+        ],
+        "description": "As a Reaction when a creature you can see moves into a space within 30 feet, spend one Suppression use to make one Ranged weapon attack against it. The attack does not also apply Suppressing Fire."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-suppressor:hold-the-corridor:18",
+    "name": "Hold the Corridor",
+    "level": 18,
+    "calling": "gunslinger",
+    "path": "iron-suppressor",
+    "description": "Once per Long Rest, as a Bonus Action recover all expended Suppression uses. Until your next turn your Suppressing Fire save DC increases by 2.",
+    "costs": [
+      {
+        "poolId": "iron-suppressor:hold-corridor",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-suppressor:hold-the-corridor:18#hold",
+        "handler": "suppressor-hold",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "iron-suppressor:hold-corridor",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest, as a Bonus Action recover all expended Suppression uses. Until your next turn your Suppressing Fire save DC increases by 2."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:brass-outrider:ride-the-recoil:3",
+    "name": "Ride the Recoil",
+    "level": 3,
+    "calling": "gunslinger",
+    "path": "brass-outrider",
+    "description": "Choose runner or rider. Runner gains Athletics Training; rider gains Animal Handling Training (Expertise if already Trained). Once per turn after a Ranged weapon attack, spend one Outrider use to move up to 15 feet without provoking Opportunity Attacks. A willing mount can move instead, using its movement.",
+    "costs": [
+      {
+        "poolId": "brass-outrider:outrider",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:brass-outrider:ride-the-recoil:3#move",
+        "handler": "outrider-recoil",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "brass-outrider:outrider",
+            "amount": 1
+          }
+        ],
+        "description": "Choose runner or rider. Runner gains Athletics Training; rider gains Animal Handling Training (Expertise if already Trained). Once per turn after a Ranged weapon attack, spend one Outrider use to move up to 15 feet without provoking Opportunity Attacks. A willing mount can move instead, using its movement."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:brass-outrider:break-pursuit:15",
+    "name": "Break Pursuit",
+    "level": 15,
+    "calling": "gunslinger",
+    "path": "brass-outrider",
+    "description": "When a creature ends its turn within 5 feet of you, you may use your Reaction and one Outrider use to move half your Speed without provoking Opportunity Attacks.",
+    "costs": [
+      {
+        "poolId": "brass-outrider:outrider",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:brass-outrider:break-pursuit:15#move",
+        "handler": "outrider-break",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "brass-outrider:outrider",
+            "amount": 1
+          }
+        ],
+        "description": "When a creature ends its turn within 5 feet of you, you may use your Reaction and one Outrider use to move half your Speed without provoking Opportunity Attacks."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:brass-outrider:over-the-horizon:18",
+    "name": "Over the Horizon",
+    "level": 18,
+    "calling": "gunslinger",
+    "path": "brass-outrider",
+    "description": "Once per Short or Long Rest as a Bonus Action, move up to your Speed and make one weapon attack. Passing Shot applies normally; this action does not grant an additional Action.",
+    "costs": [
+      {
+        "poolId": "brass-outrider:horizon",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:brass-outrider:over-the-horizon:18#attack",
+        "handler": "outrider-horizon",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "brass-outrider:horizon",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Short or Long Rest as a Bonus Action, move up to your Speed and make one weapon attack. Passing Shot applies normally; this action does not grant an additional Action."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:cinder-artillerist:measured-charge:3",
+    "name": "Measured Charge",
+    "level": 3,
+    "calling": "gunslinger",
+    "path": "cinder-artillerist",
+    "description": "Choose smoke or breach. As an Action spend one Charge use to place a charge within 30 feet. It detonates immediately: creatures in a 5-foot radius make an Agility save (DC 8 + Training Bonus + Wit), taking 2d6 Fire damage on failure or half on success. Smoke leaves a heavily obscured 5-foot radius until your next turn; breach deals double damage to unattended objects. This is not a weapon attack.",
+    "costs": [
+      {
+        "poolId": "cinder-artillerist:charge",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:cinder-artillerist:measured-charge:3#detonate",
+        "handler": "measured-charge",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "cinder-artillerist:charge",
+            "amount": 1
+          }
+        ],
+        "description": "Choose smoke or breach. As an Action spend one Charge use to place a charge within 30 feet. It detonates immediately: creatures in a 5-foot radius make an Agility save (DC 8 + Training Bonus + Wit), taking 2d6 Fire damage on failure or half on success. Smoke leaves a heavily obscured 5-foot radius until your next turn; breach deals double damage to unattended objects. This is not a weapon attack."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:cinder-artillerist:grand-battery:18",
+    "name": "Grand Battery",
+    "level": 18,
+    "calling": "gunslinger",
+    "path": "cinder-artillerist",
+    "description": "Once per Long Rest as an Action spend two Charge uses to detonate two charges at different points within 60 feet. A creature in both areas is affected only once. Each charge deals 6d6 Fire damage.",
+    "costs": [
+      {
+        "poolId": "cinder-artillerist:charge",
+        "amount": 2
+      },
+      {
+        "poolId": "cinder-artillerist:battery",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:cinder-artillerist:grand-battery:18#detonate",
+        "handler": "grand-battery",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "cinder-artillerist:charge",
+            "amount": 2
+          },
+          {
+            "poolId": "cinder-artillerist:battery",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as an Action spend two Charge uses to detonate two charges at different points within 60 feet. A creature in both areas is affected only once. Each charge deals 6d6 Fire damage."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:starwake-pilot:chart-the-passage:3",
+    "name": "Chart the Passage",
+    "level": 3,
+    "calling": "navigator",
+    "path": "starwake-pilot",
+    "description": "Choose cliff or current. Gain Training with navigator tools. As a Bonus Action spend one Passage use to guide up to two allies within 30 feet for one minute. Cliff gives a Climb Speed of 20 feet; current gives a Swim Speed of 20 feet. This requires Concentration as a spell and grants no extra movement.",
+    "costs": [
+      {
+        "poolId": "starwake-pilot:passage",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:starwake-pilot:chart-the-passage:3#guide",
+        "handler": "starwake-guide",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "starwake-pilot:passage",
+            "amount": 1
+          }
+        ],
+        "description": "Choose cliff or current. Gain Training with navigator tools. As a Bonus Action spend one Passage use to guide up to two allies within 30 feet for one minute. Cliff gives a Climb Speed of 20 feet; current gives a Swim Speed of 20 feet. This requires Concentration as a spell and grants no extra movement."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:starwake-pilot:homeward-star:15",
+    "name": "Homeward Star",
+    "level": 15,
+    "calling": "navigator",
+    "path": "starwake-pilot",
+    "description": "Once per Long Rest as an Action teleport yourself and up to two willing creatures within 5 feet to a visible unoccupied location within 60 feet. Each destination must support the creature. This ends Chart the Passage.",
+    "costs": [
+      {
+        "poolId": "starwake-pilot:homeward",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:starwake-pilot:homeward-star:15#home",
+        "handler": "starwake-home",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "starwake-pilot:homeward",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as an Action teleport yourself and up to two willing creatures within 5 feet to a visible unoccupied location within 60 feet. Each destination must support the creature. This ends Chart the Passage."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:mangrove-stalker:rooted-ambush:3",
+    "name": "Rooted Ambush",
+    "level": 3,
+    "calling": "navigator",
+    "path": "mangrove-stalker",
+    "description": "Choose snare or camouflage. Once per turn when you hit a creature marked by your Hunter's Mark, spend one Thicket use to deal 1d6 extra Piercing damage. Snare forces a Might save against your spell DC or reduces its Speed to 0 until your next turn; camouflage lets you Hide immediately as part of the attack if you have cover or heavy obscurement.",
+    "costs": [
+      {
+        "poolId": "mangrove-stalker:thicket",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:mangrove-stalker:rooted-ambush:3#hit",
+        "handler": "mangrove-hit",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "mangrove-stalker:thicket",
+            "amount": 1
+          }
+        ],
+        "description": "Choose snare or camouflage. Once per turn when you hit a creature marked by your Hunter's Mark, spend one Thicket use to deal 1d6 extra Piercing damage. Snare forces a Might save against your spell DC or reduces its Speed to 0 until your next turn; camouflage lets you Hide immediately as part of the attack if you have cover or heavy obscurement."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:mangrove-stalker:vanish-into-green:15",
+    "name": "Vanish into Green",
+    "level": 15,
+    "calling": "navigator",
+    "path": "mangrove-stalker",
+    "description": "As a Reaction when a creature you see hits you with an attack, spend one Thicket use to halve the damage and move 10 feet. This movement provokes Opportunity Attacks normally. You may Hide if you end in cover.",
+    "costs": [
+      {
+        "poolId": "mangrove-stalker:thicket",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:mangrove-stalker:vanish-into-green:15#vanish",
+        "handler": "mangrove-vanish",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "mangrove-stalker:thicket",
+            "amount": 1
+          }
+        ],
+        "description": "As a Reaction when a creature you see hits you with an attack, spend one Thicket use to halve the damage and move 10 feet. This movement provokes Opportunity Attacks normally. You may Hide if you end in cover."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:memory-echo:borrowed-voice:3",
+    "name": "Borrowed Voice",
+    "level": 3,
+    "calling": "tidecaller",
+    "path": "memory-echo",
+    "description": "Choose memory or voice. Gain Training in Read (memory) or Deceive (voice), or Expertise if already Trained. You can communicate telepathically with one willing creature within 30 feet that understands a language. As a Reaction spend one Echo use to add 1d6 to your failed Spirit or Instinct save; decide after the roll.",
+    "costs": [
+      {
+        "poolId": "memory-echo:echo",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:memory-echo:borrowed-voice:3#link",
+        "handler": "echo-link",
+        "action": "No action",
+        "costs": [],
+        "description": "Choose memory or voice. Gain Training in Read (memory) or Deceive (voice), or Expertise if already Trained. You can communicate telepathically with one willing creature within 30 feet that understands a language. As a Reaction spend one Echo use to add 1d6 to your failed Spirit or Instinct save; decide after the roll."
+      },
+      {
+        "id": "path:memory-echo:borrowed-voice:3#save",
+        "handler": "echo-save",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "memory-echo:echo",
+            "amount": 1
+          }
+        ],
+        "description": "Choose memory or voice. Gain Training in Read (memory) or Deceive (voice), or Expertise if already Trained. You can communicate telepathically with one willing creature within 30 feet that understands a language. As a Reaction spend one Echo use to add 1d6 to your failed Spirit or Instinct save; decide after the roll."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:memory-echo:recalled-pattern:6",
+    "name": "Recalled Pattern",
+    "level": 6,
+    "calling": "tidecaller",
+    "path": "memory-echo",
+    "description": "When a creature succeeds on a save against your Enchantment spell, you may spend two Sorcery Points to learn whether it is immune to Charmed. You can then move 10 feet without provoking Opportunity Attacks. This does not change the save result.",
+    "costs": [
+      {
+        "poolId": "tidecaller:sorcery-points",
+        "amount": 2
+      }
+    ],
+    "options": [
+      {
+        "id": "path:memory-echo:recalled-pattern:6#pattern",
+        "handler": "echo-pattern",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "tidecaller:sorcery-points",
+            "amount": 2
+          }
+        ],
+        "description": "When a creature succeeds on a save against your Enchantment spell, you may spend two Sorcery Points to learn whether it is immune to Charmed. You can then move 10 feet without provoking Opportunity Attacks. This does not change the save result."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:memory-echo:shared-recollection:14",
+    "name": "Shared Recollection",
+    "level": 14,
+    "calling": "tidecaller",
+    "path": "memory-echo",
+    "description": "As an Action spend one Echo use to link up to Training Bonus willing creatures within 30 feet for one hour. Each can communicate telepathically with the others within one mile. You must Concentrate as if on a spell.",
+    "costs": [
+      {
+        "poolId": "memory-echo:echo",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:memory-echo:shared-recollection:14#share",
+        "handler": "echo-share",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "memory-echo:echo",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action spend one Echo use to link up to Training Bonus willing creatures within 30 feet for one hour. Each can communicate telepathically with the others within one mile. You must Concentrate as if on a spell."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:memory-echo:unwritten-self:18",
+    "name": "Unwritten Self",
+    "level": 18,
+    "calling": "tidecaller",
+    "path": "memory-echo",
+    "description": "Once per Long Rest, as a Reaction when you fail an Wit, Instinct or Spirit save, succeed instead. End one Charmed or Frightened condition on yourself. This cannot reverse damage already resolved.",
+    "costs": [
+      {
+        "poolId": "memory-echo:unwritten",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:memory-echo:unwritten-self:18#save",
+        "handler": "echo-unwritten",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "memory-echo:unwritten",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest, as a Reaction when you fail an Wit, Instinct or Spirit save, succeed instead. End one Charmed or Frightened condition on yourself. This cannot reverse damage already resolved."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:tempest-heart:storm-pulse:3",
+    "name": "Storm Pulse",
+    "level": 3,
+    "calling": "tidecaller",
+    "path": "tempest-heart",
+    "description": "Choose Lightning or Thunder. Gain Resistance to the chosen damage type. Once per turn when you cast a level 1+ spell, spend one Pulse use to move 10 feet without provoking Opportunity Attacks and deal chosen-type damage equal to your Spirit modifier (minimum one) to one creature within 10 feet.",
+    "costs": [
+      {
+        "poolId": "tempest-heart:pulse",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:tempest-heart:storm-pulse:3#pulse",
+        "handler": "tempest-pulse",
+        "action": "No action",
+        "costs": [
+          {
+            "poolId": "tempest-heart:pulse",
+            "amount": 1
+          }
+        ],
+        "description": "Choose Lightning or Thunder. Gain Resistance to the chosen damage type. Once per turn when you cast a level 1+ spell, spend one Pulse use to move 10 feet without provoking Opportunity Attacks and deal chosen-type damage equal to your Spirit modifier (minimum one) to one creature within 10 feet."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:tempest-heart:conductive-soul:6",
+    "name": "Conductive Soul",
+    "level": 6,
+    "calling": "tidecaller",
+    "path": "tempest-heart",
+    "description": "Once per turn when your spell deals the chosen damage type, add your Spirit modifier to one damage roll. As a Bonus Action spend two Sorcery Points to change one spells Lightning damage to Thunder or Thunder to Lightning for that casting.",
+    "costs": [
+      {
+        "poolId": "tidecaller:sorcery-points",
+        "amount": 2
+      }
+    ],
+    "options": [
+      {
+        "id": "path:tempest-heart:conductive-soul:6#convert",
+        "handler": "tempest-convert",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "tidecaller:sorcery-points",
+            "amount": 2
+          }
+        ],
+        "description": "Once per turn when your spell deals the chosen damage type, add your Spirit modifier to one damage roll. As a Bonus Action spend two Sorcery Points to change one spells Lightning damage to Thunder or Thunder to Lightning for that casting."
+      },
+      {
+        "id": "path:tempest-heart:conductive-soul:6#damage",
+        "handler": "tempest-damage",
+        "action": "No action",
+        "costs": [],
+        "description": "Once per turn when your spell deals the chosen damage type, add your Spirit modifier to one damage roll. As a Bonus Action spend two Sorcery Points to change one spells Lightning damage to Thunder or Thunder to Lightning for that casting."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:tempest-heart:living-tempest:18",
+    "name": "Living Tempest",
+    "level": 18,
+    "calling": "tidecaller",
+    "path": "tempest-heart",
+    "description": "Once per Long Rest as a Bonus Action become a storm for one minute. Your Fly Speed becomes 60 feet; you have Immunity to your chosen damage type and Resistance to the other. You may move through creatures as Difficult Terrain, but cannot end there.",
+    "costs": [
+      {
+        "poolId": "tempest-heart:tempest",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:tempest-heart:living-tempest:18#storm",
+        "handler": "tempest-live",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "tempest-heart:tempest",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Bonus Action become a storm for one minute. Your Fly Speed becomes 60 feet; you have Immunity to your chosen damage type and Resistance to the other. You may move through creatures as Difficult Terrain, but cannot end there."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:sanguine-conduit:blood-price:3",
+    "name": "Blood Price",
+    "level": 3,
+    "calling": "tidecaller",
+    "path": "sanguine-conduit",
+    "description": "Choose shelter or surge. As a Bonus Action spend one Conduit use and lose Health equal to twice your Training Bonus (this cannot be reduced and cannot reduce you below 1). Shelter grants one creature within 30 feet temporary Health equal to 1d8 + Spirit; surge adds 1d8 Necrotic damage to one damage roll of the next spell you cast before your next turn.",
+    "costs": [
+      {
+        "poolId": "sanguine-conduit:conduit",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:sanguine-conduit:blood-price:3#price",
+        "handler": "conduit-price",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "sanguine-conduit:conduit",
+            "amount": 1
+          }
+        ],
+        "description": "Choose shelter or surge. As a Bonus Action spend one Conduit use and lose Health equal to twice your Training Bonus (this cannot be reduced and cannot reduce you below 1). Shelter grants one creature within 30 feet temporary Health equal to 1d8 + Spirit; surge adds 1d8 Necrotic damage to one damage roll of the next spell you cast before your next turn."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:sanguine-conduit:measured-sacrifice:6",
+    "name": "Measured Sacrifice",
+    "level": 6,
+    "calling": "tidecaller",
+    "path": "sanguine-conduit",
+    "description": "Gain Resistance to Necrotic damage. Blood Price uses 2d8 instead of 1d8. Once per Long Rest, as a Bonus Action lose 6 Health without reducing yourself below 1 to recover two Sorcery Points, never above your maximum.",
+    "costs": [
+      {
+        "poolId": "sanguine-conduit:transfusion",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:sanguine-conduit:measured-sacrifice:6#sacrifice",
+        "handler": "conduit-sacrifice",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "sanguine-conduit:transfusion",
+            "amount": 1
+          }
+        ],
+        "description": "Gain Resistance to Necrotic damage. Blood Price uses 2d8 instead of 1d8. Once per Long Rest, as a Bonus Action lose 6 Health without reducing yourself below 1 to recover two Sorcery Points, never above your maximum."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:sanguine-conduit:unbroken-current:18",
+    "name": "Unbroken Current",
+    "level": 18,
+    "calling": "tidecaller",
+    "path": "sanguine-conduit",
+    "description": "Once per Long Rest when reduced to 0 Health but not killed outright, as a Reaction remain at 1 Health and gain temporary Health equal to your Tidecaller level. Blood Price now uses 3d8.",
+    "costs": [
+      {
+        "poolId": "sanguine-conduit:unbroken-current",
+        "amount": 1
+      }
+    ],
+    "options": [],
+    "command": "health.damage"
+  },
+  {
+    "id": "path:oath-of-the-free-port:break-the-chain:3",
+    "name": "Break the Chain",
+    "level": 3,
+    "calling": "warden",
+    "path": "oath-of-the-free-port",
+    "description": "Choose liberty or refuge. As an Action expend one Channel Divinity use to end Grappled or Restrained on a creature within 30 feet; magical restraints require a Spirit check against the effect save DC. Liberty also moves it 10 feet without Opportunity Attacks; refuge grants temporary Health equal to your Warden level.",
+    "costs": [
+      {
+        "poolId": "warden:channel-divinity",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:oath-of-the-free-port:break-the-chain:3#break",
+        "handler": "freeport-break",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "warden:channel-divinity",
+            "amount": 1
+          }
+        ],
+        "description": "Choose liberty or refuge. As an Action expend one Channel Divinity use to end Grappled or Restrained on a creature within 30 feet; magical restraints require a Spirit check against the effect save DC. Liberty also moves it 10 feet without Opportunity Attacks; refuge grants temporary Health equal to your Warden level."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:oath-of-the-free-port:no-captive-left:15",
+    "name": "No Captive Left",
+    "level": 15,
+    "calling": "warden",
+    "path": "oath-of-the-free-port",
+    "description": "As a Reaction when an ally within your aura fails a save against Restrained or Paralyzed, spend 5 Lay On Hands points to let it reroll the save. It must use the new result. This does not restore Health.",
+    "costs": [
+      {
+        "poolId": "warden:lay-on-hands",
+        "amount": 5
+      }
+    ],
+    "options": [
+      {
+        "id": "path:oath-of-the-free-port:no-captive-left:15#reroll",
+        "handler": "freeport-reroll",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "warden:lay-on-hands",
+            "amount": 5
+          }
+        ],
+        "description": "As a Reaction when an ally within your aura fails a save against Restrained or Paralyzed, spend 5 Lay On Hands points to let it reroll the save. It must use the new result. This does not restore Health."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:oath-of-the-free-port:open-harbor:20",
+    "name": "Open Harbor",
+    "level": 20,
+    "calling": "warden",
+    "path": "oath-of-the-free-port",
+    "description": "Once per Long Rest as a Bonus Action empower your aura for ten minutes. Allies within it have advantage on saves against Paralyzed and Restrained, and can Disengage as a Bonus Action. Restore this use by expending a level 5 spell slot.",
+    "costs": [
+      {
+        "poolId": "oath-of-the-free-port:open-harbor",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:oath-of-the-free-port:open-harbor:20#harbor",
+        "handler": "freeport-harbor",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "oath-of-the-free-port:open-harbor",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Bonus Action empower your aura for ten minutes. Allies within it have advantage on saves against Paralyzed and Restrained, and can Disengage as a Bonus Action. Restore this use by expending a level 5 spell slot."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-covenant:covenant-of-steel:3",
+    "name": "Covenant of Steel",
+    "level": 3,
+    "calling": "warden",
+    "path": "iron-covenant",
+    "description": "Choose bulwark or sentinel. As a Bonus Action spend one Channel Divinity use to empower one Shield you hold for one minute. Bulwark adds +1 Guard while holding it; sentinel allows you to use a Reaction to impose disadvantage on one attack against an ally within 5 feet. The effect ends if you release the Shield.",
+    "costs": [
+      {
+        "poolId": "warden:channel-divinity",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-covenant:covenant-of-steel:3#steel",
+        "handler": "covenant-steel",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "warden:channel-divinity",
+            "amount": 1
+          }
+        ],
+        "description": "Choose bulwark or sentinel. As a Bonus Action spend one Channel Divinity use to empower one Shield you hold for one minute. Bulwark adds +1 Guard while holding it; sentinel allows you to use a Reaction to impose disadvantage on one attack against an ally within 5 feet. The effect ends if you release the Shield."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-covenant:take-the-burden:15",
+    "name": "Take the Burden",
+    "level": 15,
+    "calling": "warden",
+    "path": "iron-covenant",
+    "description": "As a Reaction when an ally in your aura takes damage, spend one Covenant use to take half that damage instead. This transferred damage cannot be reduced; the ally takes the remainder.",
+    "costs": [
+      {
+        "poolId": "iron-covenant:covenant",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-covenant:take-the-burden:15#main",
+        "handler": "burden",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "iron-covenant:covenant",
+            "amount": 1
+          }
+        ],
+        "description": "As a Reaction when an ally in your aura takes damage, spend one Covenant use to take half that damage instead. This transferred damage cannot be reduced; the ally takes the remainder."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:iron-covenant:unyielding-standard:20",
+    "name": "Unyielding Standard",
+    "level": 20,
+    "calling": "warden",
+    "path": "iron-covenant",
+    "description": "Once per Long Rest as a Bonus Action for one minute, gain Resistance to Bludgeoning, Piercing and Slashing and prevent enemies from moving you against your will. Allies in your aura gain temporary Health equal to your Spirit modifier at the start of each of their turns. Restore the use with a level 5 spell slot.",
+    "costs": [
+      {
+        "poolId": "iron-covenant:standard",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:iron-covenant:unyielding-standard:20#standard",
+        "handler": "covenant-standard",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "iron-covenant:standard",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Bonus Action for one minute, gain Resistance to Bludgeoning, Piercing and Slashing and prevent enemies from moving you against your will. Allies in your aura gain temporary Health equal to your Spirit modifier at the start of each of their turns. Restore the use with a level 5 spell slot."
+      },
+      {
+        "id": "path:iron-covenant:unyielding-standard:20#grant",
+        "handler": "covenant-grant",
+        "action": "No action",
+        "costs": [],
+        "description": "Once per Long Rest as a Bonus Action for one minute, gain Resistance to Bludgeoning, Piercing and Slashing and prevent enemies from moving you against your will. Allies in your aura gain temporary Health equal to your Spirit modifier at the start of each of their turns. Restore the use with a level 5 spell slot."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:lantern-vigil:light-the-watch:3",
+    "name": "Light the Watch",
+    "level": 3,
+    "calling": "warden",
+    "path": "lantern-vigil",
+    "description": "Choose Radiant or Fire. As a Bonus Action spend one Channel Divinity use to create a 20-foot Bright Light aura for one minute. Once on each of your turns your first weapon hit deals 1d6 extra chosen-type damage. Undead hit by it cannot regain Health until your next turn.",
+    "costs": [
+      {
+        "poolId": "warden:channel-divinity",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:lantern-vigil:light-the-watch:3#watch",
+        "handler": "vigil-watch",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "warden:channel-divinity",
+            "amount": 1
+          }
+        ],
+        "description": "Choose Radiant or Fire. As a Bonus Action spend one Channel Divinity use to create a 20-foot Bright Light aura for one minute. Once on each of your turns your first weapon hit deals 1d6 extra chosen-type damage. Undead hit by it cannot regain Health until your next turn."
+      },
+      {
+        "id": "path:lantern-vigil:light-the-watch:3#hit",
+        "handler": "vigil-hit",
+        "action": "No action",
+        "costs": [],
+        "description": "Choose Radiant or Fire. As a Bonus Action spend one Channel Divinity use to create a 20-foot Bright Light aura for one minute. Once on each of your turns your first weapon hit deals 1d6 extra chosen-type damage. Undead hit by it cannot regain Health until your next turn."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:lantern-vigil:watchfire:15",
+    "name": "Watchfire",
+    "level": 15,
+    "calling": "warden",
+    "path": "lantern-vigil",
+    "description": "Gain Resistance to Necrotic damage. Your Light the Watch extra damage becomes 2d6. As an Action you can spend 5 Lay On Hands points to end one Charmed effect caused by an Undead on a creature you touch.",
+    "costs": [
+      {
+        "poolId": "warden:lay-on-hands",
+        "amount": 5
+      }
+    ],
+    "options": [
+      {
+        "id": "path:lantern-vigil:watchfire:15#cure",
+        "handler": "vigil-cure",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "warden:lay-on-hands",
+            "amount": 5
+          }
+        ],
+        "description": "Gain Resistance to Necrotic damage. Your Light the Watch extra damage becomes 2d6. As an Action you can spend 5 Lay On Hands points to end one Charmed effect caused by an Undead on a creature you touch."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:lantern-vigil:dawn-at-sea:20",
+    "name": "Dawn at Sea",
+    "level": 20,
+    "calling": "warden",
+    "path": "lantern-vigil",
+    "description": "Once per Long Rest as a Bonus Action empower your aura for one minute. It becomes sunlight; Undead starting a turn in it take Radiant damage equal to your Training Bonus + Spirit modifier. You and allies in it have Resistance to Necrotic damage. Restore this use with a level 5 spell slot.",
+    "costs": [
+      {
+        "poolId": "lantern-vigil:dawn",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:lantern-vigil:dawn-at-sea:20#dawn",
+        "handler": "vigil-dawn",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "lantern-vigil:dawn",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Bonus Action empower your aura for one minute. It becomes sunlight; Undead starting a turn in it take Radiant damage equal to your Training Bonus + Spirit modifier. You and allies in it have Resistance to Necrotic damage. Restore this use with a level 5 spell slot."
+      },
+      {
+        "id": "path:lantern-vigil:dawn-at-sea:20#damage",
+        "handler": "vigil-dawn-damage",
+        "action": "No action",
+        "costs": [],
+        "description": "Once per Long Rest as a Bonus Action empower your aura for one minute. It becomes sunlight; Undead starting a turn in it take Radiant damage equal to your Training Bonus + Spirit modifier. You and allies in it have Resistance to Necrotic damage. Restore this use with a level 5 spell slot."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:thunderhide:stormhide:3",
+    "name": "Stormhide",
+    "level": 3,
+    "calling": "reaver",
+    "path": "thunderhide",
+    "description": "Choose Thunder or Lightning. While Raging gain Resistance to the chosen type. Once on each of your turns when a Might-based melee attack hits during Rage, deal chosen-type damage equal to your Rage Damage bonus. As a Bonus Action spend one Stormhide use to leap 15 feet; movement provokes normally.",
+    "costs": [
+      {
+        "poolId": "thunderhide:stormhide",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:thunderhide:stormhide:3#leap",
+        "handler": "stormhide-leap",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "thunderhide:stormhide",
+            "amount": 1
+          }
+        ],
+        "description": "Choose Thunder or Lightning. While Raging gain Resistance to the chosen type. Once on each of your turns when a Might-based melee attack hits during Rage, deal chosen-type damage equal to your Rage Damage bonus. As a Bonus Action spend one Stormhide use to leap 15 feet; movement provokes normally."
+      },
+      {
+        "id": "path:thunderhide:stormhide:3#hit",
+        "handler": "reaver-path-hit",
+        "action": "No action",
+        "costs": [],
+        "description": "Choose Thunder or Lightning. While Raging gain Resistance to the chosen type. Once on each of your turns when a Might-based melee attack hits during Rage, deal chosen-type damage equal to your Rage Damage bonus. As a Bonus Action spend one Stormhide use to leap 15 feet; movement provokes normally."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:thunderhide:walking-storm:14",
+    "name": "Walking Storm",
+    "level": 14,
+    "calling": "reaver",
+    "path": "thunderhide",
+    "description": "Once per Rage as a Bonus Action spend one Stormhide use to emit a 10-foot Emanation until your next turn. Enemies that start a turn there make a Resolve save against your Stormhide DC, taking 3d6 chosen-type damage on failure or half on success.",
+    "costs": [
+      {
+        "poolId": "thunderhide:stormhide",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:thunderhide:walking-storm:14#storm",
+        "handler": "stormhide-walking",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "thunderhide:stormhide",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Rage as a Bonus Action spend one Stormhide use to emit a 10-foot Emanation until your next turn. Enemies that start a turn there make a Resolve save against your Stormhide DC, taking 3d6 chosen-type damage on failure or half on success."
+      },
+      {
+        "id": "path:thunderhide:walking-storm:14#pulse",
+        "handler": "stormhide-pulse",
+        "action": "No action",
+        "costs": [],
+        "description": "Once per Rage as a Bonus Action spend one Stormhide use to emit a 10-foot Emanation until your next turn. Enemies that start a turn there make a Resolve save against your Stormhide DC, taking 3d6 chosen-type damage on failure or half on success."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:chainbreaker:break-their-hold:3",
+    "name": "Break Their Hold",
+    "level": 3,
+    "calling": "reaver",
+    "path": "chainbreaker",
+    "description": "Choose rescuer or breaker. While Raging, once per turn when you hit with a Might-based melee attack, deal extra damage equal to your Rage Damage bonus if the target is Grappling an ally or carrying restraints. As a Bonus Action spend one Freedom use to let an adjacent ally immediately attempt to escape a grapple, using your Might (Athletics) modifier.",
+    "costs": [
+      {
+        "poolId": "chainbreaker:freedom",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:chainbreaker:break-their-hold:3#escape",
+        "handler": "chainbreaker-escape",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "chainbreaker:freedom",
+            "amount": 1
+          }
+        ],
+        "description": "Choose rescuer or breaker. While Raging, once per turn when you hit with a Might-based melee attack, deal extra damage equal to your Rage Damage bonus if the target is Grappling an ally or carrying restraints. As a Bonus Action spend one Freedom use to let an adjacent ally immediately attempt to escape a grapple, using your Might (Athletics) modifier."
+      },
+      {
+        "id": "path:chainbreaker:break-their-hold:3#hit",
+        "handler": "reaver-path-hit",
+        "action": "No action",
+        "costs": [],
+        "description": "Choose rescuer or breaker. While Raging, once per turn when you hit with a Might-based melee attack, deal extra damage equal to your Rage Damage bonus if the target is Grappling an ally or carrying restraints. As a Bonus Action spend one Freedom use to let an adjacent ally immediately attempt to escape a grapple, using your Might (Athletics) modifier."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:chainbreaker:rally-the-bound:10",
+    "name": "Rally the Bound",
+    "level": 10,
+    "calling": "reaver",
+    "path": "chainbreaker",
+    "description": "As an Action spend one Freedom use: up to three allies within 30 feet who hear you gain temporary Health equal to 1d8 + Resolve modifier. They can stand from Prone without spending movement.",
+    "costs": [
+      {
+        "poolId": "chainbreaker:freedom",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:chainbreaker:rally-the-bound:10#rally",
+        "handler": "chainbreaker-rally",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "chainbreaker:freedom",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action spend one Freedom use: up to three allies within 30 feet who hear you gain temporary Health equal to 1d8 + Resolve modifier. They can stand from Prone without spending movement."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:chainbreaker:none-shall-kneel:14",
+    "name": "None Shall Kneel",
+    "level": 14,
+    "calling": "reaver",
+    "path": "chainbreaker",
+    "description": "Once per Long Rest as a Reaction when an ally within 30 feet fails a save against Charmed, Frightened or Restrained, let it succeed instead. You must be Raging and able to see the ally.",
+    "costs": [
+      {
+        "poolId": "chainbreaker:none-kneel",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:chainbreaker:none-shall-kneel:14#save",
+        "handler": "chainbreaker-kneel",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "chainbreaker:none-kneel",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Reaction when an ally within 30 feet fails a save against Charmed, Frightened or Restrained, let it succeed instead. You must be Raging and able to see the ally."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:reef-colossus:colossus-stance:3",
+    "name": "Colossus Stance",
+    "level": 3,
+    "calling": "reaver",
+    "path": "reef-colossus",
+    "description": "Choose anchor or breaker. While Raging, you count as one size larger for carrying and grappling, to a maximum effective size of Large. Anchor grants advantage on saves against being moved; breaker adds your Rage Damage bonus to damage against objects. As a Bonus Action spend one Colossus use to gain temporary Health equal to your Reaver level + Resolve modifier.",
+    "costs": [
+      {
+        "poolId": "reef-colossus:colossus",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:reef-colossus:colossus-stance:3#stance",
+        "handler": "colossus-stance",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "reef-colossus:colossus",
+            "amount": 1
+          }
+        ],
+        "description": "Choose anchor or breaker. While Raging, you count as one size larger for carrying and grappling, to a maximum effective size of Large. Anchor grants advantage on saves against being moved; breaker adds your Rage Damage bonus to damage against objects. As a Bonus Action spend one Colossus use to gain temporary Health equal to your Reaver level + Resolve modifier."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:reef-colossus:deckshaker:10",
+    "name": "Deckshaker",
+    "level": 10,
+    "calling": "reaver",
+    "path": "reef-colossus",
+    "description": "As an Action during Rage spend one Colossus use: creatures of your choice within 10 feet make a Might save (DC 8 + Training Bonus + Might), taking 3d8 Bludgeoning damage and falling Prone on failure, or half damage on success. This is not the Attack action.",
+    "costs": [
+      {
+        "poolId": "reef-colossus:colossus",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:reef-colossus:deckshaker:10#shake",
+        "handler": "colossus-deck",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "reef-colossus:colossus",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action during Rage spend one Colossus use: creatures of your choice within 10 feet make a Might save (DC 8 + Training Bonus + Might), taking 3d8 Bludgeoning damage and falling Prone on failure, or half damage on success. This is not the Attack action."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:plaguewarden:contain-the-fever:3",
+    "name": "Contain the Fever",
+    "level": 3,
+    "calling": "doctor",
+    "path": "plaguewarden",
+    "description": "Choose antidote or quarantine. Gain herbalism kit Training. As an Action expend one Channel Divinity use: antidote ends Poisoned on up to two creatures within 30 feet; quarantine forces one creature within 30 feet to make a Resolve save against your spell DC or have its Speed halved and lose Reactions for one minute (repeat save each turn).",
+    "costs": [
+      {
+        "poolId": "doctor:channel-divinity",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:plaguewarden:contain-the-fever:3#antidote",
+        "handler": "plague-antidote",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "doctor:channel-divinity",
+            "amount": 1
+          }
+        ],
+        "description": "Choose antidote or quarantine. Gain herbalism kit Training. As an Action expend one Channel Divinity use: antidote ends Poisoned on up to two creatures within 30 feet; quarantine forces one creature within 30 feet to make a Resolve save against your spell DC or have its Speed halved and lose Reactions for one minute (repeat save each turn)."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:plaguewarden:clean-bill-of-health:17",
+    "name": "Clean Bill of Health",
+    "level": 17,
+    "calling": "doctor",
+    "path": "plaguewarden",
+    "description": "Once per Long Rest as an Action restore 6d8 + Doctor level Health to one creature within reach and end Poisoned, Blinded and Deafened on it. You must expend one healer kit use. This cannot cure magical curses or restore missing body parts.",
+    "costs": [
+      {
+        "poolId": "plaguewarden:clean-bill",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:plaguewarden:clean-bill-of-health:17#main",
+        "handler": "clean-bill",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "plaguewarden:clean-bill",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as an Action restore 6d8 + Doctor level Health to one creature within reach and end Poisoned, Blinded and Deafened on it. You must expend one healer kit use. This cannot cure magical curses or restore missing body parts."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:keeper-of-last-breaths:stay-the-crossing:3",
+    "name": "Stay the Crossing",
+    "level": 3,
+    "calling": "doctor",
+    "path": "keeper-of-last-breaths",
+    "description": "Choose comfort or witness. As a Reaction when a creature within 30 feet falls to 0 Health but is not killed outright, spend one Vigil use to stabilize it. Comfort also grants temporary Health equal to your Instinct modifier (minimum one), which does not awaken it; witness lets it speak one sentence even while Unconscious.",
+    "costs": [
+      {
+        "poolId": "keeper-of-last-breaths:vigil",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:keeper-of-last-breaths:stay-the-crossing:3#main",
+        "handler": "keeper-stabilize",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "keeper-of-last-breaths:vigil",
+            "amount": 1
+          }
+        ],
+        "description": "Choose comfort or witness. As a Reaction when a creature within 30 feet falls to 0 Health but is not killed outright, spend one Vigil use to stabilize it. Comfort also grants temporary Health equal to your Instinct modifier (minimum one), which does not awaken it; witness lets it speak one sentence even while Unconscious."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:keeper-of-last-breaths:witness-against-oblivion:6",
+    "name": "Witness Against Oblivion",
+    "level": 6,
+    "calling": "doctor",
+    "path": "keeper-of-last-breaths",
+    "description": "As an Action expend one Channel Divinity use to restore Health equal to twice your Doctor level to a creature at 0 Health within 30 feet. It can then stand without spending movement. This does not return a dead creature to life.",
+    "costs": [
+      {
+        "poolId": "doctor:channel-divinity",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:keeper-of-last-breaths:witness-against-oblivion:6#main",
+        "handler": "keeper-heal",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "doctor:channel-divinity",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action expend one Channel Divinity use to restore Health equal to twice your Doctor level to a creature at 0 Health within 30 feet. It can then stand without spending movement. This does not return a dead creature to life."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:keeper-of-last-breaths:one-more-dawn:17",
+    "name": "One More Dawn",
+    "level": 17,
+    "calling": "doctor",
+    "path": "keeper-of-last-breaths",
+    "description": "Once per Long Rest as a Reaction when a creature within 30 feet would die from failed death saves, restore it to 1 Health instead and reset its death saves. This cannot prevent instant death from massive damage or disintegration.",
+    "costs": [
+      {
+        "poolId": "keeper-of-last-breaths:one-dawn",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:keeper-of-last-breaths:one-more-dawn:17#main",
+        "handler": "keeper-dawn",
+        "action": "Reaction",
+        "costs": [
+          {
+            "poolId": "keeper-of-last-breaths:one-dawn",
+            "amount": 1
+          }
+        ],
+        "description": "Once per Long Rest as a Reaction when a creature within 30 feet would die from failed death saves, restore it to 1 Health instead and reset its death saves. This cannot prevent instant death from massive damage or disintegration."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:sparkwrite-aetherist:aether-relay:3",
+    "name": "Aether Relay",
+    "level": 3,
+    "calling": "shipwright",
+    "path": "sparkwrite-aetherist",
+    "description": "Choose grounded or mobile. Gain tinker tools Training. As a Bonus Action spend one Relay use to place a relay in an unoccupied space within 30 feet for one minute. You may originate one Shipwright cantrip per turn from that relay, measuring range from it while still requiring your own sight. Grounded grants the relay Guard 15 and Health equal to twice Shipwright level; mobile lets you move it 15 feet as a Bonus Action. One relay at a time.",
+    "costs": [
+      {
+        "poolId": "sparkwrite-aetherist:relay",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:sparkwrite-aetherist:aether-relay:3#place",
+        "handler": "relay-place",
+        "action": "Bonus Action",
+        "costs": [
+          {
+            "poolId": "sparkwrite-aetherist:relay",
+            "amount": 1
+          }
+        ],
+        "description": "Choose grounded or mobile. Gain tinker tools Training. As a Bonus Action spend one Relay use to place a relay in an unoccupied space within 30 feet for one minute. You may originate one Shipwright cantrip per turn from that relay, measuring range from it while still requiring your own sight. Grounded grants the relay Guard 15 and Health equal to twice Shipwright level; mobile lets you move it 15 feet as a Bonus Action. One relay at a time."
+      }
+    ],
+    "command": "ability.activate"
+  },
+  {
+    "id": "path:sparkwrite-aetherist:capacitor-discharge:10",
+    "name": "Capacitor Discharge",
+    "level": 10,
+    "calling": "shipwright",
+    "path": "sparkwrite-aetherist",
+    "description": "As an Action spend one Relay use to detonate your relay. Creatures within 10 feet make an Agility save against your spell DC, taking 4d8 Lightning damage on failure or half on success. The relay is destroyed; you cannot exempt allies.",
+    "costs": [
+      {
+        "poolId": "sparkwrite-aetherist:relay",
+        "amount": 1
+      }
+    ],
+    "options": [
+      {
+        "id": "path:sparkwrite-aetherist:capacitor-discharge:10#discharge",
+        "handler": "relay-discharge",
+        "action": "Action",
+        "costs": [
+          {
+            "poolId": "sparkwrite-aetherist:relay",
+            "amount": 1
+          }
+        ],
+        "description": "As an Action spend one Relay use to detonate your relay. Creatures within 10 feet make an Agility save against your spell DC, taking 4d8 Lightning damage on failure or half on success. The relay is destroyed; you cannot exempt allies."
+      }
+    ],
+    "command": "ability.activate"
+  }
+]

@@ -1,0 +1,1123 @@
+[
+  {
+    "layout": "missing",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "missing",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "missing",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "missing",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true
+      },
+      {
+        "featureId": "spell:guidance",
+        "concentration": true
+      }
+    ],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "missing",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "concentration.resolve",
+      "rolls": [
+        1
+      ],
+      "total": 3,
+      "dc": 30,
+      "success": false
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "missing",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "missing",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "missing",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "spell:guidance"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "mixed",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "concentration.resolve",
+      "rolls": [
+        1
+      ],
+      "total": 3,
+      "dc": 30,
+      "success": false
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true
+      }
+    ],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "mixed",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "mixed",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true
+      }
+    ],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "mixed",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true
+      },
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "one"
+      }
+    ],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "mixed",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "concentration.resolve",
+      "rolls": [
+        1
+      ],
+      "total": 3,
+      "dc": 30,
+      "success": false
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "one"
+      }
+    ],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "mixed",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "mixed",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "mixed",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "spell:guidance"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "distinct",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "concentration.resolve",
+      "rolls": [
+        1
+      ],
+      "total": 3,
+      "dc": 30,
+      "success": false
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "two"
+      }
+    ],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "distinct",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "distinct",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "two"
+      }
+    ],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "distinct",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "one"
+      },
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "two"
+      }
+    ],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "distinct",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "distinct",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "distinct",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "distinct",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "duplicate",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "concentration.resolve",
+      "rolls": [
+        1
+      ],
+      "total": 3,
+      "dc": 30,
+      "success": false
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "duplicate",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "duplicate",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "duplicate",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "one"
+      },
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "one"
+      }
+    ],
+    "checks": [
+      {
+        "id": "check",
+        "dc": 30,
+        "effects": [
+          "one"
+        ]
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "layout": "duplicate",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "duplicate",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "duplicate",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "duplicate",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "expired",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "expired",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "expired",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "removed",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "removed",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "removed",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "replacement",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "one",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "one"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "one",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "one"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [
+      {
+        "featureId": "spell:guidance",
+        "concentration": true,
+        "id": "replacement"
+      }
+    ],
+    "checks": [],
+    "revision": 1
+  },
+  {
+    "layout": "replacement",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "No matching pending Concentration save"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "spell:guidance",
+    "type": "concentration.resolve",
+    "payload": {
+      "checkId": "check",
+      "rolls": [
+        1
+      ],
+      "confirmed": true
+    },
+    "expectedRevision": 1,
+    "error": [
+      "Error",
+      409,
+      "revision_conflict",
+      "Character changed; reload before saving"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "effectId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "error": [
+      "Error",
+      422,
+      null,
+      "Choose an owned effect"
+    ]
+  },
+  {
+    "layout": "replacement",
+    "reference": "spell:guidance",
+    "type": "effect.end",
+    "payload": {
+      "featureId": "spell:guidance"
+    },
+    "expectedRevision": 0,
+    "result": {
+      "type": "effect.end"
+    },
+    "effects": [],
+    "checks": [],
+    "revision": 1
+  }
+]

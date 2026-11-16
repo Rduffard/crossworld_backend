@@ -1,5 +1,5 @@
 const Character = require("./model");
-const { decorate } = require("./rules2024");
+const { decorate } = require("./persistence");
 const getCharacters = async (req, res, next) => {
   try {
     const characters = await Character.find({ owner: req.user._id, rulesLedger: { $exists: true } })

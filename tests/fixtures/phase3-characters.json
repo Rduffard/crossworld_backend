@@ -1,0 +1,484 @@
+{
+  "creation": {
+    "schemaVersion": 1,
+    "rulesVersion": "SA-CHAR-1",
+    "rulesLedger": {
+      "version": 3,
+      "ruleset": "srd-5.2.1",
+      "revision": 0,
+      "baseAttributes": {
+        "might": 8,
+        "agility": 15,
+        "resolve": 15,
+        "wit": 10,
+        "instinct": 10,
+        "spirit": 13
+      },
+      "creation": {
+        "originId": "yuma-core",
+        "backgroundId": "deckhand",
+        "method": "point-buy",
+        "increases": {
+          "might": 2
+        },
+        "equipment": "pack",
+        "size": "medium"
+      },
+      "levels": [
+        {
+          "callingId": "warden",
+          "choices": {
+            "equipment": [
+              "pack-a"
+            ],
+            "languages": [
+              "common-sign-language"
+            ],
+            "skills": [
+              "athletics",
+              "insight"
+            ],
+            "backgroundSkills": [
+              "survival",
+              "acrobatics"
+            ],
+            "mastery": [
+              "club",
+              "dagger"
+            ],
+            "prepared": [
+              "bless",
+              "command"
+            ]
+          }
+        }
+      ]
+    },
+    "rulesRuntime": {
+      "revision": 0,
+      "health": {
+        "current": 12,
+        "max": 12
+      },
+      "hitDice": {
+        "d10": 1
+      },
+      "pools": {
+        "warden:lay-on-hands": 5
+      },
+      "slots": [
+        2
+      ],
+      "createdSlots": [
+        0
+      ],
+      "preparations": {
+        "warden": [
+          "bless",
+          "command"
+        ]
+      },
+      "temporaryHealth": 0,
+      "effects": [],
+      "counters": {},
+      "selections": {},
+      "folio": [],
+      "deathSaves": {
+        "successes": 0,
+        "failures": 0,
+        "stable": false,
+        "dead": false
+      },
+      "conditions": [],
+      "exhaustion": 0,
+      "concentrationChecks": [],
+      "inspiration": false,
+      "featState": {}
+    },
+    "documentRevision": 0,
+    "attributes": {
+      "might": 10,
+      "agility": 15,
+      "resolve": 15,
+      "wit": 11,
+      "instinct": 10,
+      "spirit": 13
+    },
+    "inventory": [
+      {
+        "instanceId": "item-1",
+        "definitionId": "chain-mail",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-2",
+        "definitionId": "shield",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-3",
+        "definitionId": "longsword",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-4",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-5",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-6",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-7",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-8",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-9",
+        "definitionId": "javelin",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-10",
+        "definitionId": "holy-symbol",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-11",
+        "definitionId": "backpack",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-12",
+        "definitionId": "blanket",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-13",
+        "definitionId": "holy-water",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-14",
+        "definitionId": "lamp",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-15",
+        "definitionId": "rations",
+        "quantity": 7,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-16",
+        "definitionId": "robe",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-17",
+        "definitionId": "tinderbox",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-18",
+        "definitionId": "rope",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-19",
+        "definitionId": null,
+        "quantity": 1,
+        "customName": "Common Clothes",
+        "notes": ""
+      },
+      {
+        "instanceId": "item-20",
+        "definitionId": "navigator-tools",
+        "quantity": 1,
+        "customName": "",
+        "notes": ""
+      }
+    ],
+    "loadout": {
+      "mainHand": null,
+      "offHand": null,
+      "armor": null,
+      "grip": "one"
+    },
+    "goldCp": 1900
+  },
+  "path": {
+    "ledger": {
+      "version": 3,
+      "ruleset": "srd-5.2.1",
+      "revision": 2,
+      "baseAttributes": {
+        "might": 8,
+        "agility": 15,
+        "resolve": 15,
+        "wit": 10,
+        "instinct": 10,
+        "spirit": 13
+      },
+      "creation": {
+        "originId": "yuma-core",
+        "backgroundId": "deckhand",
+        "method": "point-buy",
+        "increases": {
+          "might": 2
+        },
+        "equipment": "pack",
+        "size": "medium"
+      },
+      "levels": [
+        {
+          "callingId": "warden",
+          "choices": {
+            "equipment": [
+              "pack-a"
+            ],
+            "languages": [
+              "common-sign-language"
+            ],
+            "skills": [
+              "athletics",
+              "insight"
+            ],
+            "backgroundSkills": [
+              "survival",
+              "acrobatics"
+            ],
+            "mastery": [
+              "club",
+              "dagger"
+            ],
+            "prepared": [
+              "bless",
+              "command"
+            ]
+          }
+        },
+        {
+          "callingId": "warden",
+          "choices": {
+            "style": [
+              "archery"
+            ],
+            "prepared": [
+              "bless",
+              "command",
+              "cure-wounds"
+            ]
+          }
+        },
+        {
+          "callingId": "warden",
+          "choices": {
+            "pathId": [
+              "iron-covenant"
+            ],
+            "pathDiscipline": [
+              "bulwark"
+            ],
+            "prepared": [
+              "bless",
+              "command",
+              "cure-wounds",
+              "detect-evil-and-good"
+            ]
+          }
+        }
+      ]
+    },
+    "paths": {
+      "warden": "iron-covenant"
+    },
+    "attributes": {
+      "might": 10,
+      "agility": 15,
+      "resolve": 15,
+      "wit": 11,
+      "instinct": 10,
+      "spirit": 13
+    },
+    "savingThrowModifiers": {
+      "might": 0,
+      "agility": 2,
+      "resolve": 2,
+      "wit": 0,
+      "instinct": 2,
+      "spirit": 3
+    },
+    "skillModifiers": {
+      "acrobatics": 4,
+      "animal-handling": 0,
+      "arcana": 0,
+      "athletics": 2,
+      "deception": 1,
+      "history": 0,
+      "insight": 2,
+      "intimidation": 1,
+      "investigation": 0,
+      "medicine": 0,
+      "nature": 0,
+      "perception": 0,
+      "performance": 1,
+      "persuasion": 1,
+      "religion": 0,
+      "sleight-of-hand": 2,
+      "stealth": 2,
+      "survival": 2
+    },
+    "equipmentTraining": {
+      "weapons": [
+        "simple",
+        "martial"
+      ],
+      "armor": [
+        "light",
+        "medium",
+        "heavy",
+        "shield"
+      ],
+      "tools": [
+        "navigators-tools"
+      ]
+    }
+  },
+  "spent": {
+    "revision": 0,
+    "health": {
+      "current": 17,
+      "max": 20
+    },
+    "hitDice": {
+      "d10": 1
+    },
+    "pools": {
+      "warden:lay-on-hands": 10,
+      "warden:smite-free": 1
+    },
+    "slots": [
+      1
+    ],
+    "createdSlots": [
+      0
+    ],
+    "preparations": {
+      "warden": [
+        "bless",
+        "command",
+        "cure-wounds"
+      ]
+    },
+    "temporaryHealth": 2,
+    "effects": [],
+    "counters": {},
+    "selections": {},
+    "folio": [],
+    "deathSaves": {
+      "successes": 0,
+      "failures": 0,
+      "stable": false,
+      "dead": false
+    },
+    "conditions": [],
+    "exhaustion": 0,
+    "concentrationChecks": [],
+    "inspiration": false,
+    "featState": {}
+  },
+  "reconciled": {
+    "revision": 1,
+    "health": {
+      "current": 25,
+      "max": 28
+    },
+    "hitDice": {
+      "d10": 2
+    },
+    "pools": {
+      "warden:lay-on-hands": 15,
+      "warden:channel-divinity": 2,
+      "warden:smite-free": 1
+    },
+    "slots": [
+      2
+    ],
+    "createdSlots": [
+      0
+    ],
+    "preparations": {
+      "warden": [
+        "bless",
+        "command",
+        "cure-wounds",
+        "detect-evil-and-good"
+      ]
+    },
+    "temporaryHealth": 2,
+    "effects": [],
+    "counters": {},
+    "selections": {},
+    "folio": [],
+    "deathSaves": {
+      "successes": 0,
+      "failures": 0,
+      "stable": false,
+      "dead": false
+    },
+    "conditions": [],
+    "exhaustion": 0,
+    "concentrationChecks": [],
+    "inspiration": false,
+    "featState": {},
+    "pendingRelentlessRage": null
+  }
+}

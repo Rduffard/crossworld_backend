@@ -32,7 +32,7 @@ The complete 92 effects, original names, rank associations, source identities, a
 
 ## Validation and playtest
 
-Run frontend `node --test --test-concurrency=1 tests/*.test.mjs` and `npm.cmd run build`; run backend `node --test tests/*.test.mjs`. Tests use real validators, controller handlers, Mongoose schemas/serialization, mocked database storage, and rendered React components. They do not contact a live database. Per-file Vite test caches prevent concurrent cache collisions; sequential execution is the conservative option.
+Run frontend `node --test --test-concurrency=1 tests/*.test.mjs` and `npm.cmd run build`; run the backend Training and attribute checks with `npm test -- tests/equipment/tool-checks.test.mjs tests/characters/attribute-modifiers.test.mjs`. Tests use real validators, controller handlers, Mongoose schemas/serialization, mocked database storage, and rendered React components. They do not contact a live database. Per-file Vite test caches prevent concurrent cache collisions; sequential execution is the conservative option.
 
 1. Run both local development services using the existing configuration and sign in.
 2. Create a character, choose Calling/origin, and allocate up to 27 points. Select Board, Shoot, Deceive, and Navigate. Confirm the count is 4/4 and a fifth selection is disabled. Deselect one and confirm continuation is blocked until four are selected again.

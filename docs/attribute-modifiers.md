@@ -8,5 +8,5 @@ Current representation: frontend starts attributes at zero, allocates 12 points 
 
 Before creation switches: approve score generation, ranges/defaults and origin bonuses; align frontend allocation/hydration/payloads with backend normalization, Joi validation and Mongoose persistence; approve how a check selects its attribute; migrate consumers and check storage/validation to support signed modifiers. Review resource/derived-stat and prerequisite/progression dependencies separately before changing the meaning of attributes. Decide explicitly how existing characters will be handled without reinterpreting their allocations. None of those decisions or behavior changes are implemented here.
 
-Run local tests from each repository: node --test tests/checkModifier.test.mjs
+Run the backend test with `npm test -- tests/characters/attribute-modifiers.test.mjs`.
 Run parity from the frontend (sibling crossworld_backend checkout required): node --test tests/checkModifier.parity.test.mjs

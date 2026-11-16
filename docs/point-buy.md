@@ -15,5 +15,5 @@ Origin bonuses must remain separate from this calculation. The utilities cannot 
 
 Integration remains deferred: the live creator still starts at zero with 12 allocation points and a base cap of 4. Backend Joi and Mongoose still allow 0–10, incompatible with new scores above 10. Before connecting these helpers, align creation/editing, hydration, payloads, validation and persistence; decide how to handle existing records explicitly; review origin bonus application and downstream calculations. No migrations, versioning or schema changes are included.
 
-Tests in each repository: node --test tests/pointBuy.test.mjs
+Run the backend test with `npm test -- tests/characters/point-buy.test.mjs`.
 Parity from frontend: node --test tests/pointBuy.parity.test.mjs (requires sibling crossworld_backend checkout).
