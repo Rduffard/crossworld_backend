@@ -6,8 +6,20 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-crossworld-backend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
 
     steps:
@@ -16,11 +28,12 @@ jobs:
         env:
           DB_URI: ${{ secrets.DB_URI }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          envs: DB_URI,JWT_SECRET
+          envs: DB_URI,JWT_SECRET,DEPLOY_SHA
           command_timeout: 5m
           script: |
             set -eu
@@ -33,12 +46,17 @@ jobs:
             test -n "$JWT_SECRET"
 
             echo "==> Updating repository"
-            git fetch origin main
-            git reset --hard origin/main
-            git clean -fd
+            if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+              echo "Deployment checkout has local changes. Review them before deploying."
+              exit 1
+            fi
+            git fetch origin refs/heads/main
+            git merge-base --is-ancestor "$DEPLOY_SHA" FETCH_HEAD
+            git checkout --detach "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
 
             echo "==> Installing dependencies"
-            npm ci
+            npm ci --omit=dev
 
             echo "==> Configuring production environment"
             umask 077
@@ -74,9 +92,9 @@ jobs:
             healthy=0
 
             for i in $(seq 1 15); do
-              if curl -sS --max-time 3 \
+              if curl -fsS --max-time 3 \
                 -o /dev/null \
-                http://127.0.0.1:3001/; then
+                http://127.0.0.1:3001/healthz; then
                 healthy=1
                 break
               fi
@@ -93,4 +111,4 @@ jobs:
             echo "==> Saving PM2 configuration"
             pm2 save
 
-            echo "==> Backend deployment complete"
+            echo "==> Backend deployment complete ($DEPLOY_SHA)"

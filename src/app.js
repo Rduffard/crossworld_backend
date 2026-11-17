@@ -1,6 +1,7 @@
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
+const mongoose = require("mongoose");
 const { errors } = require("celebrate");
 const { Server } = require("socket.io");
 
@@ -41,6 +42,10 @@ app.use(
 app.use(express.json());
 
 // routes
+app.get("/healthz", (_req, res) => {
+  res.sendStatus(mongoose.connection.readyState === 1 ? 200 : 503);
+});
+
 app.use("/", mainRouter);
 
 // error logging + handling
