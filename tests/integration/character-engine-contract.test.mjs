@@ -17,10 +17,11 @@ test('serialized creation, Path and spent-resource reconciliation match the audi
   assert.deepEqual(baselineCharacters(), snapshot);
 });
 
-test('catalog identity and capability flag remain stable', () => {
+test('the Lineage catalog keeps the protocol and capability flag', () => {
+  assert.equal(blueprint.version, 4);
   assert.equal(blueprint.rulesVersion, 'SA-CHAR-1');
   assert.equal(blueprint.tabletopReady, false);
-  assert.equal(blueprint.contentHash, 'e94b607429ad6b3c76e547255fe07f87fccc3d4f80e18d5284c23e714e7a0144');
+  assert.equal(blueprint.contentHash, 'd248164329ba23072e3332d66f4de3909b94f93ceb53c02bfda65fe23d9cce07');
 });
 
 test('Training follows the expected total-level schedule from 1 through 20', () => {

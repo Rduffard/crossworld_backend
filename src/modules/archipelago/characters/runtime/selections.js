@@ -22,6 +22,30 @@ function list(value, count, options) {
 }
 function project(summary, state, character) {
   const result = structuredClone(summary);
+  const form = require('./lineageAbilities').form(summary, state);
+  if (form) {
+    const { attributeModifier } = require('@crossworld/sanguine-engine/attributes');
+    const { skills } = require('../../system/catalog');
+    result.animalForm = { ...form, currentHealth: state.animalForms.healthByForm[form.id] };
+    result.size = form.size;
+    result.creatureType = form.type;
+    result.movement = { ...form.movement };
+    result.senses = { ...form.senses };
+    for (const [id, score] of Object.entries(form.attributes)) {
+      const modifier = attributeModifier(score);
+      const delta = modifier - result.attributeModifiers[id];
+      result.attributes[id] = score;
+      result.attributeModifiers[id] = modifier;
+      result.savingThrowModifiers[id] += delta;
+      if (id === 'agility') result.initiative.modifier += delta;
+      for (const skill of skills.filter(skill => skill.attribute === id))
+        result.skillModifiers[skill.id] += delta;
+    }
+  }
+  if (state.lineageAppearance) {
+    result.appearance = structuredClone(state.lineageAppearance);
+    result.size = result.appearance.size;
+  }
   for (const spell of state.folio ?? []) {
     const definition = rules.spells.find(s => s.id === spell);
     if (!copiedFolioSpellEligible(definition,result.spellcasting.shipwright)) fail('Invalid copied folio spell');
@@ -62,6 +86,16 @@ function project(summary, state, character) {
     }
   }
   result.weaponMastery = [...new Set(Object.values(result.pathSelections).flatMap(c => c.mastery ?? []))];
+  for (const grant of result.innateSpells ?? []) {
+    if (grant.replacement && state.lineageCantrip) {
+      validateCantrip(state.lineageCantrip, grant);
+      grant.spellId = state.lineageCantrip.spellId;
+    }
+    grant.castSupported = grant.unlocked;
+    grant.attackModifier -= exhaustionD20Penalty(state.exhaustion ?? 0);
+  }
+  if (state.lineageCantrip && !result.innateSpells?.some(grant => grant.replacement))
+    fail('No replaceable Lineage cantrip');
   const active=(state.effects??[]).filter(e=>!e.expiresAt||e.expiresAt>require('../../combat/effects/effectTime').now(state));
   if(result.paths.shipwright==='sparkwrite-aetherist')result.activeRelayIds=active.filter(e=>e.objectType==='relay'&&e.health?.current>0).map(e=>e.id);
   result.silentKeelStealth=active.some(e=>e.featureId==='path:drydock-ghost:silent-keel:10'&&e.mode==='creatures'&&e.targetIds?.includes(String(character?._id??'self')));
@@ -74,6 +108,7 @@ function project(summary, state, character) {
   result.noOpportunityAttacksForMovement=active.some(e=>e.noOpportunityAttacksForMovement);
   result.nextAttackAdvantage=active.some(e=>e.nextAttackAdvantage);
   result.poisonedSaveAdvantage=active.some(e=>e.poisonedSaveAdvantage)||poisonedSaveAdvantage(result.paths,result.callingLevels);
+  if(result.lineage?.saveAdvantages.some(save=>save.conditionId==='poisoned'))result.poisonedSaveAdvantage=true;
   if(result.paths.gunslinger==='iron-suppressor')result.entrenchedDrill=entrenchedDrill(result.callingLevels.gunslinger,state.ownerTurn);
   if(result.paths.gunslinger==='brass-outrider')result.outrider=outriderTraversal(result.callingLevels.gunslinger);
   if(result.paths.tidecaller==='memory-echo')result.telepathicLinks=active.filter(e=>e.telepathy).map(e=>({targetIds:e.targetIds,...e.telepathy}));
@@ -99,7 +134,7 @@ function project(summary, state, character) {
   if(result.paths.reaver==='chainbreaker'&&result.raging)result.chainbreaker=chainbreakerRage(result.callingLevels.reaver,result.pathSelections.reaver.pathDiscipline);
   if(result.paths.reaver==='reef-colossus'&&result.raging){
     result.reefSkinSuppressed=active.some(e=>e.reefSkinSuppressed);
-    result.colossus=reefColossus(result.callingLevels.reaver,result.creation.size,result.pathSelections.reaver.pathDiscipline,result.mechanics.reaver.rageDamage);
+    result.colossus=reefColossus(result.callingLevels.reaver,result.size??result.creation.size,result.pathSelections.reaver.pathDiscipline,result.mechanics.reaver.rageDamage);
   }
   result.movement.fly=maximumGrantedMovement(result.movement.fly,active.map(effect=>effect.flySpeed));
   if(active.some(e=>e.optionId==='path:drydock-ghost:unseen-passage:14#main')){
@@ -149,7 +184,9 @@ function project(summary, state, character) {
   for(const id of Object.keys(result.skillModifiers))result.skillModifiers[id]-=penalty;
   result.initiative.modifier-=penalty;
   for(const casting of [...Object.values(result.spellcasting),...(result.featSpellcasters??[])])casting.attackModifier-=penalty;
-  const equipmentBonus = character ? require('../../equipment/magicProjection').project(result, character) : 0;
+  const equipmentBonus = character && !form ? require('../../equipment/magicProjection').project(result, character) : 0;
+  if(result.lineage?.breathes.includes('water'))result.waterBreathing=true;
+  if(result.lineage&&result.movement.swim==='walk')result.movement.swim=Math.max(result.movement.walk,result.lineage.movement.swim);
   result.savingThrowModifiers = projectSavingThrowModifiers(result.savingThrowModifiers, {
     suppressedAura, exhaustion: result.exhaustion, equipmentBonus,
   });
@@ -157,7 +194,13 @@ function project(summary, state, character) {
   for(const key of ['walk','fly','swim','climb'])result.movement[key]=exhaustedMovement(result.movement[key], walkingSpeed, result.exhaustion);
   if(active.some(e=>e.steadyAim))for(const key of ['walk','fly','swim','climb'])result.movement[key]=0;
   if(conditionsPreventMovement(result.conditions))for(const key of ['walk','fly','swim','climb'])result.movement[key]=0;
-  result.senses={...(result.senses??{}),...passiveFeats.senses,...callingSenses(result.paths,result.callingLevels,incapacitated)};
+  if (!form) result.senses={...(result.senses??{}),...passiveFeats.senses,...callingSenses(result.paths,result.callingLevels,incapacitated)};
+  if (form) {
+    result.guard = form.guard;
+    result.waterBreathing = form.breathes.includes('water');
+  }
+  const listening = active.find(effect => effect.stoneListening);
+  if (listening) result.stoneListening = { ...listening.stoneListening, expiresAt: listening.expiresAt };
   result.corridorDcBonus=holdTheCorridorDCBonus(active.some(e=>e.corridorDC));
   const abilities=require('../abilities/abilityOptions');
   result.abilityOptions=abilities.list(result).map(option=>{
@@ -198,4 +241,12 @@ function project(summary, state, character) {
   });
   return result;
 }
-module.exports = { project };
+function validateCantrip(choice, grant) {
+  if (!choice || typeof choice !== 'object' || Array.isArray(choice) ||
+    Object.keys(choice).some(key => !['source', 'spellId'].includes(key)) ||
+    !grant?.replacement || choice.source !== grant.grantKey ||
+    !callingCantripEligible(rules.spells.find(spell => spell.id === choice.spellId), 'shipwright'))
+    fail('Choose an eligible Glasslight cantrip and its Lineage source');
+}
+
+module.exports = { project, validateCantrip };

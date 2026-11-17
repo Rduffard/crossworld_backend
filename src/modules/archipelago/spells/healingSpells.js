@@ -27,7 +27,7 @@ function apply(c,s,p){
   const result={type:'spell.heal',castId:cast.castId,spellId:spell.id,phase,eventId:p.eventId,rolls,healing,...(allocations?{healingAllocations:allocations}:{}),...(initial&&profile.full?{restoreAllHealth:true}:{}),...(initial&&profile.endsConditions?{endsConditions:profile.endsConditions}:{}),...(initial&&profile.prayerRest?{prayerRest:true}:{}),discipleLifeBonus:bonus,supremeHealing:initial&&supreme};
   cast.healingUses.push({key,eventId:p.eventId,targetIds:targets});
   if(targets.includes(self))require('../combat/effects/healingEffects').targetEffects(state,allocations?{...result,healing:allocations.find(a=>a.targetId===self).amount}:result,s);
-  if(initial&&sanctuary?.blessedHealerEligible&&targets.some(id=>id!==self)){const amount=bonus,before=state.health.current;require('../combat/vitality/vitality').heal(state,amount);result.blessedHealerSelfHealing=state.health.current-before;}
+  if(initial&&sanctuary?.blessedHealerEligible&&targets.some(id=>id!==self)){const amount=bonus,before=state.health.current;require('../combat/vitality/vitality').heal(state,amount,s);result.blessedHealerSelfHealing=state.health.current-before;}
   state.revision++;return result;
 }
 module.exports={apply,profiles};

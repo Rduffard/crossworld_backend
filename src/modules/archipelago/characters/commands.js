@@ -9,6 +9,7 @@ const bindTransaction = require('./commandTransaction');
 const turnCommands = require('./turnCommands');
 const advanceCharacter = require('./advanceCharacter');
 const effectCommands = require('./effectCommands');
+const lineage = require('./runtime/lineageAbilities');
 
 function apply(character, body, context = {}) {
   validateEnvelope(body);
@@ -38,6 +39,11 @@ function apply(character, body, context = {}) {
   );
   if (body.type !== 'identity.patch')
     require('../combat/effects/clock').expire(c.rulesRuntime);
+  if (c.rulesRuntime.animalForms?.activeFormId && (
+    ['spell.cast', 'scroll.cast', 'item.cast', 'tool.check', 'strike.resolve'].includes(body.type) ||
+    ['equipment.equip', 'equipment.wear', 'equipment.fire', 'equipment.consume', 'equipment.utilize',
+      'equipment.recover', 'equipment.flame', 'equipment.poison-hit', 'equipment.preset.apply'].includes(body.type)
+  )) fail('Merged equipment and new spellcasting are unavailable in animal form');
   let result = { type: body.type };
   if (body.type === 'attack.record') {
     result = require('../combat/attackRecords').apply(
@@ -153,6 +159,8 @@ function apply(character, body, context = {}) {
       p,
       findAttack,
     );
+    if (body.type === 'action.record' && summary.lineage && c.rulesRuntime.ownerTurn?.open)
+      lineage.spendTurnAction(c.rulesRuntime.ownerTurn, p.action);
     if (body.type === 'initiative.record')
       require('./runtime/resting').interrupt(c, summary, {
         at: require('../combat/effects/clock').now(c.rulesRuntime),
@@ -256,6 +264,13 @@ function apply(character, body, context = {}) {
         at: require('../combat/effects/clock').now(c.rulesRuntime),
         reason: 'non-cantrip-spell',
       });
+  } else if (body.type === 'lineage.force-revert') {
+    if (Object.keys(p).length !== 1 || p.confirmed !== true || !c.rulesRuntime.animalForms?.activeFormId)
+      fail('Confirm the authoritative termination of an active animal form');
+    require('./runtime/animalHealth').transition(summary, c.rulesRuntime, { type: 'force-revert', reason: 'effect' });
+    c.rulesRuntime.revision++;
+  } else if (body.type === 'ability.activate' && lineage.supports(p.optionId)) {
+    result = lineage.activate(c, summary, p);
   } else if (body.type === 'ability.activate') {
     if (
       [
@@ -269,6 +284,11 @@ function apply(character, body, context = {}) {
       )
     )
       require('./runtime/featState').action(c.rulesRuntime);
+    const turnAction = { Action: 'action', 'Bonus Action': 'bonus-action', 'Magic action': 'action' }[
+      summary.abilityOptions.find(option => option.id === p.optionId)?.action
+    ];
+    if (summary.lineage && turnAction && c.rulesRuntime.ownerTurn?.open)
+      lineage.spendTurnAction(c.rulesRuntime.ownerTurn, turnAction);
     result = require('./abilities/abilityOperations').activate(
       c,
       rules.runtime.project(summary, c.rulesRuntime, c),
@@ -359,6 +379,7 @@ function apply(character, body, context = {}) {
   ) {
     effectCommands.endSelfShroud(c);
   }
+  lineage.endOnDeath(c.rulesRuntime);
   c.documentRevision++;
   require('../spells/contingency').prune(c);
   rules.runtime.validate(rules.replay(c.rulesLedger), c.rulesRuntime);

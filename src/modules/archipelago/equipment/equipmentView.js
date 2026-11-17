@@ -11,13 +11,20 @@ function derive(character, progression) {
     const base = replay(character.rulesLedger);
     progression = character.rulesRuntime ? project(base, character.rulesRuntime, character) : base;
   }
-  return deriveLoadout(character, progression, {
+  const view = deriveLoadout(character, progression, {
     weaponGroups,
     covenantGuardBonus: () => guardBonus(character),
     hasSacredWeapon: instanceId => character.rulesRuntime?.effects.some(
       effect => effect.sacredWeaponId === instanceId && active(character.rulesRuntime, effect)
     ),
   });
+  if (progression.animalForm) {
+    view.guard = progression.animalForm.guard;
+    view.attacks = [];
+    view.equipmentMerged = true;
+    view.restrictions = { ...view.restrictions, spellcastingBlocked: true };
+  }
+  return view;
 }
 
 module.exports = { derive };

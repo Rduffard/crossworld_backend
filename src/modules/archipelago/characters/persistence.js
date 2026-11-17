@@ -110,6 +110,7 @@ function build(body) {
 // Preserve expenditure when maxima change; advancement never acts as a free rest.
 function reconcile(previous, before, after) {
   const next = rules.runtime.initialize(after);
+  require('./runtime/animalHealth').reconcile(before, previous, after, next);
   next.revision = previous.revision + 1;
   next.temporaryHealth = previous.temporaryHealth ?? 0;
   next.effects = structuredClone(previous.effects ?? []);
@@ -118,6 +119,8 @@ function reconcile(previous, before, after) {
     next.externalCastingTurn = previous.externalCastingTurn;
   for (const key of [
     'gearUses',
+      'lineageAppearance',
+      'lineageCantrip',
     'prayerRestEpoch',
     'magicDawns',
     'lastMagicDawn',
@@ -379,7 +382,7 @@ function handlers(Character, Campaign) {
     }),
     preview: wrap(async (req, res) => {
       const c = await owned(req);
-      fields(req.body, ['callingId', 'choices', 'healthRoll']);
+      fields(req.body, ['callingId', 'choices', 'healthRoll', 'lineageForm']);
       // The client can propose only the next event, never replace saved history.
       const ledger = structuredClone(c.rulesLedger);
       const folio = folioAtSpellGrant(c, rules.replay(ledger));

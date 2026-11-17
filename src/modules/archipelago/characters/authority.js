@@ -1,7 +1,7 @@
 const {leveledCallingSpellEligible}=require('@crossworld/sanguine-engine/spells/casting-sources');
 const {catalogUnits}=require('@crossworld/sanguine-engine/equipment/commerce');
 function fail(message,statusCode=403){throw Object.assign(new Error(message),{statusCode});}
-const gmCommands=['milestone.authorize','inspiration.grant','scene.record','equipment.award','equipment.sell','equipment.dawn','spells.discover','rebuild.approve','turn.start','turn.end','turn.external','contingency.trigger'];
+const gmCommands=['milestone.authorize','lineage.force-revert','inspiration.grant','scene.record','equipment.award','equipment.sell','equipment.dawn','spells.discover','rebuild.approve','turn.start','turn.end','turn.external','contingency.trigger'];
 async function context(character,userId,Campaign,session){
   const isOwner=String(character.owner)===String(userId);
   if(!character.campaignId)return {isOwner,gmAllowed:isOwner,campaignRegistered:false,userId:String(userId),role:'solo-owner'};

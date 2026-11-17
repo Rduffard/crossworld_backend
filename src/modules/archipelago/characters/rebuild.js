@@ -11,6 +11,7 @@ function fields(p,allowed){if(Object.keys(p).some(k=>!allowed.includes(k)))fail(
 function available(c){if(c.rulesRuntime.inCombat||c.rulesRuntime.ownerTurn?.open||c.rulesRuntime.restSession)fail('Finish combat, the open turn and any active rest before rebuilding');}
 function plan(c,after,ledger=c.rulesLedger){
   const before=rules.replay(c.rulesLedger),old=c.rulesRuntime,next=rules.runtime.initialize(after);
+  require('./runtime/animalHealth').reconcile(before,old,after,next);
   next.revision=old.revision+1;next.health.current=reconcileHealthOnRebuild(old.health.current,after.health.max);
   for(const key of ['gearUses','prayerRestEpoch','magicDawns','lastMagicDawn','conditions','exhaustion','deathSaves','inspiration','inspirationSource','worldTime','lastLongRest','restEpoch','restHistory','milestones','conduitCircuit','conduitGrants','spellDiscoveries','toolChecks','ownerTurnHistory','counters'])if(old[key]!==undefined)next[key]=structuredClone(old[key]);
   next.pools = reconcileBalances(before.resources, old.pools, after.resources, 'rebuild');
@@ -32,6 +33,13 @@ function apply(c,type,p,access={}){
   if(type==='rebuild.preview'){
     fields(p,['ledger','reason']);if(typeof p.reason!=='string'||!p.reason.trim()||p.reason.length>500)fail('Provide a rebuild reason');
     const ledger=structuredClone(p.ledger);if(!ledger?.creation)fail('Complete the origin, background and point-buy rebuild');
+    if(ledger.version!==c.rulesLedger.version)fail('A rebuild cannot change ledger version');
+    if(ledger.version===4){
+      const { isDeepStrictEqual }=require('node:util');
+      if(!isDeepStrictEqual(ledger.creation.lineage,c.rulesLedger.creation.lineage)||
+        (Array.isArray(ledger.levels)&&ledger.levels.some((event,index)=>!isDeepStrictEqual(event?.lineageForm,c.rulesLedger.levels[index]?.lineageForm))))
+        fail('A rebuild must preserve Lineage and historical animal form selections');
+    }
     if(Array.isArray(ledger.levels))for(const [index,event] of ledger.levels.entries()){
       if(event?.folioAtSpellGrant===undefined)continue;
       const saved=c.rulesLedger.levels[index];

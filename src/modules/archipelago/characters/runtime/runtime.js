@@ -11,6 +11,7 @@ const { validate, validateProjected, validatePreparation } = require('./runtimeV
 const { recover } = require('./featState');
 const { spend } = require('./resourceTransitions');
 const { spendSlot } = require('../../spells/spellSlotState');
+const animalHealth = require('./animalHealth');
 
 function fail(message) {
   const e = new Error(message);
@@ -19,6 +20,7 @@ function fail(message) {
 }
 function initialize(summary) {
   return {
+    ...animalHealth.initialize(summary),
     revision: 0,
     health: { current: summary.health.max, max: summary.health.max },
     hitDice: { ...summary.hitDice },
@@ -122,7 +124,7 @@ function update(summary, state, operation) {
       !Number.isSafeInteger(operation.healthDelta)
     )
       fail("Invalid Health adjustment");
-    if(operation.healthDelta>=0)require('../../combat/vitality/healthState').heal(next,operation.healthDelta);
+    if(operation.healthDelta>=0)require('../../combat/vitality/healthState').heal(next,operation.healthDelta,summary);
     else{next.health.current=directHealthReduction(next.health.current,-operation.healthDelta);if(next.health.current===0)require('../../combat/vitality/healthState').endConcentration(next);}
   } else if (["short-rest", "long-rest"].includes(operation.type)) {
     if (
@@ -143,6 +145,10 @@ function update(summary, state, operation) {
       fail("Mixed rest operation");
     if(operation.nourished!==undefined&&typeof operation.nourished!=='boolean')fail('Confirm food and water with a boolean');
     if (operation.type === "long-rest") {
+      if (summary.lineage?.longRestGrants?.some(grant => grant.kind === 'heroic-inspiration') && !next.inspiration) {
+        next.inspiration = true;
+        next.inspirationSource = summary.lineage.traits.find(trait => trait.id.endsWith(':inspiration')).id;
+      }
       if (operation.hitDice !== undefined)
         fail("Long Rest cannot spend Hit Dice");
       require('../../combat/vitality/healthState').heal(next,next.health.max);

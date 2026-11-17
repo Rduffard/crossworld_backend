@@ -193,6 +193,35 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
           );
         }
         const { changes, result } = apply(c, { ...req.body, payload }, context);
+        if (result.inspirationTransfer) {
+          if (!authorization.campaignRegistered || !Campaign)
+            fail('Inspiration transfer requires a registered party character', 403);
+          const campaign = await Campaign.findOne({
+            _id: c.campaignId, characterIds: result.inspirationTransfer.targetId,
+          }).session(session).lean();
+          if (!campaign) fail('Inspiration recipient is outside your party', 404);
+          const target = await Character.findOne({
+            _id: result.inspirationTransfer.targetId,
+            campaignId: c.campaignId,
+          }).session(session).lean();
+          if (!target) fail('Inspiration recipient is outside your campaign', 404);
+          const after = structuredClone(target.rulesRuntime);
+          if (after.inspiration || after.deathSaves?.dead)
+            fail('The recipient must be living and have no Inspiration');
+          after.inspiration = true;
+          after.inspirationSource = {
+            source: 'lineage:human:inspiration',
+            characterId: String(c._id),
+          };
+          after.revision++;
+          rules.runtime.validate(rules.replay(target.rulesLedger), after);
+          const saved = await Character.findOneAndUpdate(
+            { _id: target._id, documentRevision: target.documentRevision },
+            { $set: { rulesRuntime: after, documentRevision: target.documentRevision + 1 } },
+            { new: true, runValidators: true, session },
+          ).lean();
+          if (!saved) fail('Inspiration recipient changed; reload before completing the rest', 409);
+        }
         if (result.swap && /^[a-f0-9]{24}$/i.test(result.swap.targetId)) {
           if (result.swap.targetId === String(c._id))
             fail('Alert needs another creature');

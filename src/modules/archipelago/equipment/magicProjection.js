@@ -19,7 +19,7 @@ function project(summary,c){
   summary.activeMagicItems=active.map(i=>({instanceId:i.instanceId,definitionId:i.definitionId}));
   const armor=c.inventory.find(i=>i.instanceId===c.loadout.armor),definition=armor?.definitionId?definitionOf(armor.definitionId):null;
   Object.assign(summary.movement, equipmentMovement(summary, definition, {
-    swimSpeeds: active.length ? [swimSpeed] : [],
+    swimSpeeds: summary.lineage ? [swimSpeed, summary.lineage.movement.swim] : active.length ? [swimSpeed] : [],
     activeFlySpeed: maximumGrantedMovement(0, summary.activeEffects?.map(effect => effect.flySpeed) ?? []),
   }));
   return saveBonus;

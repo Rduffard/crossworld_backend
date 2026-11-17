@@ -20,6 +20,8 @@ function validateProjected(summary,state) {
   if (!state || !bounded(state.revision, Number.MAX_SAFE_INTEGER) ||
       state.health?.max !== summary.health.max || !bounded(state.health.current, summary.health.max))
     fail("Invalid saved Health or resource revision");
+  require('./animalHealth').validate(summary, state);
+  require('./lineageAbilities').validate(summary, state);
   for (const [name, maxima] of [["pools", Object.fromEntries(Object.entries(summary.resources).map(([id, p]) => [id, p.max]))],
     ["hitDice", summary.hitDice]]) {
     if (!state[name] || Object.keys(state[name]).length !== Object.keys(maxima).length ||

@@ -4,7 +4,11 @@ const { validExhaustionLevel, isIncapacitated: incapacitated } = require('@cross
 function fail(message){throw Object.assign(new Error(message),{statusCode:422});}
 const { freshDeathSaves: fresh, healVitality, restoreVitality, HealingError } = require('@crossworld/sanguine-engine/vitality');
 function endConcentration(state){state.effects=state.effects.filter(e=>!e.concentration);state.concentrationChecks=[];}
-function heal(state, amount) {
+function heal(state, amount, summary) {
+  if (summary && state.animalForms?.activeFormId) {
+    require('../../characters/runtime/animalHealth').transition(summary, state, { type: 'heal', amount });
+    return;
+  }
   try {
     Object.assign(state, healVitality(state, amount));
   } catch (error) {

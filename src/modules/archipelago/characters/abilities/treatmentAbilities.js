@@ -212,7 +212,7 @@ function apply({
         require('../../combat/effects/healingEffects').targetEffects(state, {
           ...result,
           healing: personal.amount,
-        });
+        }, summary);
       break;
     }
   }

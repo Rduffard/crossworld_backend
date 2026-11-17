@@ -214,7 +214,7 @@ function activate(character, summary, p, context = {}) {
     if (targets.length > 1) fail('Healing requires exactly one creature');
     result.healing = nonnegativeAbilityAmount(amount);
     if (!targets.length || targets.includes(self))
-      require('../../combat/vitality/vitality').heal(state, result.healing);
+      require('../../combat/vitality/vitality').heal(state, result.healing, summary);
   };
   switch (option.handler) {
     case 'rider-inoculate':

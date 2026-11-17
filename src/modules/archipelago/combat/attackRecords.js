@@ -24,6 +24,8 @@ function apply(c, s, p) {
           'eventId',
           'targetId',
           'weaponId',
+          'naturalAttackId',
+          'distance',
           'attribute',
           'hit',
           'reckless',
@@ -76,6 +78,18 @@ function apply(c, s, p) {
         ))
   )
     fail('Choose an equipped weapon that can attack with its current grip');
+  const natural = s.animalForm?.attack;
+  if (natural) {
+    if (p.naturalAttackId !== natural.id || p.weaponId !== undefined ||
+      p.attribute !== natural.attribute || (p.damageType !== undefined && p.damageType !== natural.damageType) ||
+      !Number.isSafeInteger(p.distance) || p.distance < 0 || p.distance > natural.reach)
+      fail('Choose the active form’s natural attack and a confirmed target within reach');
+    if (!ownTurn && state.inCombat &&
+      (state.externalCastingTurn !== p.turnId || !turn || turn.reactionSpent))
+      fail('A natural attack outside your turn requires an available Reaction');
+  } else if (p.naturalAttackId !== undefined || p.distance !== undefined) {
+    fail('Natural attacks require an active animal form');
+  }
   state.counters.attackRecords ??= [];
   if (
     state.counters.attackRecords.includes(p.eventId) ||
@@ -126,6 +140,24 @@ function apply(c, s, p) {
     studiedAdvantage: !!studied,
     steadyAimAdvantage: !!aim,
   };
+  if (natural) {
+    if (!ownTurn && state.inCombat) turn.reactionSpent = true;
+    if (ownTurn) {
+      const count = turn.naturalAttackEvents ?? 0;
+      if ((turn.actionSpent && count === 0) || count >= (s.attacksPerAction ?? 1))
+        fail('The Attack action has no attacks remaining');
+      turn.actionSpent = true;
+      turn.naturalAttackEvents = count + 1;
+    }
+    const [count, sides] = natural.dice.split('d').map(Number);
+    const rolls = Array.from({ length: strikeRollCount(count, p.hit, p.critical) },
+      () => randomInt(1, sides + 1));
+    result.naturalAttack = {
+      id: natural.id, attackModifier: natural.attackModifier,
+      rolls, damageType: natural.damageType,
+      damage: p.hit ? Math.max(0, sumDice(rolls) + natural.damageModifier) : 0,
+    };
+  }
   const outrider = brassOutriderPassingShot(
     s.paths.gunslinger,
     s.callingLevels.gunslinger,
@@ -181,7 +213,7 @@ function apply(c, s, p) {
       used: turn?.frenzyUsed,
     })
   ) {
-    if (!p.damageType)
+    if (!p.damageType && !natural)
       fail('Record the actual weapon or Unarmed Strike damage type for Frenzy');
     turn.frenzyUsed = true;
     result.rolls = Array.from(
@@ -195,7 +227,7 @@ function apply(c, s, p) {
       () => randomInt(1, frenzyDamageDie + 1),
     );
     result.damage = sumDice(result.rolls);
-    result.damageType = p.damageType;
+    result.damageType = natural?.damageType ?? p.damageType;
     result.frenzy = true;
   }
   if (ownTurn) {

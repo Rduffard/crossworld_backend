@@ -128,7 +128,7 @@ function recordOwnerTurn(state, payload, type, summary, result) {
     );
     if (rally !== null) {
       const before = state.health.current;
-      require('../combat/vitality/vitality').heal(state, rally);
+      require('../combat/vitality/vitality').heal(state, rally, summary);
       result.heroicRally = state.health.current - before;
     }
   } else {

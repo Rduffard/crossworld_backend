@@ -125,11 +125,14 @@ function damage(character, summary, p, { ignoreMitigation = false } = {}) {
         reefSkinReduction,
       });
   let unbrokenCurrent;
-  const { absorbed, ...vitality } = applyVitalityDamage(
-    state,
-    amount,
-    p.critical,
-  );
+  const formId = state.animalForms?.activeFormId;
+  const animalBefore = state.animalForms?.healthByForm[formId];
+  const vitalityDamage = formId
+    ? require('../../characters/runtime/animalHealth').transition(summary, state, {
+        type: 'damage', amount, critical: p.critical,
+      })
+    : applyVitalityDamage(state, amount, p.critical);
+  const { absorbed = 0, ...vitality } = vitalityDamage;
   Object.assign(state, vitality);
   const current = evaluateUnbrokenCurrent({
     declared: p.unbrokenCurrent,
@@ -214,6 +217,10 @@ function damage(character, summary, p, { ignoreMitigation = false } = {}) {
     type: 'health.damage',
     damage: amount,
     absorbed,
+    ...(formId ? {
+      animalHealthLost: animalBefore - state.animalForms.healthByForm[formId],
+      activeFormId: state.animalForms.activeFormId,
+    } : {}),
     healthLost: before - state.health.current,
     deathSaves: structuredClone(state.deathSaves),
     ...(p.agilityHalfSave

@@ -92,6 +92,7 @@ const {
   styleCantripReplacementAvailable,
 } = require('@crossworld/sanguine-engine/callings');
 const projectLedger = require('./ledgerProjection');
+const lineageLedger = require('./lineageLedger');
 const attributeIds = Object.values(catalog.abilities);
 function fail(message) {
   const e = new Error(message);
@@ -124,7 +125,7 @@ function create(
   { allowIncomplete = false, creation } = {},
 ) {
   const ledger = {
-    version: 3,
+    version: creation && Object.hasOwn(creation, 'lineage') ? 4 : 3,
     ruleset: 'srd-5.2.1',
     revision: 0,
     baseAttributes: attributes(baseAttributes),
@@ -132,12 +133,15 @@ function create(
     ...(creation ? { creation: structuredClone(creation) } : {}),
   };
   const summary = replay(ledger);
-  if (!allowIncomplete && !summary.decisionsComplete)
-    fail(
-      'Complete required choices: ' +
-        summary.requiredChoices.map((r) => r.id).join(', '),
-    );
+  requireComplete(summary, ledger.version, allowIncomplete);
   return { ledger, summary };
+}
+function requireComplete(summary, version, allowIncomplete = false) {
+  if (!allowIncomplete && !summary.decisionsComplete)
+    throw Object.assign(new Error('Complete required choices: ' +
+      summary.requiredChoices.map((r) => r.id).join(', ')), {
+      statusCode: version === 4 ? 422 : 400,
+    });
 }
 function replay(ledger) {
   object(ledger, [
@@ -148,8 +152,10 @@ function replay(ledger) {
     'levels',
     'creation',
   ]);
-  if (ledger.version !== 3 || ledger.ruleset !== 'srd-5.2.1')
+  if (![3, 4].includes(ledger.version) || ledger.ruleset !== 'srd-5.2.1')
     fail('Unsupported rules ledger');
+  const withLineage = ledger.version === 4;
+  if (withLineage && !ledger.creation) fail('Ledger v4 requires creation choices');
   integer(ledger.revision, 0, Number.MAX_SAFE_INTEGER, 'revision');
   if (
     !Array.isArray(ledger.levels) ||
@@ -173,9 +179,11 @@ function replay(ledger) {
     casting = {},
     choicesByCalling = {};
   let previousComplete = true,
-    initiate = null;
+    initiate = null,
+    lineageInitiate = null;
+  const lineage = withLineage ? lineageLedger.replay(ledger.creation.lineage, requiredChoices) : null;
   const background = ledger.creation
-    ? require('./creation').validate(ledger.creation, scores)
+    ? require('./creation').validate(ledger.creation, scores, withLineage ? 'lineage' : 'size')
     : null;
   if (background) {
     tools.push(background.tool);
@@ -183,7 +191,8 @@ function replay(ledger) {
     languages.push(background.origin.language);
   }
   for (const [index, event] of ledger.levels.entries()) {
-    object(event, ['callingId', 'choices', 'healthRoll', 'folioAtSpellGrant']);
+    object(event, ['callingId', 'choices', 'healthRoll', 'folioAtSpellGrant',
+      ...(lineage ? lineageLedger.eventFields : [])]);
     if (!Object.hasOwn(callings, event.callingId)) fail('Unknown Calling');
     const c = callings[event.callingId];
     const id = event.callingId,
@@ -219,6 +228,11 @@ function replay(ledger) {
     levels[id] = n;
     const before = requiredChoices.length,
       choice = event.choices ?? {};
+    if (lineage) {
+      if (initial && Object.hasOwn(event, 'lineageForm'))
+        require('../commandEnvelope').fail('Choose the first form in creation.lineage');
+      if (!initial) lineage.advance(total, event.lineageForm);
+    }
     object(choice, [
       'skills',
       'expertise',
@@ -407,6 +421,23 @@ function replay(ledger) {
       if (initial) saves.push(...c.starting.saves);
     }
     const trainingChoices = callingTrainingChoices(id, n, first);
+    if (initial && lineage) {
+      const grants = lineage.initialize({
+        scores, caster: Boolean(c.caster), weapons, armor, trained, tools, selectedFeats, initiate,
+      });
+      if (grants) {
+        trained.push(...grants.trainedSkills);
+        const feat = grants.originFeat;
+        if (feat) {
+          selectedFeats.push(feat.id);
+          if (feat.id === 'magic-initiate') lineageInitiate = { ...feat.options, grantKey: feat.grantKey };
+          for (const permission of feat.options?.training ?? []) {
+            const [kind, ...parts] = permission.split(':');
+            (kind === 'skill' ? trained : tools).push(parts.join(':'));
+          }
+        }
+      }
+    }
     if (trainingChoices.thievesCant) languages.push('thieves-cant');
     if (trainingChoices.languageCount)
       languages.push(
@@ -593,7 +624,9 @@ function replay(ledger) {
         const source =
           replacement.grantKey === 'background'
             ? initiate
-            : previous.initiates?.find(
+            : replacement.grantKey === lineageInitiate?.grantKey && lineageInitiate
+              ? lineageInitiate
+              : previous.initiates?.find(
                 (s) => s.grantKey === replacement.grantKey,
               );
         const update = replaceMagicInitiateSpell(
@@ -680,6 +713,7 @@ function replay(ledger) {
           const list = single('initiateList', magicInitiateChoices.lists);
           if (
             initiate?.list === list ||
+            lineageInitiate?.list === list ||
             previous.initiates?.some((s) => s.list === list)
           )
             fail('Magic Initiate repeats require a different list');
@@ -865,6 +899,8 @@ function replay(ledger) {
     ledger,
     background,
     initiate,
+    lineageInitiate,
+    lineage: lineage?.project(ledger.levels.length, scores),
     levels,
     paths,
     scores,
@@ -883,7 +919,8 @@ function replay(ledger) {
   });
 }
 function advance(ledger, operation, folioAtSpellGrant) {
-  object(operation, ['expectedRevision', 'callingId', 'choices', 'healthRoll']);
+  object(operation, ['expectedRevision', 'callingId', 'choices', 'healthRoll',
+    ...(ledger.version === 4 ? lineageLedger.eventFields : [])]);
   if (operation.expectedRevision !== ledger.revision)
     fail('Progression changed; reload before advancing');
   const current = replay(ledger);
@@ -896,11 +933,7 @@ function advance(ledger, operation, folioAtSpellGrant) {
     folioAtSpellGrant === undefined ? event : { ...event, folioAtSpellGrant },
   );
   const summary = replay(next);
-  if (!summary.decisionsComplete)
-    fail(
-      'Complete required choices: ' +
-        summary.requiredChoices.map((r) => r.id).join(', '),
-    );
+  requireComplete(summary, ledger.version);
   return { ledger: next, summary };
 }
 module.exports = { create, replay, advance, resourcePools, spellGrantEligible };

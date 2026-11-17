@@ -181,7 +181,7 @@ function apply(c, s, p) {
     );
     result.healing = sumDice(result.rolls, profile.healing[2]);
     if (targets.includes(self))
-      require('../combat/vitality/vitality').heal(state, result.healing);
+      require('../combat/vitality/vitality').heal(state, result.healing, s);
   }
   if (profile.stabilize) {
     result.stabilize = true;

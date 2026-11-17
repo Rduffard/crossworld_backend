@@ -55,6 +55,8 @@ function projectLedger({
   ledger,
   background,
   initiate,
+  lineageInitiate,
+  lineage,
   levels,
   paths,
   scores,
@@ -77,7 +79,7 @@ function projectLedger({
     level: totalLevel,
     hitDie: callings[ledger.levels[0].callingId].hitDie,
     resolve: scores.resolve,
-    bonusHealth: omenDiverBonusHealth(paths.tidecaller, levels.tidecaller),
+    bonusHealth: omenDiverBonusHealth(paths.tidecaller, levels.tidecaller) + (lineage?.maxHealthAdjustment ?? 0),
   });
   const features = acquiredCallingFeatures(
     rules.features,
@@ -108,12 +110,14 @@ function projectLedger({
   const pools = resourcePools(levels, scores, paths);
   const initiates = [
     ...(initiate?.spell ? [{ ...initiate, grantKey: 'background' }] : []),
+    ...(lineageInitiate ? [lineageInitiate] : []),
     ...Object.values(choicesByCalling).flatMap((c) => c.initiates ?? []),
   ];
   for (const source of initiates) {
     const pool = magicInitiatePool(source.list);
     pools[pool.id] = pool;
   }
+  for (const pool of lineage?.pools ?? []) pools[pool.id] = pool;
   if (selectedFeats.includes('boon-of-fate'))
     pools['feat:boon-of-fate'] = {
       id: 'feat:boon-of-fate',
@@ -143,6 +147,13 @@ function projectLedger({
   const attributeModifiers = Object.fromEntries(
     attributeIds.map((id) => [id, mod(scores[id])]),
   );
+  const movement = advancementMovement(levels, paths, selectedFeats);
+  const resistances = advancementResistances(levels, paths, choicesByCalling);
+  if (lineage) {
+    movement.walk += lineage.movement.walk - advancementMovement({}, {}, []).walk;
+    if (movement.swim !== 'walk') movement.swim = Math.max(movement.swim, lineage.movement.swim);
+    resistances.push(...lineage.damageResistances.filter(type => !resistances.includes(type)));
+  }
   return {
     ruleset: ledger.ruleset,
     creation: ledger.creation ?? null,
@@ -150,6 +161,9 @@ function projectLedger({
       ? { id: background.id, name: background.name }
       : null,
     originId: ledger.creation?.originId ?? null,
+    ...(lineage ? { lineage, size: lineage.size, creatureType: lineage.type,
+      senses: lineage.senses,
+      innateSpells: lineage.spells.map(grant => ({ ...grant, castSupported: false })) } : {}),
     featSpellcasting: initiate
       ? magicInitiateCasting(
           initiate,
@@ -213,7 +227,7 @@ function projectLedger({
     fightingStyles: styles,
     pathSelections: structuredClone(choicesByCalling),
     toolExpertise: drydockToolExpertise(paths.shipwright, levels.shipwright),
-    resistances: advancementResistances(levels, paths, choicesByCalling),
+    resistances,
     initiative: advancementInitiative({
       agility: scores.agility,
       trainingBonus,
@@ -221,7 +235,7 @@ function projectLedger({
       levels,
       paths,
     }),
-    movement: advancementMovement(levels, paths, selectedFeats),
+    movement,
     abilityOptions: require('../abilities/abilityOptions').list({
       features,
       callingLevels: levels,

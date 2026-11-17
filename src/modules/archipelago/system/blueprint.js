@@ -2,6 +2,7 @@ const catalog = require("./catalog");
 const rules = require("./rules");
 const progression = require('@crossworld/sanguine-engine/callings');
 const { origins, backgrounds, tools, originPolicy } = require('../characters/advancement/definitions/creation');
+const { lineages, beastshifterForms } = require('@crossworld/sanguine-engine/lineages');
 function validate() {
   const ids = new Set();
   for (const def of [
@@ -9,6 +10,7 @@ function validate() {
     ...rules.paths,
     ...rules.spells,
     ...rules.feats,
+    ...lineages,
   ]) {
     if (ids.has(def.id)) throw new Error("Duplicate rule ID: " + def.id);
     ids.add(def.id);
@@ -60,14 +62,14 @@ function validate() {
 }
 validate();
 const blueprint = {
-  version: 3,
+  version: 4,
   ruleset: "srd-5.2.1",
   abilities: catalog.abilities,
   skills: catalog.skills,
   languages: catalog.languages,
   equipment: require("./blueprints/equipment/index"),
   startingEquipment: require('@crossworld/sanguine-engine/equipment/starting-equipment').packages,
-  creation: { origins, backgrounds, tools, originPolicy },
+  creation: { origins, backgrounds, tools, originPolicy, lineages, beastshifterForms },
   metamagic: require('@crossworld/sanguine-engine/spells/metamagic').options,
   featOperations:require('@crossworld/sanguine-engine/feats').options,
   strikeOptions:{cunning:require('@crossworld/sanguine-engine/combat/strike').availableStrikeOptions('cunning',20,'reef-knife'),brutal:require('@crossworld/sanguine-engine/combat/strike').availableStrikeOptions('brutal',20)},

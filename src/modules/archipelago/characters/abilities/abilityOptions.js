@@ -1,6 +1,7 @@
 const { listAbilityOptions: list } = require('@crossworld/sanguine-engine/callings');
 
 function availableKit(character, charges) {
+  if (character.rulesRuntime?.animalForms?.activeFormId) return undefined;
   return character.inventory.find(item => item.definitionId === 'healer-kit' && item.quantity > 0 && item.chargesCurrent >= charges);
 }
 

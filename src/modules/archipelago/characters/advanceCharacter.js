@@ -1,10 +1,10 @@
 const rules = require('../system/characterSystem');
 const { fail } = require('./commandEnvelope');
-function advanceCharacter(character, payload, summary, context) {
-  if (character.rulesRuntime.deathSaves?.dead)
-    fail('A dead character cannot advance');
+function advanceOne(character, payload, summary, context) {
   if (
-    Object.keys(payload).some((k) => !['choices', 'level'].includes(k)) ||
+    !payload || typeof payload !== 'object' || Array.isArray(payload) ||
+    Object.keys(payload).some((k) => !['choices', 'level',
+      ...(character.rulesLedger.version === 4 ? ['lineageForm'] : [])].includes(k)) ||
     payload.level !== summary.totalLevel + 1
   )
     fail('Advance exactly one level');
@@ -28,6 +28,7 @@ function advanceCharacter(character, payload, summary, context) {
       expectedRevision: character.rulesLedger.revision,
       callingId: character.calling,
       choices: payload.choices,
+      ...(Object.hasOwn(payload, 'lineageForm') ? { lineageForm: payload.lineageForm } : {}),
     },
     persistence.folioAtSpellGrant(character, summary),
   );
@@ -38,5 +39,23 @@ function advanceCharacter(character, payload, summary, context) {
   );
   character.rulesLedger = next.ledger;
   character.attributes = next.summary.attributes;
+  return next.summary;
+}
+
+function advanceCharacter(character, payload, summary, context) {
+  if (character.rulesRuntime.deathSaves?.dead)
+    fail('A dead character cannot advance');
+  if (!Object.hasOwn(payload, 'levels')) return advanceOne(character, payload, summary, context);
+
+  const { levels } = payload;
+  if (character.rulesLedger.version !== 4 || Object.keys(payload).length !== 1 ||
+      !Array.isArray(levels) || levels.length < 2 || levels.length > 20 - summary.totalLevel)
+    fail('Submit an ordered list of consecutive levels within the level cap');
+  // Campaign authorization remains attached to the next individual level.
+  if (character.campaignId) fail('Campaign advancement requires one GM-authorized level at a time', 403);
+  const draft = { ...character };
+  for (const level of levels) summary = advanceOne(draft, level, summary, context);
+  Object.assign(character, draft);
+  return summary;
 }
 module.exports = advanceCharacter;

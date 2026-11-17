@@ -37,23 +37,110 @@ test(
         'Content-Type': 'application/json',
         Authorization: 'Bearer ' + jwt.sign({ _id: id }, JWT_SECRET),
       });
-      async function request(path, body, user = owner) {
+      async function request(path, body, user = owner, extraHeaders = {}) {
         const response = await fetch(base + path, {
           method: body ? 'POST' : 'GET',
-          headers: headers(user),
+          headers: { ...headers(user), ...extraHeaders },
           ...(body ? { body: JSON.stringify(body) } : {}),
         });
         return { status: response.status, body: await response.json() };
       }
-      async function command(character, type, payload, operationId) {
+      async function command(character, type, payload, operationId, user = owner) {
         return request('/' + character._id + '/commands', {
           operationId,
           expectedRevision: character.documentRevision,
           rulesVersion: 'SA-CHAR-1',
           type,
           payload,
-        });
+        }, user);
       }
+      await t.test('Ledger v4 creation receipts and multi-level advancement survive persistence and rollback', async () => {
+        const { ledger } = build('gunslinger', 5);
+        const { size, ...roots } = ledger.creation;
+        void size;
+        const initial = {
+          attributes: ledger.baseAttributes, firstLevel: ledger.levels[0],
+          creation: { ...roots, lineage: {
+            id: 'beastshifters', size: 'small', choices: { skill: 'intimidation', formId: 'dock-rat' },
+          } },
+        };
+        const preview = await request('/preview', initial);
+        assert.equal(preview.status, 200, JSON.stringify(preview.body));
+        assert.equal(preview.body.lineage.id, 'beastshifters');
+        const idempotency = { 'Idempotency-Key': 'mongo-lineage-create' };
+        const body = { ...initial, name: 'Isolated Beastshifter' };
+        const created = await request('', body, owner, idempotency);
+        assert.equal(created.status, 201, JSON.stringify(created.body));
+        assert.equal(created.body.rulesLedger.version, 4);
+        const levels = ledger.levels.slice(1).map(({ choices }, index) => ({ level: index + 2, choices }));
+        levels[1].lineageForm = {
+          learnFormId: 'gray-wolf', replaceForm: { fromFormId: 'dock-rat', toFormId: 'reef-fox' },
+        };
+        levels[3].lineageForm = {
+          learnFormId: 'river-otter', replaceForm: { fromFormId: 'reef-fox', toFormId: 'dock-rat' },
+        };
+        const characterId = created.body._id;
+        const operationId = 'mongo-lineage-advance';
+        const createReceipt = Receipt.create;
+        Receipt.create = async function(entries, ...args) {
+          if (entries[0]?.operationId === operationId) throw new Error('Injected receipt failure');
+          return createReceipt.call(this, entries, ...args);
+        };
+        try {
+          const failed = await command(created.body, 'advance', { levels }, operationId);
+          assert.equal(failed.status, 500);
+          assert.equal(failed.body.message, 'Injected receipt failure');
+        } finally {
+          Receipt.create = createReceipt;
+        }
+        const rolledBack = await request('/' + characterId);
+        assert.deepEqual(rolledBack.body.rulesLedger, created.body.rulesLedger);
+        assert.deepEqual(rolledBack.body.rulesRuntime, created.body.rulesRuntime);
+        assert.equal(await Receipt.countDocuments({ characterId, operationId }), 0);
+
+        const committed = await command(created.body, 'advance', { levels }, operationId);
+        assert.equal(committed.status, 200, JSON.stringify(committed.body));
+        const reloaded = await request('/' + characterId);
+        assert.deepEqual(reloaded.body.rulesSummary.lineage.animalForms.knownForms, ['dock-rat', 'gray-wolf', 'river-otter']);
+        assert.deepEqual(reloaded.body.rulesRuntime.animalForms.healthByForm,
+          { 'dock-rat': 3, 'reef-fox': 5, 'gray-wolf': 7, 'river-otter': 7 });
+        assert.deepEqual(await command(created.body, 'advance', { levels }, operationId), committed);
+        assert.deepEqual(await request('', body, owner, idempotency), created);
+        assert.equal((await request('', { ...body, name: 'Different Lineage Request' }, owner, idempotency)).status, 409);
+        assert.equal(await Character.countDocuments({ owner, name: body.name }), 1);
+        const transformed = await command(reloaded.body, 'ability.activate', {
+          optionId: 'lineage:beastshifters:transform',
+          parameters: { formId: 'dock-rat', legalPlacement: true },
+        }, 'mongo-lineage-transform');
+        assert.equal(transformed.status, 200, JSON.stringify(transformed.body));
+        const damaged = await command(transformed.body, 'health.damage', {
+          amount: 3, damageType: 'piercing', confirmed: true,
+        }, 'mongo-lineage-damage');
+        assert.equal(damaged.status, 200, JSON.stringify(damaged.body));
+        const recoveryPayload = {
+          optionId: 'lineage:beastshifters:primal-recovery',
+          parameters: { formId: 'dock-rat', hitDie: Object.keys(damaged.body.rulesRuntime.hitDice)[0] },
+        };
+        const recoveryId = 'mongo-lineage-recovery';
+        Receipt.create = async function(entries, ...args) {
+          if (entries[0]?.operationId === recoveryId) throw new Error('Injected recovery receipt failure');
+          return createReceipt.call(this, entries, ...args);
+        };
+        try {
+          const rejected = await command(damaged.body, 'ability.activate', recoveryPayload, recoveryId);
+          assert.equal(rejected.status, 500);
+        } finally {
+          Receipt.create = createReceipt;
+        }
+        const unchanged = await request('/' + characterId);
+        assert.deepEqual(unchanged.body.rulesRuntime, damaged.body.rulesRuntime);
+        assert.equal(await Receipt.countDocuments({ characterId, operationId: recoveryId }), 0);
+        const recovered = await command(damaged.body, 'ability.activate', recoveryPayload, recoveryId);
+        assert.equal(recovered.status, 200, JSON.stringify(recovered.body));
+        assert.ok(recovered.body.operationResult.roll > 0);
+        assert.deepEqual(await command(damaged.body, 'ability.activate', recoveryPayload, recoveryId), recovered);
+        assert.deepEqual((await request('/' + characterId)).body.rulesRuntime, recovered.body.rulesRuntime);
+      });
       for (const [callingId, pathId, background] of [
         ['gunslinger', 'iron-suppressor', 'deckhand'],
         ['tidecaller', 'memory-echo', 'archive-apprentice'],
@@ -196,7 +283,7 @@ test(
       // Exercise actual multi-document transactions, including rollback after a
       // treatment-lock insert and source expenditure, against the isolated DB.
       const surgeonRecord = await Character.findOne({ calling: 'doctor' }).lean(),
-        livingRecord = await Character.findOne({ calling: 'gunslinger' }).lean(),
+        livingRecord = await Character.findOne({ owner, calling: 'gunslinger', 'rulesLedger.version': 3 }).lean(),
         deadRecord = await Character.findOne({ calling: 'tidecaller' }).lean();
       await Character.updateOne(
         { _id: livingRecord._id },
@@ -383,6 +470,41 @@ test(
         () => new Character({ ...second.character, owner, obsoleteCharacterField: true }),
         /strict mode/
       );
+      await t.test('Human Long Rest transfers only the excess Inspiration and replays once', async () => {
+        const donorOwner = '444444444444444444444444', allyOwner = '555555555555555555555555';
+        const Campaign = require('../../src/modules/archipelago/campaigns/model');
+        const { ledger } = build('gunslinger');
+        const { size, ...roots } = ledger.creation;
+        void size;
+        const base = { attributes: ledger.baseAttributes, firstLevel: ledger.levels[0] };
+        const human = await request('', {
+          ...base, name: 'Human Inspiration Donor', creation: {
+            ...roots, lineage: { id: 'human', size: 'small', choices: { skill: 'stealth', originFeat: { id: 'alert' } } },
+          },
+        }, donorOwner);
+        assert.equal(human.status, 201, JSON.stringify(human.body));
+        const ally = await request('', { ...base, name: 'Inspiration Recipient', creation: ledger.creation }, allyOwner);
+        assert.equal(ally.status, 201, JSON.stringify(ally.body));
+        const party = await Campaign.create({
+          name: 'Inspiration Test', owner: donorOwner, players: [allyOwner], inviteCode: 'INSPIRE',
+          characterIds: [human.body._id, ally.body._id],
+        });
+        await Character.updateMany({ _id: { $in: party.characterIds } }, { $set: { campaignId: party._id } });
+        const donor = await request('/' + human.body._id, undefined, donorOwner);
+        const first = await command(donor.body, 'rest.start', { restId: 'first', kind: 'long-rest', startedAt: 0 }, 'human-rest-one-start', donorOwner);
+        const granted = await command(first.body, 'rest.complete', { restId: 'first', completedAt: 28_800_000 }, 'human-rest-one-end', donorOwner);
+        assert.equal(granted.status, 200, JSON.stringify(granted.body));
+        assert.equal(granted.body.rulesRuntime.inspiration, true);
+        const second = await command(granted.body, 'rest.start', { restId: 'second', kind: 'long-rest', startedAt: 86_400_000 }, 'human-rest-two-start', donorOwner);
+        const payload = { restId: 'second', completedAt: 115_200_000, inspirationRecipientId: ally.body._id };
+        const transferred = await command(second.body, 'rest.complete', payload, 'human-rest-two-end', donorOwner);
+        assert.equal(transferred.status, 200, JSON.stringify(transferred.body));
+        assert.equal(transferred.body.rulesRuntime.inspiration, true);
+        assert.deepEqual(await command(second.body, 'rest.complete', payload, 'human-rest-two-end', donorOwner), transferred);
+        const recipient = await request('/' + ally.body._id, undefined, allyOwner);
+        assert.equal(recipient.body.rulesRuntime.inspiration, true);
+        assert.equal(recipient.body.documentRevision, ally.body.documentRevision + 1);
+      });
       // Stop the original HTTP server and its DB connection, then start a new Node
       // process with fresh modules/models and compare actual owner-protected HTTP reads.
       const keys = [
@@ -397,14 +519,14 @@ test(
       ];
       const snapshots = [];
       for (const c of await Character.find().sort({ _id: 1 }).lean()) {
-        const body = (await request('/' + c._id)).body;
+        const body = (await request('/' + c._id, undefined, String(c.owner))).body;
         snapshots.push(Object.fromEntries(keys.map((k) => [k, body[k]])));
       }
       await stopHttp(server);
       await mongoose.disconnect();
       assert.deepEqual(await restartSnapshot(fixtureMongo), snapshots);
       await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-      assert.equal(await Character.countDocuments(), 4);
+      assert.equal(await Character.countDocuments(), 7);
       for (const c of await Character.find().lean()) {
         assert.equal(rules.replay(c.rulesLedger).decisionsComplete, true);
         assert.equal(rules.runtime.validate(rules.replay(c.rulesLedger), c.rulesRuntime), true);

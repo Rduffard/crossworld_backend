@@ -20,7 +20,7 @@
   "license": "ISC",
   "homepage": "https://github.com/Rduffard/se_project_express#readme",
   "dependencies": {
-    "@crossworld/sanguine-engine": "file:vendor/crossworld-sanguine-engine-0.68.0.tgz",
+    "@crossworld/sanguine-engine": "file:vendor/crossworld-sanguine-engine-0.69.2.tgz",
     "bcryptjs": "^3.0.3",
     "celebrate": "^15.0.3",
     "cloudinary": "^2.9.0",

@@ -29,10 +29,13 @@ test("actual authenticated rules routes expose eight Callings and reject forged 
     assert.equal(response.status, 200);
     const rules = await response.json();
     assert.equal(rules.callings.length, 8);
+    assert.deepEqual(rules.creation.lineages.map(lineage => lineage.id),
+      ['human', 'fishmen', 'stoneborn', 'fey-touched', 'beastshifters', 'changelings']);
+    assert.equal(rules.creation.beastshifterForms.length, 13);
     assert.equal(rules.persistentCreationEnabled, true);
     const catalogUrl = new URL('character-rules?version=SA-CHAR-1', url);
     const catalog = await fetch(catalogUrl, { headers });
-    const etag = '"e94b607429ad6b3c76e547255fe07f87fccc3d4f80e18d5284c23e714e7a0144"';
+    const etag = '"d248164329ba23072e3332d66f4de3909b94f93ceb53c02bfda65fe23d9cce07"';
     assert.equal(catalog.status, 200);
     assert.equal(catalog.headers.get('etag'), etag);
     assert.deepEqual(await catalog.json(), rules);

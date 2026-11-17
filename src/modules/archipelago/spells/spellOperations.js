@@ -8,7 +8,7 @@ const { freeCastingTerms, spellAvailableFromSource, knownCastingSource, castingS
 const castingTurn=require('./castingTurn');
 function fail(message){throw Object.assign(new Error(message),{statusCode:422});}
 function cast(character,baseSummary,p){
-  if(Object.keys(p).some(k=>!['spellId','callingId','slotLevel','source','metamagic','parameters','targets','ritual','materialIds','turnId','contingency','trigger'].includes(k)))fail('Invalid spell casting fields');
+  if(Object.keys(p).some(k=>!['spellId','callingId','slotLevel','source','mode','metamagic','parameters','targets','ritual','materialIds','turnId','contingency','trigger'].includes(k)))fail('Invalid spell casting fields');
   const spell=rules.spells.find(s=>s.id===p.spellId);if(!spell)fail('Unknown spell');
   const isContingency=spell.id==='contingency';
   if(isContingency&&(!p.contingency||p.targets?.length)||!isContingency&&p.contingency!==undefined)fail('Contingency requires a second spell and targets only you');
@@ -25,11 +25,17 @@ function cast(character,baseSummary,p){
   if(p.parameters?.dragonNoConcentration!==undefined&&(!dragonCompanion||typeof p.parameters.dragonNoConcentration!=='boolean'))fail('Only Dragon Companion can change this casting to its one-minute non-Concentration form');
   if(require('../combat/vitality/vitality').incapacitated(state))fail('Incapacitated creatures cannot cast spells');
   if(state.concentrationChecks?.length)fail('Resolve pending Concentration saves before casting');
+  const innate = summary.innateSpells?.find(grant => grant.grantKey === p.source);
+  if (innate) {
+    if (!innate.castSupported || innate.spellId !== spell.id || !innate.modes.includes(p.mode) ||
+      p.callingId !== undefined || p.ritual || (p.mode === 'slot' ? !Number.isSafeInteger(p.slotLevel) : p.slotLevel !== undefined))
+      fail('Choose an eligible Lineage spell and casting mode');
+  } else if (p.mode !== undefined) fail('Casting mode requires a Lineage grant');
   const initiate=summary.featSpellcasters?.find(s=>s.grantKey===p.source);
   const intervention=p.source==='intervention';
   if(intervention&&(p.callingId!=='doctor'||!divineInterventionEligible(spell,summary.callingLevels.doctor)||p.slotLevel!==undefined||p.ritual))fail('Divine Intervention requires an eligible Doctor spell or level-twenty Wish, with no slot or ritual');
-  if(!knownCastingSource(p.source,initiate))fail('Unknown spell source');
-  if(!intervention&&!spellAvailableFromSource({
+  if(!innate&&!knownCastingSource(p.source,initiate))fail('Unknown spell source');
+  if(!innate&&!intervention&&!spellAvailableFromSource({
     spellId:spell.id,callingId:p.callingId,casting,prepared:state.preparations[p.callingId],initiate,dragonCompanion,ritual:p.ritual,
   }))fail('Spell is not available from this source');
   const equipment=require('../equipment/equipmentView').derive(character);
@@ -59,7 +65,7 @@ function cast(character,baseSummary,p){
   }
   const level=p.slotLevel??spell.level;
   if(spell.level>0&&!p.ritual&&!intervention){
-    const freeTerms=freeCastingTerms({
+    const freeTerms=innate ? (p.mode === "free" ? { poolId: innate.poolId } : null) : freeCastingTerms({
       source:p.source,spellId:spell.id,callingId:p.callingId,slotLevel:p.slotLevel,casting,initiate,dragonCompanion,
     });
     if(freeTerms){
@@ -147,11 +153,11 @@ function cast(character,baseSummary,p){
   }
   state.castings??=[];
   if(state.castings.length>=200)fail('Casting history is full; complete a rest before casting again');
-  state.castings.push({castId,spellId:spell.id,callingId:p.callingId,source:effect.source,slotLevel:level,spentSlot,usedSlot,turnId:p.turnId,targets:p.targets??[],metamagic:selected,management,...(triggerEventId?{triggerEventId}:{}),...(sanguineSurge?{sanguineSurge}:{}),attackModifier:initiate?.attackModifier??casting.attackModifier,castingModifier:initiate?.modifier??casting.modifier,createdAt:effect.createdAt,rerolls:[]});
+  state.castings.push({castId,spellId:spell.id,callingId:p.callingId,source:effect.source,slotLevel:level,spentSlot,usedSlot,turnId:p.turnId,targets:p.targets??[],metamagic:selected,management,...(triggerEventId?{triggerEventId}:{}),...(sanguineSurge?{sanguineSurge}:{}),attackModifier:innate?.attackModifier??initiate?.attackModifier??casting.attackModifier,castingModifier:innate?.modifier??initiate?.modifier??casting.modifier,...(innate?{saveDC:innate.saveDC,mode:p.mode}:{}),createdAt:effect.createdAt,rerolls:[]});
   state.revision++;
   if(management.components.includes('V'))state.conditions=state.conditions.filter(e=>e.conditionId!=='invisible'||e.source!=='hide');
   runtime.validate(baseSummary,state);
   character.rulesRuntime=state;character.inventory=materialState.inventory;character.goldCp=materialState.goldCp;
-  return {type:'spell.cast',castId,spellId:spell.id,slotLevel:level,spentSlot,freePool,spellRecall,overchannel,interventionCooldown,sanguineSurge,metamagicCost:cost,consumedMaterials,components,management,description:spell.description,...(contingency?{contingency}:{})};
+  return {type:'spell.cast',...(innate?{source:innate.grantKey,mode:p.mode,saveDC:innate.saveDC}:{}),castId,spellId:spell.id,slotLevel:level,spentSlot,freePool,spellRecall,overchannel,interventionCooldown,sanguineSurge,metamagicCost:cost,consumedMaterials,components,management,description:spell.description,...(contingency?{contingency}:{})};
 }
 module.exports={cast};

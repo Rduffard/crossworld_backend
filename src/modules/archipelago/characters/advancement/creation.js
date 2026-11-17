@@ -4,8 +4,8 @@ const { creationScores, backgroundEquipmentTerms, customBackgroundFeatEligible, 
 const { attributes, tools, origins, backgrounds, originPolicy } = require('./definitions/creation');
 function fail(message) { throw Object.assign(new Error(message),{statusCode:422}); }
 function exactList(value,count,options,label) { if(!Array.isArray(value)||value.length!==count||new Set(value).size!==count||value.some(x=>!options.includes(x)))fail('Invalid '+label);return value; }
-function validate(value,scores) {
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['originId','backgroundId','method','increases','equipment','custom','size'].includes(k)))fail('Invalid creation contract');
+function validate(value,scores,identityField='size') {
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['originId','backgroundId','method','increases','equipment','custom',identityField].includes(k)))fail('Invalid creation contract');
   const origin=origins.find(o=>o.id===value.originId),template=backgrounds.find(b=>b.id===value.backgroundId);
   if(!origin||!template)fail('Choose an established origin and background');
   if(value.method!=='point-buy')fail('SA-CHAR-1 requires point buy');
