@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { build, rules } from '../helpers/phase2.mjs';
+import { build, complete, creation, rules, scores } from '../helpers/phase2.mjs';
 
 const require = createRequire(import.meta.url);
 const persistence = require('../../src/modules/archipelago/characters/persistence');
@@ -40,6 +40,89 @@ function advance(character, payload) {
   });
   return { ...character, ...changes };
 }
+
+function rebuild(character, type, payload) {
+  return commands.apply(character, {
+    operationId: type.replace('.', '-') + '-lineage-test', expectedRevision: character.documentRevision,
+    rulesVersion: 'SA-CHAR-1', type, payload,
+  });
+}
+
+test('personal Lineage rebuild removes an active animal form and replays preserved Calling decisions', () => {
+  const { body, levels } = fixture(beastshifter, 3);
+  let character = persistence.build(body);
+  for (const level of levels) character = advance(character, level);
+  character.rulesRuntime.animalForms.activeFormId = 'gray-wolf';
+  character.rulesRuntime.health.current = 5;
+  const ledger = structuredClone(character.rulesLedger);
+  ledger.creation.lineage = { id: 'fishmen', choices: { castingAttribute: 'wit' } };
+  for (const event of ledger.levels) delete event.lineageForm;
+  const preview = rebuild(character, 'rebuild.preview', { ledger, reason: 'Change inherited traits' });
+  assert.equal(preview.result.summary.movement.swim, 30);
+  assert.equal(preview.result.summary.size, 'medium');
+  assert.equal(preview.result.consequences.animalForms.before.activeFormId, 'gray-wolf');
+  assert.equal(preview.result.consequences.animalForms.after, null);
+  assert.equal(character.rulesRuntime.animalForms.activeFormId, 'gray-wolf');
+  assert.throws(() => rebuild({ ...character, campaignId: 'fleet' }, 'rebuild.preview', {
+    ledger, reason: 'Campaign change',
+  }), /must preserve Lineage/);
+  const commit = rebuild({ ...character, ...preview.changes }, 'rebuild.commit', {
+    proposalId: preview.result.proposalId, acceptConsequences: true,
+  });
+  assert.equal(commit.changes.rulesRuntime.animalForms, undefined);
+  assert.equal(commit.changes.rulesRuntime.health.current, 5);
+  assert.equal(rules.replay(commit.changes.rulesLedger).lineage.id, 'fishmen');
+  assert.deepEqual(commit.changes.rulesLedger.levels.map(level => level.choices),
+    character.rulesLedger.levels.map(level => level.choices));
+});
+
+test('a personal legacy ledger can adopt a Lineage and a partial form milestone cannot be applied', () => {
+  const original = build('gunslinger', 3).character;
+  const ledger = structuredClone(original.rulesLedger);
+  ledger.version = 4;
+  delete ledger.creation.size;
+  ledger.creation.lineage = beastshifter;
+  const partial = rebuild(original, 'rebuild.preview', {
+    ledger: { ...ledger, levels: ledger.levels.slice(0, 1) },
+    targetLevel: 3, retainSavedLevels: true, reason: 'Adopt a Lineage',
+  });
+  assert.equal(partial.result.complete, false);
+  assert.equal(partial.result.summary.requiredChoices[0].key, 'lineageForm');
+  assert.deepEqual(partial.result.draftLedger.levels, ledger.levels);
+  assert.equal(partial.changes.rulesRuntime.rebuildProposal, undefined);
+  ledger.levels[2].lineageForm = { learnFormId: 'gray-wolf' };
+  const preview = rebuild(original, 'rebuild.preview', { ledger, reason: 'Adopt a Lineage' });
+  assert.equal(preview.result.complete, true);
+  assert.deepEqual(Object.keys(preview.result.consequences.animalForms.after.healthByForm), ['dock-rat', 'gray-wolf']);
+  assert.equal(original.rulesLedger.version, 3);
+});
+
+test('a personal rebuild cannot select new Calling Training already fixed by its Background', () => {
+  const { body } = fixture({ id: 'fishmen', choices: { castingAttribute: 'wit' } });
+  const character = persistence.build(body);
+  const ledger = structuredClone(character.rulesLedger);
+  ledger.levels[0].choices.skills = ['acrobatics', 'athletics'];
+  ledger.levels[0].choices.backgroundSkills = ['history', 'survival'];
+  assert.throws(() => rebuild(character, 'rebuild.preview', {
+    ledger, reason: 'Change Training', retainSavedLevels: true,
+  }), /Invalid skills choice/);
+});
+
+test('changing the starting form keeps compatible learned forms in a personal rebuild', () => {
+  const { body, levels } = fixture(beastshifter, 5);
+  let character = persistence.build(body);
+  for (const level of levels) character = advance(character, level);
+  const ledger = structuredClone(character.rulesLedger);
+  ledger.creation.lineage.choices.formId = 'dune-hare';
+  ledger.levels = ledger.levels.slice(0, 1);
+  const { result } = rebuild(character, 'rebuild.preview', {
+    ledger, reason: 'Change first form', retainSavedLevels: true,
+  });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.summary.lineage.animalForms.knownForms, ['dune-hare', 'gray-wolf', 'river-otter']);
+  assert.deepEqual(result.draftLedger.levels[2].lineageForm, { learnFormId: 'gray-wolf' });
+  assert.deepEqual(result.draftLedger.levels[4].lineageForm, { learnFormId: 'river-otter' });
+});
 
 test('creation persists six distinct Lineages while retaining Roots and v3 replay', () => {
   const legacy = build('gunslinger');
@@ -93,6 +176,40 @@ test('creation preview reports required choices and rejects forged Lineage grant
   ]) {
     assert.throws(() => persistence.build(fixture(invalid).body), { statusCode: 422 });
   }
+});
+
+test('Human Corsair Skilled requires distinct Training and persists all eligible selections', () => {
+  const { size, ...roots } = creation('yuma-core', 'dock-artisan');
+  const draft = rules.create(scores, { callingId: 'corsair', choices: {} }, {
+    creation: { ...roots, lineage: { id: 'stoneborn' } }, allowIncomplete: true,
+  });
+  const startingSkills = draft.summary.requiredChoices.find(choice => choice.key === 'skills');
+  assert.equal(startingSkills.options.includes('investigation'), false);
+  assert.equal(startingSkills.unavailable.investigation, 'Already granted by your Background.');
+  const { ledger, summary } = complete(draft.ledger);
+  assert.deepEqual(ledger.levels[0].choices.backgroundSkills, ['investigation', 'history']);
+  assert.ok(summary.equipmentTraining.tools.includes('carpenters-tools'));
+  const duplicate = structuredClone(ledger.levels[0]);
+  duplicate.choices.skills[0] = 'investigation';
+  assert.throws(() => rules.create(scores, duplicate, {
+    creation: ledger.creation, allowIncomplete: true,
+  }), /Invalid skills choice/);
+  const options = rules.blueprint.skills.map(skill => skill.id).filter(id => !summary.training.includes(id));
+  const [skill, ...additional] = options;
+  const training = additional.slice(0, 3).map(id => 'skill:' + id);
+  const originFeat = { id: 'skilled', options: { training } };
+  const body = {
+    name: 'Skilled Human Corsair', attributes: ledger.baseAttributes, firstLevel: ledger.levels[0],
+    creation: { ...roots, lineage: { id: 'human', size, choices: { skill, originFeat } } },
+  };
+  const saved = persistence.build(body);
+  const projected = persistence.decorate(saved).rulesSummary;
+  assert.deepEqual(projected.lineage.originFeat.options.training, training);
+  assert.ok(additional.slice(0, 3).every(id => projected.training.includes(id)));
+  originFeat.options = { training: [training[0], training[1], 'skill:' + summary.training[0]] };
+  assert.throws(() => persistence.build(body), {
+    statusCode: 422, fieldPath: 'creation.lineage.choices.originFeat.options.training',
+  });
 });
 
 test('Lineage spell sources unlock by total level and Human Origin feats use their own grant', () => {
@@ -204,7 +321,11 @@ test('Beastshifter forms keep separate Health, take overflow once, and expend th
   ({ character } = transform(character));
   const view = persistence.decorate(character);
   assert.equal(view.rulesSummary.creatureType, 'beast');
+  assert.equal(view.rulesSummary.size, 'small');
+  assert.equal(view.rulesSummary.spaceFeet, 5);
+  assert.equal(view.rulesSummary.grappleSize, 'small');
   assert.equal(view.rulesSummary.attributes.agility, 14);
+  assert.equal(view.equipment.carrying.capacityLb, view.rulesSummary.attributes.might * 15);
   assert.equal(view.equipment.guard, 12);
   assert.deepEqual(view.equipment.attacks, []);
   assert.throws(() => transform(character), { statusCode: 422 });
@@ -248,6 +369,19 @@ test('Lineage activation spends the tracked turn and Stone Listening survives re
   assert.equal(persistence.decorate(structuredClone(character)).rulesSummary.stoneListening.expiresAt, 600_000);
   ({ character } = run(character, 'time.advance', { worldTime: 600_000, confirmed: true }));
   assert.equal(persistence.decorate(character).rulesSummary.stoneListening, undefined);
+});
+
+test('a Large animal form projects the actual footprint and increased carrying capacity', () => {
+  const { body, levels } = fixture(beastshifter, 13);
+  let character = persistence.build(body);
+  for (const level of levels) character = advance(character, level);
+  ({ character } = activate(character, 'beastshifters:transform', { formId: 'black-bear', legalPlacement: true }));
+  const { rulesSummary, equipment } = persistence.decorate(character);
+  assert.equal(rulesSummary.size, 'large');
+  assert.equal(rulesSummary.spaceFeet, 10);
+  assert.equal(rulesSummary.grappleSize, 'large');
+  assert.equal(equipment.carrying.capacityLb, 480);
+  assert.equal(equipment.carrying.pushDragLiftLb, 960);
 });
 
 test('Changeling appearance changes effective size and preserves saved identity', () => {

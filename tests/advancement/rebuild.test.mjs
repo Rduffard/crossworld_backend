@@ -56,6 +56,25 @@ test('campaign commit requires exact registered GM approval and acknowledges res
   assert.equal(b.character.rulesRuntime.pools['brass-outrider:outrider'], 0);
   assert.equal(b.character.rulesRuntime.rebuildProposal, undefined);
 });
+test('a rejected campaign rebuild records the GM reason and requires a distinct preview', () => {
+  const b = build('gunslinger', 3, 'iron-suppressor');
+  b.character.campaignId = 'campaign';
+  const request = { ledger: build('gunslinger', 3, 'brass-outrider').ledger, reason: 'Change Path' };
+  const { proposalId } = run(b, 'rebuild.preview', request);
+  const gm = { gmAllowed: true, userId: 'gm' };
+  assert.throws(() => run(b, 'rebuild.reject', { proposalId }), /campaign GM/);
+  const decision = run(b, 'rebuild.reject', { proposalId, reason: '  Keep the current Path  ' }, gm);
+  assert.equal(decision.reason, 'Keep the current Path');
+  assert.equal(b.character.rulesRuntime.rebuildProposal.rejectedBy, 'gm');
+  assert.throws(() => run(b, 'rebuild.reject', { proposalId }, gm), /was rejected/);
+  assert.throws(() => run(b, 'rebuild.commit', { proposalId, acceptConsequences: true }), /was rejected/);
+  const replacement = run(b, 'rebuild.preview', request);
+  assert.notEqual(replacement.proposalId, proposalId);
+  assert.throws(() => run(b, 'rebuild.approve', { proposalId }, gm), /matching rebuild/);
+  run(b, 'rebuild.approve', { proposalId: replacement.proposalId }, gm);
+  assert.throws(() => run(b, 'rebuild.approve', { proposalId: replacement.proposalId }, gm), /already approved/);
+});
+
 test('a changed character invalidates approval and requires a fresh rebuild preview', () => {
   const b = build('gunslinger', 3, 'iron-suppressor'),
     r = run(b, 'rebuild.preview', {
@@ -99,6 +118,35 @@ test('partial draft returns required choices but cannot become a committable pro
   assert.equal(r.complete, false);
   assert.ok(r.summary.requiredChoices.some((c) => c.key === 'pathId'));
   assert.equal(b.character.rulesRuntime.rebuildProposal, undefined);
+});
+
+test('personal rebuild reopens an overlapping language and keeps unrelated advancement choices', () => {
+  const b = build('gunslinger', 3, 'iron-suppressor');
+  b.character.rulesLedger.levels[0].choices.languages = ['language:yayimi'];
+  const savedLevels = structuredClone(b.character.rulesLedger.levels);
+  const ledger = structuredClone(b.character.rulesLedger);
+  ledger.creation.originId = 'yayimi';
+  ledger.levels = ledger.levels.slice(0, 1);
+  const input = { ledger, reason: 'Change roots', retainSavedLevels: true };
+
+  const preview = run(b, 'rebuild.preview', input);
+  assert.equal(preview.complete, false);
+  assert.deepEqual(preview.draftLedger.levels[0].choices, Object.fromEntries(
+    Object.entries(savedLevels[0].choices).filter(([key]) => key !== 'languages')
+  ));
+  const language = preview.summary.requiredChoices.find(choice => choice.key === 'languages');
+  assert.ok(language);
+  assert.ok(!language.options.includes('language:yayimi'));
+  assert.deepEqual(b.character.rulesLedger.levels, savedLevels);
+
+  const nextLedger = preview.draftLedger;
+  nextLedger.levels[0].choices.languages = [language.options[0]];
+  const complete = run(b, 'rebuild.preview', { ...input, ledger: nextLedger });
+  assert.equal(complete.complete, true);
+  assert.deepEqual(complete.draftLedger.levels.slice(1), savedLevels.slice(1));
+
+  nextLedger.levels[0].choices.languages = ['language:unknown'];
+  assert.throws(() => run(b, 'rebuild.preview', { ...input, ledger: nextLedger }), /Invalid languages choice/);
 });
 test('rebuild rejects combat and active rests without changing state', () => {
   const b = build('gunslinger', 3, 'iron-suppressor');
@@ -150,4 +198,45 @@ test('same-Calling rebuild preserves lost-folio availability and cannot restore 
     b.character.rulesRuntime
   );
   assert.equal(projected.spellcasting.shipwright.folio.length, 0);
+});
+
+test('personal rollback preserves retained choices and reconciles lost progression', () => {
+  const b = build('gunslinger', 3, 'iron-suppressor');
+  const ledger = structuredClone(b.ledger);
+  ledger.levels = ledger.levels.slice(0, 2);
+  b.character.campaignId = 'campaign';
+  assert.throws(() => run(b, 'rebuild.preview', { ledger, reason: 'Reverse advancement', targetLevel: 2 }), /preserve the current level/);
+  delete b.character.campaignId;
+
+  const preview = run(b, 'rebuild.preview', { ledger, reason: 'Reverse advancement', targetLevel: 2 });
+  assert.equal(preview.complete, true);
+  assert.equal(preview.summary.totalLevel, 2);
+  assert.equal(preview.summary.paths.gunslinger, undefined);
+  assert.equal(b.character.rulesLedger.levels.length, 3);
+  run(b, 'rebuild.commit', { proposalId: preview.proposalId, acceptConsequences: true });
+  assert.deepEqual(b.character.rulesLedger.levels, ledger.levels);
+  assert.equal(b.character.rulesRuntime.health.max, preview.summary.health.max);
+  assert.equal(b.character.rulesRuntime.pools['iron-suppressor:suppressing-fire'], undefined);
+});
+
+test('character creation validates an entire starting progression before issuing state', () => {
+  const persistence = require('../../src/modules/archipelago/characters/persistence');
+  const { ledger, summary } = build('gunslinger', 20, 'iron-suppressor');
+  const [firstLevel, ...additionalLevels] = ledger.levels;
+  const draft = {
+    name: 'Veteran Sailor',
+    attributes: ledger.baseAttributes,
+    creation: ledger.creation,
+    firstLevel,
+    additionalLevels,
+  };
+  const created = persistence.build(draft, { equip: true });
+  assert.deepEqual(created.rulesLedger, ledger);
+  assert.equal(created.documentRevision, 0);
+  assert.equal(created.rulesRuntime.health.current, summary.health.max);
+  assert.ok(created.loadout.mainHand);
+  assert.throws(() => persistence.build({ ...draft, additionalLevels: [...additionalLevels, firstLevel] }), /1 to 20/);
+  assert.throws(() => persistence.build({ ...draft, additionalLevels: [{ ...additionalLevels[0], folioAtSpellGrant: [] }] }), /Invalid rules fields/);
+  const unchosenPath = { ...additionalLevels[1], choices: {} };
+  assert.throws(() => persistence.build({ ...draft, additionalLevels: [additionalLevels[0], unchosenPath] }), /Complete required choices/);
 });

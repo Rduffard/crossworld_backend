@@ -14,6 +14,7 @@ const { rageDefenseBenefits, recklessAttackBenefits, concentrationAdvantage,
 const { weaponMasteryEligible } = require('@crossworld/sanguine-engine/training');
 const { abilityTakesAction, firstMissingAbilityCost } = require('@crossworld/sanguine-engine/callings');
 const { exhaustionD20Penalty, projectSavingThrowModifiers } = require('@crossworld/sanguine-engine/saving-throws');
+const { sizeProfile } = require('@crossworld/sanguine-engine/combat/size');
 const rules = require('../../system/rules');
 function fail(message) { throw Object.assign(new Error(message), { statusCode: 400 }); }
 function list(value, count, options) {
@@ -46,6 +47,8 @@ function project(summary, state, character) {
     result.appearance = structuredClone(state.lineageAppearance);
     result.size = result.appearance.size;
   }
+  result.size ??= result.creation?.size ?? 'medium';
+  result.spaceFeet = sizeProfile(result.size)?.spaceFeet;
   for (const spell of state.folio ?? []) {
     const definition = rules.spells.find(s => s.id === spell);
     if (!copiedFolioSpellEligible(definition,result.spellcasting.shipwright)) fail('Invalid copied folio spell');
@@ -134,8 +137,9 @@ function project(summary, state, character) {
   if(result.paths.reaver==='chainbreaker'&&result.raging)result.chainbreaker=chainbreakerRage(result.callingLevels.reaver,result.pathSelections.reaver.pathDiscipline);
   if(result.paths.reaver==='reef-colossus'&&result.raging){
     result.reefSkinSuppressed=active.some(e=>e.reefSkinSuppressed);
-    result.colossus=reefColossus(result.callingLevels.reaver,result.size??result.creation.size,result.pathSelections.reaver.pathDiscipline,result.mechanics.reaver.rageDamage);
+    result.colossus=reefColossus(result.callingLevels.reaver,result.size,result.pathSelections.reaver.pathDiscipline,result.mechanics.reaver.rageDamage);
   }
+  result.grappleSize = result.colossus?.effectiveSize ?? result.size;
   result.movement.fly=maximumGrantedMovement(result.movement.fly,active.map(effect=>effect.flySpeed));
   if(active.some(e=>e.optionId==='path:drydock-ghost:unseen-passage:14#main')){
     const {movement,structurePassage}=unseenPassageBenefits();

@@ -42,9 +42,11 @@ function apply(character, body, context = {}) {
   if (c.rulesRuntime.animalForms?.activeFormId && (
     ['spell.cast', 'scroll.cast', 'item.cast', 'tool.check', 'strike.resolve'].includes(body.type) ||
     ['equipment.equip', 'equipment.wear', 'equipment.fire', 'equipment.consume', 'equipment.utilize',
-      'equipment.recover', 'equipment.flame', 'equipment.poison-hit', 'equipment.preset.apply'].includes(body.type)
+      'equipment.recover', 'equipment.flame', 'equipment.poison-hit', 'equipment.preset.apply',
+      'equipment.transfer'].includes(body.type)
   )) fail('Merged equipment and new spellcasting are unavailable in animal form');
   let result = { type: body.type };
+  let receivedItem;
   if (body.type === 'attack.record') {
     result = require('../combat/attackRecords').apply(
       c,
@@ -94,7 +96,7 @@ function apply(character, body, context = {}) {
       fail('Only the campaign GM can record dawn', 403);
     result = require('../equipment/chargedItems').dawn(c, p);
   } else if (
-    ['rebuild.preview', 'rebuild.approve', 'rebuild.commit'].includes(body.type)
+    ['rebuild.preview', 'rebuild.approve', 'rebuild.reject', 'rebuild.commit'].includes(body.type)
   ) {
     result = require('./rebuild').apply(c, body.type, p, context);
   } else if (
@@ -334,6 +336,10 @@ function apply(character, body, context = {}) {
       type: 'health',
       ...p,
     });
+  } else if (body.type === 'equipment.transfer') {
+    const { received, ...transferResult } = require('../equipment/transfer').take(c, p);
+    receivedItem = received;
+    result = transferResult;
   } else if (body.type === 'equipment.equip') {
     if (Object.keys(p).some((k) => !['loadout'].includes(k)))
       fail('Invalid equipment fields');
@@ -406,7 +412,7 @@ function apply(character, body, context = {}) {
       .filter((k) => c[k] !== undefined)
       .map((k) => [k, c[k]]),
   );
-  return { changes, result };
+  return receivedItem ? { changes, result, receivedItem } : { changes, result };
 }
 function handler(Character, Receipt, Treatment, Campaign) {
   return bindTransaction(apply, Character, Receipt, Treatment, Campaign);

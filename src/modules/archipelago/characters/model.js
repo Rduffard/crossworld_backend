@@ -16,6 +16,8 @@ const characterSchema = new mongoose.Schema({
   presets: {type:[mongoose.Schema.Types.Mixed],default:[]},
   goldCp: { type: Number, required: true, min: 0, max:Number.MAX_SAFE_INTEGER,validate:Number.isSafeInteger },
   campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "ArchipelagoCampaign", default: null },
+  campaignAdmission: { type: mongoose.Schema.Types.Mixed },
+  sourceCharacterId: { type: mongoose.Schema.Types.ObjectId, ref: "ArchipelagoCharacter" },
   portraitUrl: { type: String, default: "" },
   pronouns:{type:String,default:'',maxlength:1000},
   appearance:{type:String,default:'',maxlength:1000},

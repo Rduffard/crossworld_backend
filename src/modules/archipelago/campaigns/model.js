@@ -54,6 +54,8 @@ const campaignSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    startingLevel: { type: Number, min: 1, max: 20, validate: Number.isInteger },
+    requireAdmissionApproval: { type: Boolean, default: false },
     status: {
       type: String,
       enum: ["active", "paused", "completed"],

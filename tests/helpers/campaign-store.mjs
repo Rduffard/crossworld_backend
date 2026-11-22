@@ -4,8 +4,11 @@ export function campaignMatches(record, filter){
   return Object.entries(filter).every(([key,value])=>{
     if(key==='$or')return value.some(clause=>campaignMatches(record,clause));
     if(key==='$expr')return (record.players??[]).length<record.maxPlayers;
-    if(value?.$in)return value.$in.some(id=>String(record[key])===String(id));
-    return Array.isArray(record[key])?record[key].some(id=>String(id)===String(value)):String(record[key])===String(value);
+    const saved = key.split('.').reduce((row, field) => row?.[field], record);
+    if(value===null)return saved==null;
+    if(value?.$in)return value.$in.some(id=>String(saved)===String(id));
+    if(value?.$nin)return !value.$nin.includes(saved);
+    return Array.isArray(saved)?saved.some(id=>String(id)===String(value)):String(saved)===String(value);
   });
 }
 
@@ -63,6 +66,7 @@ export function campaignStore(getCharacters){
   };
   store.Character={
     find:filter=>query(()=>getCharacters().filter(character=>campaignMatches(character,filter))),
+    findOneAndUpdate:(filter,changes)=>query(()=>update(getCharacters(),filter,changes)??null),
     updateOne:async(filter,changes)=>({matchedCount:update(getCharacters(),filter,changes)?1:0}),
   };
   store.Session={

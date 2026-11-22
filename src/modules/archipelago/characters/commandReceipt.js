@@ -6,7 +6,9 @@ const schema=new mongoose.Schema({
   operationId:{type:String,required:true,maxlength:80},
   digest:{type:String,required:true},
   response:{type:mongoose.Schema.Types.Mixed,required:true},
+  transferRecipientId:{type:mongoose.Schema.Types.ObjectId},
 },{timestamps:true,strict:'throw',minimize:false});
 schema.index({characterId:1,operationId:1},{unique:true});
 schema.index({characterId:1,owner:1,_id:-1});
+schema.index({transferRecipientId:1,_id:-1},{partialFilterExpression:{transferRecipientId:{$type:'objectId'}}});
 module.exports=mongoose.models.ArchipelagoCharacterCommand||mongoose.model('ArchipelagoCharacterCommand',schema);

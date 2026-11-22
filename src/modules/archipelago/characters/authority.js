@@ -1,14 +1,14 @@
 const {leveledCallingSpellEligible}=require('@crossworld/sanguine-engine/spells/casting-sources');
 const {catalogUnits}=require('@crossworld/sanguine-engine/equipment/commerce');
 function fail(message,statusCode=403){throw Object.assign(new Error(message),{statusCode});}
-const gmCommands=['milestone.authorize','lineage.force-revert','inspiration.grant','scene.record','equipment.award','equipment.sell','equipment.dawn','spells.discover','rebuild.approve','turn.start','turn.end','turn.external','contingency.trigger'];
+const gmCommands=['milestone.authorize','lineage.force-revert','inspiration.grant','scene.record','equipment.award','equipment.sell','equipment.transfer','equipment.dawn','spells.discover','rebuild.approve','rebuild.reject','turn.start','turn.end','turn.external','contingency.trigger'];
 async function context(character,userId,Campaign,session){
   const isOwner=String(character.owner)===String(userId);
   if(!character.campaignId)return {isOwner,gmAllowed:isOwner,campaignRegistered:false,userId:String(userId),role:'solo-owner'};
   if(!Campaign)return {isOwner,gmAllowed:false,campaignRegistered:false,userId:String(userId),role:'owner'};
   let query=Campaign.findOne({_id:character.campaignId});if(session)query=query.session(session);
   const campaign=await query.lean(),gm=campaign&&String(campaign.owner)===String(userId);
-  const registered=Boolean(campaign?.characterIds?.some(id=>String(id)===String(character._id))&&(gm||campaign.players?.some(id=>String(id)===String(userId))));
+  const registered=Boolean((!character.campaignAdmission||character.campaignAdmission.state==='active')&&campaign?.characterIds?.some(id=>String(id)===String(character._id))&&(gm||campaign.players?.some(id=>String(id)===String(userId))));
   return {isOwner,gmAllowed:Boolean(gm&&registered),campaignRegistered:registered,userId:String(userId),role:gm&&registered?'campaign-gm':'owner'};
 }
 function permissions(character,access){return {isOwner:access.isOwner,canGM:access.gmAllowed,role:access.role,canAdvance:Boolean(character.rulesLedger.levels.length<20&&access.isOwner&&(!character.campaignId||access.campaignRegistered&&character.rulesRuntime.milestones?.some(m=>!m.used&&m.level===character.rulesLedger.levels.length+1))),campaignRegistered:access.campaignRegistered};}

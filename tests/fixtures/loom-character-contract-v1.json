@@ -1,0 +1,163 @@
+{
+  "fixtureVersion": 1,
+  "rulesVersion": "SA-CHAR-1",
+  "creation": {
+    "input": {
+      "name": "Loom Fixture Sailor",
+      "attributes": { "might": 8, "agility": 15, "resolve": 15, "wit": 10, "instinct": 10, "spirit": 13 },
+      "creation": {
+        "originId": "yuma-core",
+        "backgroundId": "deckhand",
+        "method": "point-buy",
+        "increases": { "might": 2 },
+        "equipment": "pack",
+        "lineage": { "id": "fishmen", "choices": { "castingAttribute": "wit" } }
+      },
+      "firstLevel": {
+        "callingId": "gunslinger",
+        "choices": {
+          "equipment": ["pack-a"],
+          "languages": ["common-sign-language"],
+          "skills": ["acrobatics", "animal-handling"],
+          "backgroundSkills": ["athletics", "survival"],
+          "mastery": ["club", "dagger", "greatclub"],
+          "style": ["archery"]
+        }
+      }
+    },
+    "expected": {
+      "ledgerVersion": 4,
+      "totalLevel": 1,
+      "pointBuy": { "cost": 27, "remaining": 0 },
+      "attributes": { "might": 10, "agility": 15, "resolve": 15, "wit": 11, "instinct": 10, "spirit": 13 },
+      "attributeModifiers": { "might": 0, "agility": 2, "resolve": 2, "wit": 0, "instinct": 0, "spirit": 1 },
+      "lineage": "fishmen",
+      "size": "medium",
+      "swimFeet": 30,
+      "darkvisionFeet": 60,
+      "resistances": ["cold"],
+      "health": { "current": 12, "max": 12 },
+      "goldCp": 1400,
+      "equipped": { "mainHand": "greatsword", "offHand": null, "armor": "chain-mail", "grip": "two" }
+    }
+  },
+  "advancement": {
+    "input": {
+      "levels": [
+        { "level": 2, "choices": {} },
+        { "level": 3, "choices": { "pathId": ["iron-suppressor"], "pathDiscipline": ["push"] } }
+      ]
+    },
+    "expected": {
+      "totalLevel": 3,
+      "pathId": "iron-suppressor",
+      "health": { "current": 28, "max": 28 },
+      "hitDice": { "d10": 3 },
+      "pools": {
+        "gunslinger:second-wind": 2,
+        "gunslinger:action-surge": 1,
+        "iron-suppressor:suppression": 4,
+        "lineage:fishmen:fog-cloud": 1,
+        "lineage:fishmen:gust-of-wind": 1
+      }
+    }
+  },
+  "beastshifterForm": {
+    "input": {
+      "formId": "dock-rat",
+      "level": 1,
+      "formUses": 2,
+      "health": { "current": 12, "max": 12 },
+      "damage": 4
+    },
+    "expected": {
+      "activatedFormId": "dock-rat",
+      "poolSpend": { "poolId": "lineage:beastshifters:transform", "amount": 1 },
+      "activeFormIdAfterDamage": null,
+      "formHealthAfterDamage": 0,
+      "humanoidHealthAfterDamage": { "current": 11, "max": 12 }
+    }
+  },
+  "reversal": {
+    "input": { "targetLevel": 2, "reason": "Reverse one level" },
+    "expected": {
+      "totalLevel": 2,
+      "pathId": null,
+      "health": { "current": 20, "max": 20 },
+      "hitDice": { "d10": 2 },
+      "pools": {
+        "gunslinger:second-wind": 2,
+        "gunslinger:action-surge": 1,
+        "lineage:fishmen:fog-cloud": 1
+      }
+    }
+  },
+  "rebuild": {
+    "input": {
+      "lineage": { "id": "stoneborn" },
+      "damage": { "amount": 19, "damageType": "force", "confirmed": true },
+      "reason": "Replace inherited traits"
+    },
+    "expected": {
+      "totalLevel": 3,
+      "pathId": "iron-suppressor",
+      "lineage": "stoneborn",
+      "size": "medium",
+      "swimFeet": 0,
+      "darkvisionFeet": 120,
+      "resistances": ["poison"],
+      "health": { "current": 9, "max": 31 },
+      "newPool": { "id": "lineage:stoneborn:stone-listening", "current": 0 },
+      "removedPools": ["lineage:fishmen:fog-cloud", "lineage:fishmen:gust-of-wind"]
+    }
+  },
+  "resourceRecovery": {
+    "input": {
+      "pools": { "rage": 2, "signature": 0, "doctor:intervention": 0 },
+      "definitions": {
+        "rage": { "max": 3, "recovery": { "shortRest": 1 } },
+        "signature": { "max": 1, "recovery": { "shortRest": "all" } },
+        "doctor:intervention": { "max": 1, "recovery": { "shortRest": null } }
+      },
+      "options": { "kind": "short-rest" }
+    },
+    "expected": { "rage": 3, "signature": 1, "doctor:intervention": 0 }
+  },
+  "equipmentState": {
+    "input": { "purchase": { "definitionId": "bullets", "quantity": 1 }, "splitQuantity": 3 },
+    "expected": {
+      "purchaseCostCp": 300,
+      "goldCp": 1100,
+      "purchasedQuantity": 10,
+      "splitQuantities": [7, 3],
+      "mergedQuantity": 10
+    }
+  },
+  "campaignOwnership": {
+    "input": {
+      "gmId": "111111111111111111111111",
+      "playerId": "222222222222222222222222",
+      "sourceCharacterId": "444444444444444444444444",
+      "sourceRevision": 5,
+      "sourceHealth": 4,
+      "sourceRenamedTo": "Revised personal character",
+      "campaign": { "name": "Loom Fixture Fleet", "requireAdmissionApproval": true },
+      "decision": { "decision": "approve", "reason": "Reviewed the character" },
+      "milestone": { "level": 2, "reason": "Completed the first voyage" }
+    },
+    "expected": {
+      "pendingState": "pending",
+      "approvedState": "active",
+      "copyRevisionOnCreate": 0,
+      "copyRevisionAfterApproval": 1,
+      "copyHealth": { "current": 12, "max": 12 },
+      "copyName": "Loom Fixture Sailor",
+      "copySourceRevision": 5,
+      "sourceHealthAfterApproval": 4,
+      "playerCanAdvanceBeforeMilestone": false,
+      "gmCanAuthorizeMilestone": true,
+      "gmCanAdvancePlayerCharacter": false,
+      "playerCanAdvanceAfterMilestone": true
+    }
+  }
+}

@@ -94,9 +94,10 @@ const {
 const projectLedger = require('./ledgerProjection');
 const lineageLedger = require('./lineageLedger');
 const attributeIds = Object.values(catalog.abilities);
-function fail(message) {
+function fail(message, savedChoice) {
   const e = new Error(message);
   e.statusCode = 400;
+  if (savedChoice) e.savedChoice = savedChoice;
   throw e;
 }
 function object(value, allowed) {
@@ -122,17 +123,23 @@ function attributes(value) {
 function create(
   baseAttributes,
   firstLevel,
-  { allowIncomplete = false, creation } = {},
+  { allowIncomplete = false, creation, additionalLevels = [] } = {},
 ) {
+  if (!Array.isArray(additionalLevels) || additionalLevels.length >= maximumCharacterLevel)
+    fail('Choose a starting level from 1 to 20');
+  const hasLineage = creation && Object.hasOwn(creation, 'lineage');
+  for (const event of additionalLevels) {
+    object(event, ['callingId', 'choices', ...(hasLineage ? lineageLedger.eventFields : [])]);
+  }
   const ledger = {
-    version: creation && Object.hasOwn(creation, 'lineage') ? 4 : 3,
+    version: hasLineage ? 4 : 3,
     ruleset: 'srd-5.2.1',
-    revision: 0,
+    revision: additionalLevels.length,
     baseAttributes: attributes(baseAttributes),
-    levels: [structuredClone(firstLevel)],
+    levels: structuredClone([firstLevel, ...additionalLevels]),
     ...(creation ? { creation: structuredClone(creation) } : {}),
   };
-  const summary = replay(ledger);
+  const summary = replay(ledger, { validateStartingTraining: ledger.version === 4 });
   requireComplete(summary, ledger.version, allowIncomplete);
   return { ledger, summary };
 }
@@ -143,7 +150,7 @@ function requireComplete(summary, version, allowIncomplete = false) {
       statusCode: version === 4 ? 422 : 400,
     });
 }
-function replay(ledger) {
+function replay(ledger, { validateStartingTraining = false } = {}) {
   object(ledger, [
     'version',
     'ruleset',
@@ -178,6 +185,21 @@ function replay(ledger) {
     styles = [],
     casting = {},
     choicesByCalling = {};
+  const trainingSources = new Map();
+  function grantSkills(skills, source) {
+    for (const skill of skills) {
+      trained.push(skill);
+      trainingSources.set(skill, source);
+    }
+  }
+  function unavailableSkills(options) {
+    return Object.fromEntries(options.filter(skill => trainingSources.has(skill))
+      .map(skill => [skill, 'Already granted by ' + trainingSources.get(skill) + '.']));
+  }
+  function unavailableExpertise(options) {
+    return Object.fromEntries(options.filter(skill => expertise.includes(skill))
+      .map(skill => [skill, 'You already have Expertise in this skill.']));
+  }
   let previousComplete = true,
     initiate = null,
     lineageInitiate = null;
@@ -280,7 +302,7 @@ function replay(ledger) {
       'initiateReplacements',
     ]);
     const used = new Set();
-    const request = (key, count, options, existing = [], distinct = true) => {
+    const request = (key, count, options, existing = [], distinct = true, unavailable) => {
       used.add(key);
       const value = choice[key];
       if (count === 0 && value === undefined) return [];
@@ -292,6 +314,7 @@ function replay(ledger) {
           key,
           count,
           options: options.filter((v) => !distinct || !existing.includes(v)),
+          ...(unavailable && Object.keys(unavailable).length && { unavailable }),
         });
         return [];
       }
@@ -303,10 +326,33 @@ function replay(ledger) {
           (v) => !options.includes(v) || (distinct && existing.includes(v)),
         )
       )
-        fail('Invalid ' + key + ' choice at ' + id + ' ' + n);
+        fail('Invalid ' + key + ' choice at ' + id + ' ' + n, { index, key });
       return value;
     };
     const single = (key, options) => request(key, 1, options, [], false)[0];
+    const skilled = (callingTools = []) => {
+      const options = [
+        ...catalog.skills.map((skill) => 'skill:' + skill.id),
+        ...require('./creation').tools.map((tool) => 'tool:' + tool),
+      ];
+      const owned = [
+        ...trained.map((skill) => 'skill:' + skill),
+        ...[...tools, ...callingTools].map((tool) => 'tool:' + tool),
+      ];
+      const unavailable = Object.fromEntries(options.filter((id) => owned.includes(id)).map((permission) => {
+        const [kind, value] = permission.split(':');
+        const source = initial && (kind === 'skill'
+          ? choice.backgroundSkills?.includes(value)
+          : tools.includes(value)) ? 'your Background'
+          : initial ? 'your Calling' : 'your existing Training';
+        return [permission, 'Already granted by ' + source + '.'];
+      }));
+      for (const permission of request('featTraining', 3, options, owned, true, unavailable)) {
+        const [kind, value] = permission.split(':');
+        if (kind === 'skill') grantSkills([value], 'Skilled');
+        else tools.push(value);
+      }
+    };
     if (initial && background?.feat === 'magic-initiate') {
       const list =
         background.list ?? single('initiateList', magicInitiateChoices.lists);
@@ -340,13 +386,22 @@ function replay(ledger) {
           ),
         );
       const grants = initial ? c.starting : c.multiclass;
-      trained.push(
-        ...request(
+      const fixedBackgroundSkills = initial && withLineage ? background?.skills ?? [] : [];
+      const reservedSkills = validateStartingTraining || choice.skills === undefined
+        ? fixedBackgroundSkills : [];
+      const unavailable = unavailableSkills(c.starting.skillOptions);
+      for (const skill of reservedSkills)
+        if (c.starting.skillOptions.includes(skill)) unavailable[skill] = 'Already granted by your Background.';
+      grantSkills(
+        request(
           'skills',
           grants.skillCount,
           c.starting.skillOptions,
-          trained,
+          [...trained, ...reservedSkills],
+          true,
+          unavailable,
         ),
+        'your Calling',
       );
       if (initial && background) {
         if (grants.tools.includes(background.tool)) {
@@ -385,6 +440,8 @@ function replay(ledger) {
           2,
           catalog.skills.map((s) => s.id),
           trained,
+          true,
+          unavailableSkills(catalog.skills.map(skill => skill.id)),
         );
         const pendingBackground = requiredChoices.find(
           (r) => r.key === 'backgroundSkills' && r.callingLevel === n,
@@ -394,26 +451,10 @@ function replay(ledger) {
           selected.length &&
           required.some((skill) => !selected.includes(skill))
         )
-          fail(
-            'Keep each nonduplicate background skill; replace duplicates only',
-          );
-        trained.push(...selected);
-        if (background.feat === 'skilled') {
-          const options = [
-            ...catalog.skills
-              .filter((s) => !trained.includes(s.id))
-              .map((s) => 'skill:' + s.id),
-            ...require('./creation')
-              .tools.filter(
-                (t) => !tools.includes(t) && !grants.tools.includes(t),
-              )
-              .map((t) => 'tool:' + t),
-          ];
-          for (const permission of request('featTraining', 3, options)) {
-            const [kind, id] = permission.split(':');
-            (kind === 'skill' ? trained : tools).push(id);
-          }
-        }
+          fail('Keep each nonduplicate background skill; replace duplicates only',
+            { index, key: 'backgroundSkills' });
+        grantSkills(selected, 'your Background');
+        if (background.feat === 'skilled') skilled(grants.tools);
       }
       weapons.push(...grants.weapons);
       armor.push(...grants.armor);
@@ -426,14 +467,15 @@ function replay(ledger) {
         scores, caster: Boolean(c.caster), weapons, armor, trained, tools, selectedFeats, initiate,
       });
       if (grants) {
-        trained.push(...grants.trainedSkills);
+        grantSkills(grants.trainedSkills, 'your Lineage');
         const feat = grants.originFeat;
         if (feat) {
           selectedFeats.push(feat.id);
           if (feat.id === 'magic-initiate') lineageInitiate = { ...feat.options, grantKey: feat.grantKey };
           for (const permission of feat.options?.training ?? []) {
             const [kind, ...parts] = permission.split(':');
-            (kind === 'skill' ? trained : tools).push(parts.join(':'));
+            if (kind === 'skill') grantSkills([parts.join(':')], 'your Lineage feat');
+            else tools.push(parts.join(':'));
           }
         }
       }
@@ -455,16 +497,21 @@ function replay(ledger) {
           trainingChoices.expertiseCount,
           trained,
           expertise,
+          true,
+          unavailableExpertise(trained),
         ),
       );
     if (trainingChoices.skillCount)
-      trained.push(
-        ...request(
+      grantSkills(
+        request(
           'skills',
           trainingChoices.skillCount,
           c.starting.skillOptions,
           trained,
+          true,
+          unavailableSkills(c.starting.skillOptions),
         ),
+        'your Calling',
       );
     if (trainingChoices.scholarCount)
       expertise.push(
@@ -473,6 +520,8 @@ function replay(ledger) {
           trainingChoices.scholarCount,
           trainedScholarSkills(trained),
           expertise,
+          true,
+          unavailableExpertise(trainedScholarSkills(trained)),
         ),
       );
     const previous = choicesByCalling[id] ?? {};
@@ -539,10 +588,10 @@ function replay(ledger) {
       n,
       previous.pathDiscipline,
     );
-    if (skill)
-      ({ trained, expertise })[trainingGrantDestination(trained, skill)].push(
-        skill,
-      );
+    if (skill) {
+      if (trainingGrantDestination(trained, skill) === 'trained') grantSkills([skill], 'your Path');
+      else expertise.push(skill);
+    }
     if (pathTool) tools.push(pathTool);
     if (id === 'gunslinger') {
       const { tool } = gunslingerLevelGrants(n, paths[id]);
@@ -560,9 +609,8 @@ function replay(ledger) {
         'clinicalAttribute',
         pathChoices.clinicalAttribute,
       );
-      ({ trained, expertise })[
-        trainingGrantDestination(trained, 'medicine')
-      ].push('medicine');
+      if (trainingGrantDestination(trained, 'medicine') === 'trained') grantSkills(['medicine'], 'your Path');
+      else expertise.push('medicine');
     }
     const blessedStrikes = blessedStrikeChoices(id, n);
     if (blessedStrikes)
@@ -660,7 +708,7 @@ function replay(ledger) {
       else {
         const feat = rules.feats.find((f) => f.id === choice.feat);
         if (!featAvailable(feat, total, selectedFeats))
-          fail('Unsupported or ineligible feat');
+          fail('Unsupported or ineligible feat', { index, key: 'feat' });
         if (
           !featPrerequisiteMet(feat, {
             scores,
@@ -670,36 +718,23 @@ function replay(ledger) {
             trained,
           })
         )
-          fail('Feat prerequisite not met');
+          fail('Feat prerequisite not met', { index, key: 'feat' });
         if (
           feat.id === 'boon-of-spell-recall' &&
           !Object.keys(levels).some((k) => callings[k].caster)
         )
-          fail('Spellcasting required');
+          fail('Spellcasting required', { index, key: 'feat' });
         object(choice.increases ?? {}, attributeIds);
         const entries = Object.entries(choice.increases ?? {});
         if (!featIncreaseShapeValid(feat, entries))
-          fail('Invalid feat attribute increase');
+          fail('Invalid feat attribute increase', { index, key: 'increases' });
         for (const [key, value] of entries) {
           const error = featIncreaseError(feat, key, scores[key], value);
-          if (error) fail(error);
+          if (error) fail(error, { index, key: 'increases' });
           scores[key] += value;
         }
         selectedFeats.push(feat.id);
-        if (feat.id === 'skilled') {
-          const options = [
-            ...catalog.skills
-              .filter((s) => !trained.includes(s.id))
-              .map((s) => 'skill:' + s.id),
-            ...require('./creation')
-              .tools.filter((t) => !tools.includes(t))
-              .map((t) => 'tool:' + t),
-          ];
-          for (const permission of request('featTraining', 3, options)) {
-            const [kind, id] = permission.split(':');
-            (kind === 'skill' ? trained : tools).push(id);
-          }
-        }
+        if (feat.id === 'skilled') skilled();
         if (feat.id === 'seasoned-voyager')
           tools.push(
             tools.includes('navigators-tools')
@@ -716,7 +751,7 @@ function replay(ledger) {
             lineageInitiate?.list === list ||
             previous.initiates?.some((s) => s.list === list)
           )
-            fail('Magic Initiate repeats require a different list');
+            fail('Magic Initiate repeats require a different list', { index, key: 'initiateList' });
           const attribute = single(
             'initiateAttribute',
             magicInitiateChoices.attributes,
@@ -891,7 +926,7 @@ function replay(ledger) {
     }
     for (const key of Object.keys(choice))
       if (!used.has(key))
-        fail('Choice unavailable at this Calling level: ' + key);
+        fail('Choice unavailable at this Calling level: ' + key, { index, key });
     choicesByCalling[id] = previous;
     previousComplete = requiredChoices.length === before;
   }

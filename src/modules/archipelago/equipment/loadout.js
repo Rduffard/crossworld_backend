@@ -1,4 +1,4 @@
-const { carryingCapacity, totalEquipmentWeight } = require('@crossworld/sanguine-engine/equipment/carrying');
+const { sizeCarryingCapacity, totalEquipmentWeight } = require('@crossworld/sanguine-engine/equipment/carrying');
 const { projectWeapon } = require('@crossworld/sanguine-engine/equipment/weapon-projection');
 const { armorRestrictions } = require('@crossworld/sanguine-engine/equipment/restrictions');
 const { armorTrained } = require("@crossworld/sanguine-engine/training");
@@ -58,7 +58,7 @@ function deriveLoadout(character, progression, { weaponGroups, covenantGuardBonu
     guardInputs,
     guard: calculateGuard(attributes, guardInputs),
     attacks,
-    carrying:{...carryingCapacity(attributes.might, progression.colossus?.carryingMultiplier ?? 1),
+    carrying:{...sizeCarryingCapacity(attributes.might, progression.colossus?.effectiveSize ?? progression.size ?? progression.creation?.size),
       knownWeightLb:totalEquipmentWeight(carried),
       unknownWeightInstances:carried.filter(item=>!item.definition||item.definition.weightLb===null).map(item=>item.instanceId)},
     restrictions,

@@ -35,7 +35,7 @@ test("actual authenticated rules routes expose eight Callings and reject forged 
     assert.equal(rules.persistentCreationEnabled, true);
     const catalogUrl = new URL('character-rules?version=SA-CHAR-1', url);
     const catalog = await fetch(catalogUrl, { headers });
-    const etag = '"d248164329ba23072e3332d66f4de3909b94f93ceb53c02bfda65fe23d9cce07"';
+    const etag = '"d2a780d7b51d07375ba81a9393936f2553d08e15d532ced1ec875f77b20efdf3"';
     assert.equal(catalog.status, 200);
     assert.equal(catalog.headers.get('etag'), etag);
     assert.deepEqual(await catalog.json(), rules);
@@ -90,11 +90,22 @@ test("actual authenticated rules routes expose eight Callings and reject forged 
 
 test("authenticated persistent routes save, reload and enforce ownership without a database connection", async () => {
   const Character = require("../../src/modules/archipelago/characters/model");
-  const methods = ["create", "countDocuments", "findOne", "findOneAndUpdate"];
+  const methods = ["create", "countDocuments", "findOne", "findOneAndUpdate", "findOneAndDelete"];
   const original = Object.fromEntries(methods.map(key => [key, Character[key]]));
   let saved;
+  let duplicate;
   Character.countDocuments = async () => 0;
-  Character.create = async value => (saved = { _id: "333333333333333333333333", ...structuredClone(value) });
+  Character.create = async value => {
+    if (saved) return (duplicate = { _id: "444444444444444444444444", ...structuredClone(value) });
+    return (saved = { _id: "333333333333333333333333", ...structuredClone(value) });
+  };
+  Character.findOneAndDelete = async query => {
+    if (!saved || query._id !== saved._id || query.owner !== saved.owner || (saved.campaignId ?? null) !== query.campaignId)
+      return null;
+    const removed = saved;
+    saved = null;
+    return removed;
+  };
   Character.findOne = query => ({ lean: async () => saved && query._id === saved._id && query.owner === saved.owner ? structuredClone(saved) : null });
   Character.findOneAndUpdate = (query, update) => ({ lean: async () => {
     if (query.owner !== saved.owner || query.documentRevision !== saved.documentRevision) return null;
@@ -126,6 +137,24 @@ test("authenticated persistent routes save, reload and enforce ownership without
     assert.equal(read.documentRevision, 0);
     assert.equal(read.rulesSummary.health.max, 12);
     assert.deepEqual(read.rulesLedger, character.rulesLedger);
+    assert.ok(read.equipment.attacks.length > 0);
+
+    assert.equal((await fetch(url+'/duplicate', { method: 'POST', headers: headers(other) })).status, 404);
+    const copied = await fetch(url+'/duplicate', { method: 'POST', headers: headers(owner) });
+    assert.equal(copied.status, 201);
+    const copy = await copied.json();
+    assert.equal(copy.name, 'HTTP Sailor (copy)');
+    assert.equal(copy.owner, owner);
+    assert.notEqual(copy._id, read._id);
+    assert.deepEqual(copy.rulesLedger, read.rulesLedger);
+    assert.notEqual(copy.loadout.mainHand, read.loadout.mainHand);
+    assert.equal(duplicate.documentRevision, 0);
+    assert.equal((await fetch(url, { method: 'DELETE', headers: headers(other) })).status, 404);
+    saved.campaignId = "555555555555555555555555";
+    assert.equal((await fetch(url, { method: 'DELETE', headers: headers(owner) })).status, 404);
+    delete saved.campaignId;
+    assert.equal((await fetch(url, { method: 'DELETE', headers: headers(owner) })).status, 200);
+    assert.equal((await fetch(url, { headers: headers(owner) })).status, 404);
   } finally {
     await stopHttp(server);
     for (const key of methods) Character[key] = original[key];

@@ -74,12 +74,13 @@ function decorate(value) {
     equipment: require('../equipment/equipmentView').derive(c, summary),
   };
 }
-function build(body) {
+function build(body, { equip = false } = {}) {
   fields(body, [
     ...require('./identity').fields,
     'origin',
     'attributes',
     'firstLevel',
+    'additionalLevels',
     'creation',
     'purchases',
   ]);
@@ -88,8 +89,9 @@ function build(body) {
     fail('Complete origin, background and point-buy creation choices', 422);
   const { ledger, summary } = rules.create(body.attributes, body.firstLevel, {
     creation: body.creation,
+    additionalLevels: body.additionalLevels,
   });
-  const starting = require('./creationEquipment').build(ledger, body.purchases);
+  const starting = require('./creationEquipment').build(ledger, body.purchases, false, equip);
   return {
     name: text(body.name, 2, 80),
     origin: summary.originId,
@@ -282,7 +284,7 @@ function handlers(Character, Campaign) {
       )
         c = null;
     }
-    if (!c) fail('Character not found', 404);
+    if (!c || (c.campaignAdmission && c.campaignAdmission.state !== 'active')) fail('Character not found', 404);
     if (
       !c.rulesLedger?.creation ||
       c.rulesVersion !== 'SA-CHAR-1' ||
@@ -303,12 +305,12 @@ function handlers(Character, Campaign) {
   };
   return {
     createPreview: wrap(async (req, res) => {
-      fields(req.body, ['attributes', 'firstLevel', 'creation', 'purchases']);
+      fields(req.body, ['attributes', 'firstLevel', 'creation', 'purchases', 'additionalLevels']);
       if (!req.body.creation) fail('Choose an origin and background', 422);
       const { summary, ledger } = rules.create(
         req.body.attributes,
         req.body.firstLevel,
-        { creation: req.body.creation, allowIncomplete: true },
+        { creation: req.body.creation, additionalLevels: req.body.additionalLevels, allowIncomplete: true },
       );
       const equipment = require('./creationEquipment');
       res.send({
@@ -333,7 +335,7 @@ function handlers(Character, Campaign) {
         if (previous)
           return res.status(201).send(decorate(requests.replay(previous, key)));
       }
-      const payload = build(req.body);
+      const payload = build(req.body, { equip: true });
       if ((await Character.countDocuments({ owner: req.user._id })) >= 20)
         fail('Character limit reached', 403);
       if (!key)

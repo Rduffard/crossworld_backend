@@ -56,7 +56,15 @@ test('every Calling starting package grants functional catalog pack contents and
   const starting = require('../../src/modules/archipelago/equipment/startingEquipment');
   for (const calling of rules.blueprint.callings)
     for (const choice of starting.options(calling.id).filter((x) => x !== 'starting-gold')) {
-      const inventory = starting.issue(calling.id, choice).inventory;
+      const { inventory, loadout } = starting.issue(calling.id, choice, true);
+      const slots = gear.validateLoadout(inventory, loadout);
+      assert.equal(slots.mainHand?.definition.kind, 'weapon', calling.id + ' ' + choice);
+      if (slots.mainHand.definition.hands === 2) assert.equal(loadout.grip, 'two');
+      if (calling.id === 'doctor') assert.equal(slots.offHand, null);
+      if (choice === 'pack-c') {
+        assert.equal(slots.mainHand.definition.id, 'pistol');
+        assert.equal(inventory.find(item => item.definitionId === 'bullets')?.quantity, 20);
+      }
       assert.ok(
         inventory.every((i) => i.definitionId),
         calling.id + ' ' + choice

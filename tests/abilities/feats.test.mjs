@@ -262,11 +262,13 @@ test('Punch and Grab requires own active turn, adds the Grapple choice and enfor
   const b = feat('grappler', 'gunslinger', 4, 'agility');
   assert.throws(() => use(b, 'grappler', {}, { targetIds: ['foe'], turnId: 'my-turn' }), /active turn/);
   command(b, 'turn.start', { turnId: 'my-turn', confirmed: true });
-  const r = use(b, 'grappler', {}, { targetIds: ['foe'], turnId: 'my-turn' });
+  assert.throws(() => use(b, 'grappler', {}, { targetIds: ['foe'], turnId: 'my-turn' }), /Confirm a target/);
+  assert.throws(() => use(b, 'grappler', { targetSize: 'huge' }, { targetIds: ['foe'], turnId: 'my-turn' }), /Confirm a target/);
+  const r = use(b, 'grappler', { targetSize: 'large' }, { targetIds: ['foe'], turnId: 'my-turn' });
   assert.equal(r.grapple.dc, 8 + b.summary.trainingBonus + b.summary.attributeModifiers.might);
   assert.equal(r.grapple.alsoDamage, true);
   assert.throws(
-    () => use(b, 'grappler', {}, { eventId: 'other-hit', targetIds: ['foe'], turnId: 'my-turn' }),
+    () => use(b, 'grappler', { targetSize: 'large' }, { eventId: 'other-hit', targetIds: ['foe'], turnId: 'my-turn' }),
     /unused confirmed turn/
   );
 });

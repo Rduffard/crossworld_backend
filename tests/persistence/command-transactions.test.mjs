@@ -1002,7 +1002,7 @@ test('capped Sorcery Point recovery matches serialized Pass 14 behavior', async 
     return value;
   })).digest('hex');
   assert.equal(outcomes.length, 245);
-  assert.equal(digest, 'f33f2aecd8e982ddae6dfe49e8276a790f0bf0d938d788bf940b14f7f085ab92');
+  assert.equal(digest, '9268802be4a2e1093ab6bc0e9a32c92277b78344591ef9054d258cc4aa2b4e88');
 });
 
 const effectEndingCases = [
@@ -1217,7 +1217,7 @@ test('resource subtype contracts preserve gameplay, authorization, and receipt p
   });
   assert.equal(observations.length, 112);
   assert.equal(createHash('sha256').update(serialized).digest('hex'),
-    '07b7427732d2a3d3fa4a2f290db5c7ad3996d6d4071a922b2569157b2745858a');
+    'ffb95d78463d165122944830f460546285d23df92253003f4b2b71b8baa600fb');
 });
 
 test('historical resource receipts replay payloads that fresh resource commands reject', async () => {

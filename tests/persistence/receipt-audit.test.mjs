@@ -5,7 +5,7 @@ const require=createRequire(import.meta.url),{handler}=require('../../src/module
 function store(){
   let reads=0;const records=Array.from({length:5},(_,i)=>({_id:(5-i).toString(16).padStart(24,'0'),operationId:'operation-'+i,createdAt:new Date(2026,0,i+1).toISOString(),response:{name:'Hidden character snapshot',operationResult:{type:'identity.patch'}}}));
   const Character={findOne:q=>({lean:async()=>q.owner==='owner'&&q._id==='character'?{_id:'character'}:null})};
-  const Receipt={find:q=>{reads++;assert.equal(q.owner,'owner');assert.equal(q.characterId,'character');return {select(fields){assert.equal(fields,'_id operationId createdAt response.operationResult');return this;},sort(value){assert.deepEqual(value,{_id:-1});return this;},limit(n){this.n=n;return this;},async lean(){return records.filter(r=>!q._id||r._id<q._id.$lt).slice(0,this.n);}};}};
+  const Receipt={find:q=>{reads++;assert.deepEqual(q.$or,[{owner:'owner',characterId:'character'},{transferRecipientId:'character'}]);return {select(fields){assert.equal(fields,'_id operationId createdAt response.operationResult');return this;},sort(value){assert.deepEqual(value,{_id:-1});return this;},limit(n){this.n=n;return this;},async lean(){return records.filter(r=>!q._id||r._id<q._id.$lt).slice(0,this.n);}};}};
   async function call(query={},owner='owner'){let data,error;await handler(Character,Receipt)({params:{characterId:'character'},user:{_id:owner},query},{send(v){data=v;}},e=>{error=e;});return {data,error};}
   return {call,get reads(){return reads;}};
 }

@@ -11,6 +11,7 @@ router.post("/preview", canonical.createPreview);
 router.get("/:characterId", id, canonical.get);
 router.post('/:characterId/commands',id,require('./commands').handler(Character,require('./commandReceipt'),require('./treatmentLock'),Campaign));
 router.get('/:characterId/commands',id,require('./audit').handler(Character,require('./commandReceipt'),Campaign));
+router.post("/:characterId/duplicate", id, controller.duplicateCharacter);
 router.delete("/:characterId", id, controller.deleteCharacter);
 router.post("/:characterId/preview", id, canonical.preview);
 module.exports = router;

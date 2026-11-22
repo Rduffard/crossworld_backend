@@ -54,6 +54,91 @@ test(
           payload,
         }, user);
       }
+      await t.test('Inventory transfers conserve gear across retries, races and failed receipt writes', async () => {
+        const { ledger } = build('gunslinger', 1);
+        const gear = require('../../src/modules/archipelago/equipment');
+        const Campaign = require('../../src/modules/archipelago/campaigns/model');
+        const load = async (id) => Character.findById(id).lean();
+        const newCharacter = async (name, user = owner) => {
+          const created = await request('', {
+            name, attributes: ledger.baseAttributes,
+            creation: ledger.creation, firstLevel: ledger.levels[0],
+          }, user);
+          assert.equal(created.status, 201, JSON.stringify(created.body));
+          return created.body;
+        };
+        const source = await newCharacter('Transfer source');
+        const recipient = await newCharacter('Transfer recipient');
+        const outsider = await newCharacter('Foreign recipient', other);
+        const stack = gear.issue({ customName: 'Ferry tickets', quantity: 5 });
+        await Character.updateOne({ _id: source._id }, { $push: { inventory: stack } });
+        const payload = {
+          targetId: recipient._id, expectedTargetRevision: recipient.documentRevision,
+          instanceId: stack.instanceId, quantity: 2,
+        };
+        const transfer = (from, to, id, user) =>
+          command(from, 'equipment.transfer', to, id, user);
+        assert.equal((await transfer(source, payload, 'transfer-foreign-source', other)).status, 404);
+        assert.equal((await transfer(source, { ...payload, targetId: outsider._id }, 'transfer-foreign-target')).status, 404);
+        assert.equal((await transfer(source, { ...payload, expectedTargetRevision: 1 }, 'transfer-stale-target')).status, 409);
+        assert.equal((await transfer(source, { ...payload, targetId: source._id }, 'transfer-self')).status, 422);
+        const receiptId = 'transfer-receipt-rollback';
+        const createReceipt = Receipt.create;
+        Receipt.create = async function(entries, ...args) {
+          if (entries[0]?.operationId === receiptId) throw new Error('Injected transfer receipt failure');
+          return createReceipt.call(this, entries, ...args);
+        };
+        try {
+          const failed = await transfer(source, payload, receiptId);
+          assert.equal(failed.status, 500);
+          assert.equal(failed.body.message, 'Injected transfer receipt failure');
+        } finally {
+          Receipt.create = createReceipt;
+        }
+        assert.equal((await load(source._id)).inventory.find(item => item.instanceId === stack.instanceId).quantity, 5);
+        assert.deepEqual((await load(recipient._id)).inventory, recipient.inventory);
+
+        const race = await Promise.all(['transfer-race-first', 'transfer-race-second'].map(async id =>
+          ({ id, response: await transfer(source, payload, id) })));
+        assert.deepEqual(race.map(entry => entry.response.status).sort(), [200, 409]);
+        const winner = race.find(entry => entry.response.status === 200);
+        assert.deepEqual(await transfer(source, payload, winner.id), winner.response);
+        assert.equal((await transfer(source, { ...payload, quantity: 1 }, winner.id)).status, 409);
+        const incomingId = winner.response.body.operationResult.transfer.targetInstanceId;
+        const sourceAfter = await load(source._id);
+        const recipientAfter = await load(recipient._id);
+        assert.notEqual(incomingId, stack.instanceId);
+        assert.equal(sourceAfter.inventory.find(item => item.instanceId === stack.instanceId).quantity, 3);
+        assert.deepEqual(recipientAfter.inventory.find(item => item.instanceId === incomingId),
+          { ...stack, instanceId: incomingId, quantity: 2 });
+        assert.equal(sourceAfter.goldCp, source.goldCp);
+        assert.equal(recipientAfter.goldCp, recipient.goldCp);
+        assert.deepEqual(recipientAfter.rulesRuntime, recipient.rulesRuntime);
+        for (const id of [source._id, recipient._id]) {
+          const audit = await request('/' + id + '/commands');
+          assert.deepEqual(audit.body.items[0].result, winner.response.body.operationResult);
+        }
+
+        const campaign = await Campaign.create({
+          name: 'Transfer Test Campaign', inviteCode: 'XFERTEST',
+          owner: other, players: [owner], characterIds: [source._id, recipient._id],
+        });
+        await Character.updateMany({ _id: { $in: [source._id, recipient._id] } },
+          { $set: { campaignId: campaign._id, campaignAdmission: { state: 'active' } } });
+        const campaignPayload = { ...payload, expectedTargetRevision: recipientAfter.documentRevision, quantity: 3 };
+        assert.equal((await transfer(sourceAfter, campaignPayload, 'transfer-campaign-player', owner)).status, 403);
+        await Campaign.updateOne({ _id: campaign._id }, { $pull: { characterIds: recipient._id } });
+        assert.equal((await transfer(sourceAfter, campaignPayload, 'transfer-unregistered-target', other)).status, 404);
+        await Campaign.updateOne({ _id: campaign._id }, { $push: { characterIds: recipient._id } });
+        await Character.updateOne({ _id: recipient._id }, { $set: { 'campaignAdmission.state': 'pending' } });
+        assert.equal((await transfer(sourceAfter, campaignPayload, 'transfer-pending-target', other)).status, 404);
+        await Character.updateOne({ _id: recipient._id }, { $set: { 'campaignAdmission.state': 'active' } });
+        const gmTransfer = await transfer(sourceAfter, campaignPayload, 'transfer-campaign-gm', other);
+        assert.equal(gmTransfer.status, 200, JSON.stringify(gmTransfer.body));
+        assert.equal(gmTransfer.body.operationResult.transfer.targetInstanceId, stack.instanceId);
+        assert.deepEqual((await load(recipient._id)).inventory.find(item => item.instanceId === stack.instanceId),
+          { ...stack, quantity: 3 });
+      });
       await t.test('Ledger v4 creation receipts and multi-level advancement survive persistence and rollback', async () => {
         const { ledger } = build('gunslinger', 5);
         const { size, ...roots } = ledger.creation;
@@ -283,7 +368,7 @@ test(
       // Exercise actual multi-document transactions, including rollback after a
       // treatment-lock insert and source expenditure, against the isolated DB.
       const surgeonRecord = await Character.findOne({ calling: 'doctor' }).lean(),
-        livingRecord = await Character.findOne({ owner, calling: 'gunslinger', 'rulesLedger.version': 3 }).lean(),
+        livingRecord = await Character.findOne({ owner, name: 'Isolated gunslinger' }).lean(),
         deadRecord = await Character.findOne({ calling: 'tidecaller' }).lean();
       await Character.updateOne(
         { _id: livingRecord._id },
@@ -413,22 +498,28 @@ test(
       assert.equal(soloAuthorization.status, 200, JSON.stringify(soloAuthorization.body));
       const enrolled = await campaigns(registerPath, owner, 'PUT');
       assert.equal(enrolled.status, 200, JSON.stringify(enrolled.body));
-      const associated = (await request('/' + surgeon._id)).body;
-      assert.equal(associated.documentRevision, soloAuthorization.body.documentRevision + 1);
+      const campaignCharacterId = enrolled.body.characterId;
+      assert.notEqual(campaignCharacterId, surgeon._id);
+      const personal = (await request('/' + surgeon._id)).body;
+      assert.equal(personal.documentRevision, soloAuthorization.body.documentRevision);
+      assert.equal(personal.campaignId, null);
+      const associated = (await request('/' + campaignCharacterId)).body;
+      assert.equal(associated.documentRevision, 0);
+      assert.equal(associated.sourceCharacterId, surgeon._id);
       assert.equal((await campaigns(registerPath, owner, 'PUT')).status, 200);
       assert.equal(
-        (await request('/' + surgeon._id)).body.documentRevision,
+        (await request('/' + campaignCharacterId)).body.documentRevision,
         associated.documentRevision
       );
       assert.deepEqual(
         (await campaigns(campaignPath, other)).body.characters.map((character) => character._id),
-        [surgeon._id]
+        [campaignCharacterId]
       );
       assert.equal((await campaigns('', owner)).body[0]._id, campaign._id);
       assert.equal(associated.permissions.campaignRegistered, true);
       assert.equal(associated.permissions.canGM, false);
       assert.equal(associated.permissions.canAdvance, false);
-      assert.equal((await request('/' + surgeon._id, undefined, other)).status, 200);
+      assert.equal((await request('/' + campaignCharacterId, undefined, other)).status, 200);
       const authorizeBody = {
         operationId: 'campaign-milestone-seven',
         expectedRevision: associated.documentRevision,
@@ -436,15 +527,15 @@ test(
         type: 'milestone.authorize',
         payload: { level: 7, reason: 'Isolated acceptance milestone' },
       };
-      assert.equal((await request('/' + surgeon._id + '/commands', authorizeBody)).status, 403);
+      assert.equal((await request('/' + campaignCharacterId + '/commands', authorizeBody)).status, 403);
       assert.equal(
-        (await request('/' + surgeon._id + '/commands', authorizeBody, '333333333333333333333333'))
+        (await request('/' + campaignCharacterId + '/commands', authorizeBody, '333333333333333333333333'))
           .status,
         404
       );
-      const milestone = await request('/' + surgeon._id + '/commands', authorizeBody, other);
+      const milestone = await request('/' + campaignCharacterId + '/commands', authorizeBody, other);
       assert.equal(milestone.status, 200, JSON.stringify(milestone.body));
-      assert.equal((await request('/' + surgeon._id)).body.permissions.canAdvance, true);
+      assert.equal((await request('/' + campaignCharacterId)).body.permissions.canAdvance, true);
       const seventh = build('doctor', 7, 'field-surgeon', 'yuma-core', 'field-medic');
       const advanced = await command(
         milestone.body,
@@ -454,7 +545,7 @@ test(
       );
       assert.equal(advanced.status, 200, JSON.stringify(advanced.body));
       assert.equal(advanced.body.rulesRuntime.milestones[0].used, true);
-      const wrongVersion = await request('/' + surgeon._id + '/commands', {
+      const wrongVersion = await request('/' + campaignCharacterId + '/commands', {
         operationId: 'wrong-rules-version',
         expectedRevision: advanced.body.documentRevision,
         rulesVersion: 'obsolete',
@@ -463,7 +554,7 @@ test(
       });
       assert.equal(wrongVersion.status, 409);
       assert.equal(
-        (await request('/' + surgeon._id)).body.documentRevision,
+        (await request('/' + campaignCharacterId)).body.documentRevision,
         advanced.body.documentRevision
       );
       assert.throws(
@@ -526,7 +617,7 @@ test(
       await mongoose.disconnect();
       assert.deepEqual(await restartSnapshot(fixtureMongo), snapshots);
       await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-      assert.equal(await Character.countDocuments(), 7);
+      assert.equal(await Character.countDocuments(), 11);
       for (const c of await Character.find().lean()) {
         assert.equal(rules.replay(c.rulesLedger).decisionsComplete, true);
         assert.equal(rules.runtime.validate(rules.replay(c.rulesLedger), c.rulesRuntime), true);

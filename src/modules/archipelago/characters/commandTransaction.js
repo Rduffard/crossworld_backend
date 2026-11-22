@@ -23,6 +23,8 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
             .session(session)
             .lean();
         if (!c) fail('Character not found', 404);
+        if (c.campaignAdmission && c.campaignAdmission.state !== 'active')
+          fail('Campaign character admission is required before play', 403);
         const authorization = await require('./authority').context(
           c,
           req.user._id,
@@ -56,6 +58,17 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
             'Recreate this experimental character using the current creator',
             409,
           );
+        async function scopedTarget(targetId) {
+          const campaignId = c.campaignId;
+          const target = await Character.findOne({
+            _id: targetId,
+            ...(campaignId ? { campaignId } : { owner: req.user._id }),
+          }).session(session).lean();
+          if (!target || (!campaignId && target.campaignId) ||
+              (target.campaignAdmission && target.campaignAdmission.state !== 'active'))
+            return null;
+          return target;
+        }
         const payload = structuredClone(req.body.payload);
         const context = { ...authorization };
         if (
@@ -114,15 +127,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
             'path:sanguine-conduit:vital-circuit:14#circuit' &&
           /^[a-f0-9]{24}$/i.test(payload.parameters?.targetId ?? '')
         ) {
-          const permission = c.campaignId
-            ? { $or: [{ owner: req.user._id }, { campaignId: c.campaignId }] }
-            : { owner: req.user._id };
-          const target = await Character.findOne({
-            _id: payload.parameters.targetId,
-            ...permission,
-          })
-            .session(session)
-            .lean();
+          const target = await scopedTarget(payload.parameters.targetId);
           if (!target)
             fail('Vital Circuit source target is not authorized', 404);
           const event = await Receipt.findOne({
@@ -149,15 +154,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
           const target = payload.targetIds?.[0];
           let restEpoch = payload.parameters?.targetRestEpoch;
           if (typeof target === 'string' && /^[a-f0-9]{24}$/i.test(target)) {
-            const permission = c.campaignId
-              ? { $or: [{ owner: req.user._id }, { campaignId: c.campaignId }] }
-              : { owner: req.user._id };
-            const native = await Character.findOne({
-              _id: target,
-              ...permission,
-            })
-              .session(session)
-              .lean();
+            const native = await scopedTarget(target);
             if (!native) fail('Target is not an authorized character', 404);
             restEpoch = native.rulesRuntime.restEpoch ?? 'creation';
             payload.parameters = {
@@ -192,7 +189,13 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
             { session },
           );
         }
-        const { changes, result } = apply(c, { ...req.body, payload }, context);
+        const { changes, result, receivedItem } = apply(c, { ...req.body, payload }, context);
+        if (receivedItem) {
+          await require('../equipment/transfer').receive(
+            c, result.transfer.targetId, payload.expectedTargetRevision, receivedItem,
+            { Character, Campaign, authorization, session },
+          );
+        }
         if (result.inspirationTransfer) {
           if (!authorization.campaignRegistered || !Campaign)
             fail('Inspiration transfer requires a registered party character', 403);
@@ -203,6 +206,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
           const target = await Character.findOne({
             _id: result.inspirationTransfer.targetId,
             campaignId: c.campaignId,
+            'campaignAdmission.state': { $nin: ['pending', 'rejected'] },
           }).session(session).lean();
           if (!target) fail('Inspiration recipient is outside your campaign', 404);
           const after = structuredClone(target.rulesRuntime);
@@ -225,15 +229,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
         if (result.swap && /^[a-f0-9]{24}$/i.test(result.swap.targetId)) {
           if (result.swap.targetId === String(c._id))
             fail('Alert needs another creature');
-          const permission = c.campaignId
-            ? { $or: [{ owner: req.user._id }, { campaignId: c.campaignId }] }
-            : { owner: req.user._id };
-          const target = await Character.findOne({
-            _id: result.swap.targetId,
-            ...permission,
-          })
-            .session(session)
-            .lean();
+          const target = await scopedTarget(result.swap.targetId);
           if (!target)
             fail('Initiative ally is not an authorized character', 404);
           const after = structuredClone(target.rulesRuntime);
@@ -280,15 +276,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
           for (const targetId of payload.targetIds ?? []) {
             if (targetId === String(c._id) || !/^[a-f0-9]{24}$/i.test(targetId))
               continue;
-            const permission = c.campaignId
-              ? { $or: [{ owner: req.user._id }, { campaignId: c.campaignId }] }
-              : { owner: req.user._id };
-            const target = await Character.findOne({
-              _id: targetId,
-              ...permission,
-            })
-              .session(session)
-              .lean();
+            const target = await scopedTarget(targetId);
             if (!target) fail('Target is not an authorized character', 404);
             const after = structuredClone(target.rulesRuntime);
             require('../combat/effects/healingEffects').targetEffects(
@@ -349,6 +337,7 @@ function bindTransaction(apply, Character, Receipt, Treatment, Campaign) {
               actorRole: authorization.role,
               digest,
               response,
+              ...(receivedItem ? { transferRecipientId: result.transfer.targetId } : {}),
             },
           ],
           { session },

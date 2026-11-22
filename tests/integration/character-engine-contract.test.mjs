@@ -21,7 +21,16 @@ test('the Lineage catalog keeps the protocol and capability flag', () => {
   assert.equal(blueprint.version, 4);
   assert.equal(blueprint.rulesVersion, 'SA-CHAR-1');
   assert.equal(blueprint.tabletopReady, false);
-  assert.equal(blueprint.contentHash, 'd248164329ba23072e3332d66f4de3909b94f93ceb53c02bfda65fe23d9cce07');
+  assert.equal(blueprint.contentHash, 'd2a780d7b51d07375ba81a9393936f2553d08e15d532ced1ec875f77b20efdf3');
+});
+
+test('every regional speech label uses the same saved identifier as its origin grant', () => {
+  assert.deepEqual(blueprint.regionalLanguages.map(language => [language.originId, language.id]),
+    blueprint.creation.origins.map(origin => [origin.id, origin.language]));
+  assert.ok(blueprint.regionalLanguages.every(language =>
+    blueprint.languages.includes(language.id) && language.name.endsWith(' regional speech')));
+  assert.equal(new Set(blueprint.regionalLanguages.map(language => language.id)).size,
+    blueprint.regionalLanguages.length);
 });
 
 test('Training follows the expected total-level schedule from 1 through 20', () => {

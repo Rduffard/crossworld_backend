@@ -67,6 +67,7 @@ const blueprint = {
   abilities: catalog.abilities,
   skills: catalog.skills,
   languages: catalog.languages,
+  regionalLanguages: require('./regionalLanguages'),
   equipment: require("./blueprints/equipment/index"),
   startingEquipment: require('@crossworld/sanguine-engine/equipment/starting-equipment').packages,
   creation: { origins, backgrounds, tools, originPolicy, lineages, beastshifterForms },

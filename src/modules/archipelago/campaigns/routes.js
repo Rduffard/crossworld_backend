@@ -11,6 +11,7 @@ router.post('/', campaign.create);
 router.post('/join', campaign.join);
 router.get('/:campaignId', celebrate({ params: Joi.object({ campaignId: id }) }), campaign.open);
 router.put('/:campaignId/characters/:characterId', celebrate({ params: Joi.object({ campaignId: id, characterId: id }) }), campaign.register);
+router.post('/:campaignId/characters/:characterId/admission', celebrate({ params: Joi.object({ campaignId: id, characterId: id }) }), campaign.decideAdmission);
 router.get('/:campaignId/sessions',celebrate({params:Joi.object({campaignId:id})}),sessions.list);
 router.post('/:campaignId/sessions',celebrate({params:Joi.object({campaignId:id})}),sessions.create);
 router.post('/:campaignId/sessions/join',celebrate({params:Joi.object({campaignId:id})}),sessions.join);

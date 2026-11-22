@@ -6,6 +6,7 @@ const { options, initiativeOutcome, savageAttackerOutcome, improveFateOutcome, h
 const { improveFateDice, improveFateSigns, peerlessAimOutcome, nightSpiritLightEligible, mergeWithShadowsEffect } = require('@crossworld/sanguine-engine/feats');
 const { savageAttackerRollSets, overwhelmingStrikeOutcome, fieldResponderOutcome } = require('@crossworld/sanguine-engine/feats');
 const { strikeRollCount } = require('@crossworld/sanguine-engine/combat/strike');
+const { sizeWithinMaximum } = require('@crossworld/sanguine-engine/combat/size');
 const { action, source, recover } = require('../runtime/featState');
 const { label } = require('../runtime/runtimeJournals');
 function fail(message){throw Object.assign(new Error(message),{statusCode:422});}
@@ -88,7 +89,9 @@ function apply(c,summary,type,p,findAttack){
         if(targets.length!==1||targets[0]===String(c._id??'self'))fail('Confirm one other living creature at zero Health within five feet');const kit=c.inventory.find(i=>i.instanceId===params.kitId&&i.definitionId==='healer-kit');if(!kit||!(kit.chargesCurrent>0))fail('Choose an owned healer kit with a charge');action(state);kit.chargesCurrent--;Object.assign(result,fieldResponderOutcome());break;
       }
       case 'grappler':{
-        if(!state.ownerTurn?.open||targets.length!==1)fail('Punch and Grab requires your active turn and a confirmed unarmed Attack-action hit');oncePerTurn();action(state);result.grapple=punchAndGrabOutcome(summary.trainingBonus,summary.attributeModifiers.might);break;
+        if(!state.ownerTurn?.open||targets.length!==1)fail('Punch and Grab requires your active turn and a confirmed unarmed Attack-action hit');
+        if(!sizeWithinMaximum(params.targetSize,summary.grappleSize,1))fail('Confirm a target no more than one size larger than you');
+        oncePerTurn();action(state);result.grapple=punchAndGrabOutcome(summary.trainingBonus,summary.attributeModifiers.might);break;
       }
       default:fail('This feat has no triggered operation; use its passive rules or its dedicated casting controls');
     }
