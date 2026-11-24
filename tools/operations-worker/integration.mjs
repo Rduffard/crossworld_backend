@@ -387,6 +387,36 @@ try {
     assert.equal(directory.employees[0].revision, 1);
     console.log("Workforce hierarchy, owner isolation, and revision checks PASS");
 
+    const registryPath = "/workshop-registry";
+    const registry = {
+      schema_version: 1, path_base: "metadata fixture",
+      resources: [
+        { id: "fixture-tested", status: "validated", purpose: "A tagged procedure fixture", local_path: "11_Validated_Examples/fixture.md", license: "CC0",
+          original_url: "https://example.invalid/reference?remove=value", hidden_metadata: "excluded", license_evidence: "https://example.invalid/license", integrity_manifest: "manifests/sha.json" },
+        { id: "fixture-source", status: "acquired", local_path: "../../unrelated.txt", original_url: "javascript:void(0)" },
+      ],
+    };
+    const importRegistry = (body, user) => api(registryPath, { method: "POST", body, user });
+    assert.equal((await importRegistry(registry, other))[0], 403);
+    assert.equal((await api(registryPath, { user: other }))[0], 403);
+    assert.equal((await importRegistry({ ...registry, schema_version: 2 }))[0], 400);
+    assert.equal((await importRegistry({ ...registry, resources: [registry.resources[0], registry.resources[0]] }))[0], 400);
+    const [imported, importResult] = await importRegistry(registry);
+    assert.equal(imported, 200);
+    assert.equal(importResult.total, 2);
+    assert.deepEqual((await importRegistry(registry))[1], importResult);
+    const [, matching] = await api(registryPath + "?q=tagged&status=validated");
+    assert.deepEqual(matching.entries.map((entry) => entry.id), ["fixture-tested"]);
+    assert.equal(matching.entries[0].hidden_metadata, undefined);
+    assert.equal(matching.entries[0].localPath, "11_Validated_Examples/fixture.md");
+    assert.equal(matching.entries[0].licenseEvidence, "https://example.invalid/license");
+    assert.equal(matching.entries[0].integrityManifest, "manifests/sha.json");
+    assert.equal(matching.entries[0].originalUrl, "https://example.invalid/reference");
+    const [, acquired] = await api(registryPath + "?status=acquired");
+    assert.equal(acquired.entries[0].localPath, "");
+    assert.equal(acquired.entries[0].originalUrl, "");
+    console.log("Workshop registry import, source normalization, filtering, replay, and owner isolation PASS");
+
     const note = {
       kind: "procedure", status: "validated", title: "Disposable provenance check",
       source: "fixture://workshop/procedure", author: "Integration fixture", project: "Leviathan",

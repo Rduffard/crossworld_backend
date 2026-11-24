@@ -8,6 +8,7 @@ const { createProjects } = require("./projects");
 const { createHeadquarters } = require("./headquarters");
 const { createActivity } = require("./activity");
 const { createKnowledge } = require("./knowledge");
+const { createWorkshopRegistry } = require("./workshop-registry");
 const { createWorkforce } = require("./workforce");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
 const { rateLimitObservation, usageHoldUntil } = require("./usage");
@@ -383,6 +384,7 @@ function createRouter({
   router.use("/projects", createProjects({ records: projects, owner }));
   router.use("/objectives", createObjectives({ records: objectives, projects, jobs, jobView, owner }));
   router.use("/knowledge", createKnowledge({ records: knowledge, owner }));
+  router.use("/workshop-registry", createWorkshopRegistry({ records: () => db().collection("operations_workshop_registry"), owner }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
