@@ -4,8 +4,7 @@ const expressWinston = require("express-winston");
 const messageFormat = winston.format.combine(
   winston.format.timestamp(),
   winston.format.printf(
-    ({ level, message, meta, timestamp }) =>
-      `${timestamp} ${level}: ${meta?.error?.stack || message}`
+    ({ level, message, timestamp }) => `${timestamp} ${level}: ${message}`
   )
 );
 
@@ -14,6 +13,8 @@ const messageFormat = winston.format.combine(
  * Logs all incoming HTTP requests
  */
 const requestLogger = expressWinston.logger({
+  meta: false,
+  msg: "{{req.method}} HTTP {{res.statusCode}}",
   transports: [
     new winston.transports.Console({
       format: messageFormat,
@@ -30,6 +31,12 @@ const requestLogger = expressWinston.logger({
  * Logs only errors passed to next(err)
  */
 const errorLogger = expressWinston.errorLogger({
+  meta: false,
+  msg: "{{req.method}} HTTP request error",
+  exceptionToMeta: (error) => {
+    const status = error?.statusCode ?? error?.status;
+    return { status: Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500 };
+  },
   transports: [
     new winston.transports.Console({
       format: messageFormat,

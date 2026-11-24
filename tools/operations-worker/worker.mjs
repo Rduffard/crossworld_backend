@@ -6,10 +6,13 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { AppServer, discoverCodex, model, runTurn } from "./codex.mjs";
 import { turnControl } from "./control.mjs";
+import { findFfmpeg, localMediaStorage, pollMedia } from "./media-storage.mjs";
 import { developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifySandbox, workspacePaths } from "./profiles.mjs";
 
 import promptLimits from "../../src/modules/operations/prompt-limits.js";
 import usageTools from "../../src/modules/operations/usage.js";
+import diagnostics from "../../src/modules/operations/diagnostics.js";
+import { resourceSampler } from "./resources.mjs";
 
 const { PROMPT_LIMIT } = promptLimits;
 const { rateLimitObservation, usageHoldUntil } = usageTools;
@@ -37,16 +40,13 @@ export function backendClient(base, token) {
   };
 }
 
-export function redact(text, token) {
-  return String(text ?? "")
-    .replaceAll("\0", "")
-    .replaceAll(token, "[device credential redacted]")
-    .replace(/\b(?:sk-[\w-]{16,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,})\b/g, "[credential redacted]")
-    .replace(/((?:access_token|refresh_token|id_token|api_key)["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, "$1[redacted]");
-}
+export const { redact } = diagnostics;
 
-export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, boundedCorrections = false, log = console.log }) {
+export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
+  mediaOutput = false, boundedCorrections = false, log = console.log }) {
   const instance = randomUUID();
+  const mediaController = new AbortController();
+  const mediaTask = mediaStorage && pollMedia({ send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage });
   let advertisedProfiles = profiles;
   let active;
   let lastContact = Date.now();
@@ -74,7 +74,11 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       try {
         if (Date.now() - heartbeat >= 5000) {
           const announce = () => send("/heartbeat", {
-            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, usage: getUsage?.() || undefined,
+            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, media: !!mediaStorage, usage: getUsage?.() || undefined,
+            mediaVideoFrames: mediaStorage?.videoFrames === true,
+            mediaOutput,
+            mediaUsage: mediaStorage?.latestUsage(),
+            resources: getResources?.(),
           });
           try { await announce(); }
           catch (error) {
@@ -102,12 +106,12 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
               while (index < clean.length) {
                 let end = Math.min(index + 3000, clean.length);
                 if (clean.charCodeAt(end - 1) >= 0xd800 && clean.charCodeAt(end - 1) <= 0xdbff) end--;
-                state.events.push({ view, label: label.slice(0, 120), text: clean.slice(index, end) });
+                state.events.push({ view, label: redact(label, token).slice(0, 120), text: clean.slice(index, end) });
                 index = end;
               }
             };
             record("activity", "Job assigned", "The Windows worker received the job.");
-            state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control))
+            state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control, instance))
               .catch(() => ({ status: "failed", error: "Local execution failed." }))
               .then((result) => {
                 const status = state.controller.signal.aborted && result.status !== "completed"
@@ -137,6 +141,8 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       await sleep(!disconnected && active?.events.length >= 5 ? 50 : interval, undefined, { signal }).catch(() => {});
     }
   } finally {
+    mediaController.abort();
+    await mediaTask;
     if (active) {
       active.controller.abort("interrupted");
       await active.execution;
@@ -176,6 +182,26 @@ function localSessions(deviceId) {
       threads.set(threadId, { workspace, profile });
     },
   };
+}
+
+export async function verifyMediaOutbox(exe, storage, workshopRoots) {
+  const [root] = workshopRoots;
+  const probe = new AppServer(exe, root);
+  let outbox;
+  let sibling;
+  try {
+    outbox = await storage.openOutbox(randomUUID());
+    sibling = await storage.openOutbox(randomUUID());
+    const roots = [...workshopRoots, outbox.directory];
+    await probe.initialize();
+    await verifySandbox(probe, root, sandboxFor(root, roots), [...storage.protectedPaths, sibling.directory], roots);
+    return true;
+  } catch { return false; }
+  finally {
+    probe.close();
+    await outbox?.removeIfEmpty().catch(() => {});
+    await sibling?.removeIfEmpty().catch(() => {});
+  }
 }
 
 async function startWorker() {
@@ -254,6 +280,18 @@ async function startWorker() {
   }
   if (process.argv.includes("--check")) return;
   const token = loadCredential({ onboard: process.argv.includes("--onboard"), register: process.argv.includes("--register") });
+  const mediaRoot = process.env.OPERATIONS_MEDIA_ROOT || "D:\\Crossworld Operations\\Media";
+  const mediaOptions = {
+    workspaceRoots: Object.values(workspaces),
+    requirePrivateAcl: true,
+    ffmpeg: await findFfmpeg(process.env.OPERATIONS_FFMPEG_EXE, [...Object.values(workspaces), mediaRoot]),
+    ...(process.env.OPERATIONS_MEDIA_QUOTA_BYTES ? { quota: Number(process.env.OPERATIONS_MEDIA_QUOTA_BYTES) } : {}),
+  };
+  const mediaStorage = await localMediaStorage(mediaRoot, mediaOptions).catch(() => {
+    console.error("Media storage is unavailable. Check the local media directory and quota.");
+  });
+  const mediaOutput = !!(mediaStorage && editRoots.workshop && await verifyMediaOutbox(exe, mediaStorage, editRoots.workshop));
+  if (mediaStorage && editRoots.workshop && !mediaOutput) console.error("Private artifact exports are unavailable. The job-folder sandbox check failed.");
   const sessions = localSessions(token.split(".")[0]);
   const send = backendClient(process.env.OPERATIONS_BACKEND_URL, token);
   const controller = new AbortController();
@@ -261,13 +299,14 @@ async function startWorker() {
   process.on("SIGTERM", () => controller.abort());
   await runWorker({
     send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])],
-    signal: controller.signal,
+    signal: controller.signal, mediaStorage, mediaOutput,
+    getResources: process.env.OPERATIONS_RESOURCE_TELEMETRY === "1" ? resourceSampler() : undefined,
     getUsage: () => {
       if (usageHoldUntil(usage) && Date.now() - lastUsageAttempt >= 120_000) void refreshHeldUsage();
       return usage;
     },
     boundedCorrections: true,
-    execute: async (job, record, signal, control) => {
+    execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
       const correction = job.workerRole === "correction";
@@ -280,21 +319,50 @@ async function startWorker() {
       if (job.status === "cancelling" || job.eventCount > 0) {
         return { status: "interrupted", error: "Previous assignment cannot be safely replayed." };
       }
+      if (job.outputMedia && (!mediaOutput || job.codexThreadId || profile !== "workshop" || correction)) {
+        return { status: "failed", error: "Job-scoped media export is unavailable on this host." };
+      }
       const roots = profile === "read-only" || unrestricted ? [] : editRoots[profile].map(verifyDirectory);
       const [root] = roots;
       const cwd = root || workspaces[job.workspace];
-      return runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
-        root,
-        roots,
-        gitRoots: profile === "development" && !correction ? roots : [],
-        protectedDirectories: unrestricted ? undefined : exclusions(roots),
-        supervised: !!root && !correction,
-        fullAccess: unrestricted && fullAccess,
-        autonomousNetwork: !correction && autonomousNetwork && profile === "development",
-        localMcp: !job.workerRole || job.workerRole === "direct",
-        observeUsage,
-        remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
-      });
+      let staged;
+      let outbox;
+      if (job.mediaInputs?.length) {
+        if (!mediaStorage) return { status: "failed", error: "The media store is unavailable." };
+        try { staged = await mediaStorage.stageImages(job.mediaInputs); }
+        catch { return { status: "failed", error: "An authorized image could not be verified or staged." }; }
+      }
+      try {
+        if (job.outputMedia) {
+          outbox = await mediaStorage.openOutbox(job._id);
+          roots.push(outbox.directory);
+        }
+        return await runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
+          root,
+          roots,
+          gitRoots: profile === "development" && !correction ? roots : [],
+          protectedDirectories: unrestricted ? undefined : [...exclusions(roots), ...(mediaStorage?.protectedPaths || [])],
+          supervised: !!root && !correction,
+          fullAccess: unrestricted && fullAccess,
+          autonomousNetwork: !correction && autonomousNetwork && profile === "development",
+          localMcp: !job.workerRole || job.workerRole === "direct",
+          observeUsage,
+          imagePaths: staged?.files,
+          artifactDir: outbox?.directory,
+          publishArtifact: outbox ? (filename) => mediaStorage.publishArtifact(job._id, filename, (phase, metadata) =>
+            send(`/media/jobs/${job._id}/artifacts`, { instance, phase, ...metadata }), signal) : undefined,
+          proposeObjective: job.studioActions === true ? (callId, value) => send(`/jobs/${job._id}/objective-proposal`, {
+            instance, callId, project: redact(value.project, token), title: redact(value.title, token),
+            instruction: redact(value.instruction, token), priority: value.priority,
+            criteria: Array.isArray(value.criteria) ? value.criteria.map(item => redact(item, token)) : undefined,
+          }) : undefined,
+          readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
+          remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
+        });
+      } finally {
+        await staged?.cleanup().catch(() => {});
+        await outbox?.removeIfEmpty().catch(() => {});
+      }
     },
   });
 }

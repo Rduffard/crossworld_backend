@@ -15,7 +15,7 @@ function createProjects({ records, owner }) {
     return res.json(projects);
   });
   router.get("/:id", async (req, res) => {
-    const project = await records().findOne({ _id: req.params.id, ownerId: owner() }, { projection: { ownerId: 0 } });
+    const project = await records().findOne({ _id: req.params.id, ownerId: owner() }, { projection: { ownerId: 0, studioActionReceipts: 0 } });
     return project ? res.json(project) : res.status(404).json({ message: "Project not found." });
   });
 

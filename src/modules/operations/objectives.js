@@ -5,6 +5,23 @@ const idPattern = /^[a-f\d-]{36}$/;
 const nonempty = (value, limit) =>
   typeof value === "string" && value.length <= limit && value.isWellFormed() && !!value.trim();
 
+function objectiveInput(value) {
+  const { title, instruction, criteria, priority = "normal" } = value || {};
+  if (!nonempty(title, 120) || !nonempty(instruction, 6000) || !["low", "normal", "high"].includes(priority) ||
+      !Array.isArray(criteria) || !criteria.length || criteria.length > 12 ||
+      !criteria.every(criterion => nonempty(criterion, 400)) ||
+      new Set(criteria.map(criterion => criterion.trim())).size !== criteria.length) return null;
+  return { title: title.trim(), instruction, priority, criteria: criteria.map(criterion => criterion.trim()) };
+}
+
+function objectiveRecord({ input, ownerId, projectId, id = randomUUID(), now = new Date() }) {
+  return {
+    _id: id, ownerId, ...input, status: "active", ...(projectId ? { projectId } : {}),
+    criteria: input.criteria.map(criterion => ({ id: randomUUID(), text: criterion, review: null })),
+    createdAt: now, updatedAt: now, revision: 0,
+  };
+}
+
 function createObjectives({ records, projects, jobs, jobView, owner }) {
   const router = express.Router();
 
@@ -20,31 +37,22 @@ function createObjectives({ records, projects, jobs, jobView, owner }) {
   });
 
   router.post("/", async (req, res) => {
-    const { title, instruction, criteria, priority = "normal", projectId } = req.body || {};
-    if ((projectId !== undefined && (typeof projectId !== "string" || !idPattern.test(projectId))) || !nonempty(title, 120) || !nonempty(instruction, 6000) ||
-        !["low", "normal", "high"].includes(priority) ||
-        !Array.isArray(criteria) || !criteria.length || criteria.length > 12 ||
-        !criteria.every((criterion) => nonempty(criterion, 400)) ||
-        new Set(criteria.map((criterion) => criterion.trim())).size !== criteria.length) {
+    const { projectId } = req.body || {};
+    const input = objectiveInput(req.body);
+    if ((projectId !== undefined && (typeof projectId !== "string" || !idPattern.test(projectId))) || !input) {
       return res.status(400).json({ message: "Provide a title, instruction and 1 to 12 distinct acceptance criteria." });
     }
     if (projectId && !(await projects().findOne({ _id: projectId, ownerId: owner(), status: "active" }))) {
       return res.status(409).json({ message: "Only active projects can receive new objectives." });
     }
-    const now = new Date();
-    const record = {
-      _id: randomUUID(), ownerId: owner(), title: title.trim(), instruction, priority, status: "active",
-      ...(projectId ? { projectId } : {}),
-      criteria: criteria.map((criterion) => ({ id: randomUUID(), text: criterion.trim(), review: null })),
-      createdAt: now, updatedAt: now, revision: 0,
-    };
+    const record = objectiveRecord({ input, ownerId: owner(), projectId });
     await records().insertOne(record);
     return res.status(201).json({ _id: record._id });
   });
 
   router.get("/:id/assignments", async (req, res) => {
     const assignments = await jobs().find({
-      objectiveId: req.params.id, ownerId: owner(), assignedRole: { $in: ["worker", "lead"] },
+      objectiveId: req.params.id, ownerId: owner(), assignedRole: { $in: ["worker", "lead", "art-director"] },
     }, { projection: { status: 1, leaseUntil: 1, assigneeName: 1, workspace: 1, title: 1, objectiveId: 1, createdAt: 1 } })
       .sort({ createdAt: -1, _id: 1 }).limit(50).toArray();
     return res.json(assignments.map(jobView));
@@ -85,4 +93,4 @@ function createObjectives({ records, projects, jobs, jobView, owner }) {
   return router;
 }
 
-module.exports = { createObjectives };
+module.exports = { createObjectives, objectiveInput, objectiveRecord };

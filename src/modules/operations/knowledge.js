@@ -2,11 +2,11 @@ const { randomUUID } = require("node:crypto");
 const express = require("express");
 
 const kinds = ["procedure", "research", "decision", "handover", "handbook", "qa", "air"];
-const provenance = ["untested", "external", "experimental", "validated", "deprecated", "failed"];
+const provenance = ["untested", "external", "experimental", "validated", "owner-approved", "deprecated", "failed"];
 const pickText = (value, max) => typeof value === "string" && value.isWellFormed() && value.length <= max
   ? value.trim() : null;
 
-function createKnowledge({ records, owner }) {
+function createKnowledge({ records, projects, owner }) {
   const router = express.Router();
   let indexed;
   const ensureIndex = () => {
@@ -33,17 +33,21 @@ function createKnowledge({ records, owner }) {
   });
 
   router.post("/", async (req, res) => {
-    const { kind, status } = req.body || {};
+    const { kind, status, projectId } = req.body || {};
     const fields = Object.fromEntries(Object.entries({
-      title: 120, project: 100, summary: 400, body: 8000, source: 500, author: 100, evidence: 2000, limitations: 2000,
+      title: 120, project: 100, summary: 400, body: 8000, source: 500, author: 100, evidence: 2000, limitations: 2000, license: 300,
     }).map(([key, limit]) => [key, pickText(req.body?.[key] ?? "", limit)]));
     if (Object.values(fields).includes(null) || !fields.title || !fields.summary || !fields.body ||
         !fields.source || !fields.author || !kinds.includes(kind) || !provenance.includes(status) ||
-        (status === "validated" && !fields.evidence)) {
+        (["validated", "owner-approved"].includes(status) && !fields.evidence) ||
+        (projectId != null && (typeof projectId !== "string" || projectId.length > 80))) {
       return res.status(400).json({ message: "Provide content, an author and a source. Validated entries require evidence." });
     }
+    const linked = projectId && await projects?.().findOne({ _id: projectId, ownerId: owner() });
+    if (projectId && !linked) return res.status(404).json({ message: "Project unavailable." });
     const _id = randomUUID();
-    await records().insertOne({ _id, ownerId: owner(), kind, status, ...fields, createdAt: new Date() });
+    await records().insertOne({ _id, ownerId: owner(), kind, status, ...fields,
+      ...(linked ? { projectId: linked._id, project: linked.name } : {}), createdAt: new Date() });
     return res.status(201).json({ _id });
   });
 

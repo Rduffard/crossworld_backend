@@ -59,6 +59,14 @@ jobs:
         working-directory: crossworld_backend
       - run: npm test
         working-directory: crossworld_backend
+      - name: Verify Operations with a loopback MongoDB fixture
+        working-directory: crossworld_backend
+        env:
+          OPERATIONS_TEST_MONGO_PORT: '27157'
+        run: |
+          mkdir -p "$RUNNER_TEMP/operations-mongo"
+          mongod --dbpath "$RUNNER_TEMP/operations-mongo" --bind_ip 127.0.0.1 --port "$OPERATIONS_TEST_MONGO_PORT" --logpath "$RUNNER_TEMP/operations-mongo.log" --fork
+          node tools/operations-worker/integration.mjs
       - run: npm test
         working-directory: archipelago
       - name: Package the validated backend runtime

@@ -1,13 +1,13 @@
 const { randomUUID } = require("node:crypto");
 const express = require("express");
 
-const roles = ["worker", "lead", "first-mate", "qa", "air"];
+const roles = ["worker", "lead", "first-mate", "art-director", "qa", "air"];
 const availability = ["available", "paused", "retired"];
 const workspaces = ["development", "workshop"];
 const text = (value, limit) => typeof value === "string" && value.isWellFormed() && value.length <= limit
   ? value.trim() : null;
 
-function createWorkforce({ records, jobs, owner, jobView }) {
+function createWorkforce({ records, jobs, objectives, owner, jobView }) {
   const router = express.Router();
 
   router.get("/", async (_req, res) => {
@@ -18,10 +18,20 @@ function createWorkforce({ records, jobs, owner, jobView }) {
         projection: { employeeId: 1, title: 1, status: 1, leaseUntil: 1, createdAt: 1 },
       }).sort({ createdAt: -1, _id: 1 }).limit(100).toArray(),
     ]);
+    const projectAssignments = directory.filter((entry) => entry.kind === "project-assignment");
+    const activationIds = [...new Set(projectAssignments
+      .filter(({ activationSource }) => activationSource === "foundation-objective").map(({ objectiveId }) => objectiveId))];
+    const activated = activationIds.length ? await objectives().find({
+      _id: { $in: activationIds }, ownerId, "activation.by": "owner", status: { $in: ["active", "completed"] },
+    }, { projection: { status: 1 } }).toArray() : [];
+    const state = new Map(activated.map(({ _id, status }) => [_id, status === "active" ? "assigned" : "completed"]));
     return res.json({
       observedRuns: observedRuns.map(jobView),
       departments: directory.filter((entry) => entry.kind === "department"),
       employees: directory.filter((entry) => entry.kind === "employee"),
+      roles: directory.filter((entry) => entry.kind === "role"),
+      projectAssignments: projectAssignments.map((entry) => entry.activationSource === "foundation-objective"
+        ? { ...entry, status: state.get(entry.objectiveId) || "paused" } : entry),
     });
   });
 

@@ -12,6 +12,7 @@ import { AppServer, discoverCodex, runTurn } from "./codex.mjs";
 import { backendClient, runWorker } from "./worker.mjs";
 import { acquireWorkerLock } from "./windows.mjs";
 import { protectedDirectories, workspacePaths as workspaces } from "./profiles.mjs";
+import { verifyMedia } from "./media-integration.mjs";
 
 const fullAccessLive = process.argv.includes("--full-access-live");
 const live = process.argv.includes("--live") && !fullAccessLive;
@@ -39,7 +40,9 @@ if (process.platform === "win32") {
   console.log("Worker single-instance lock PASS");
 }
 const database = `crossworld_operations_test_${randomUUID().replaceAll("-", "")}`;
-const db = await mongoose.createConnection("mongodb://127.0.0.1:27017", {
+const mongoPort = Number(process.env.OPERATIONS_TEST_MONGO_PORT ?? 27017);
+if (!Number.isSafeInteger(mongoPort) || mongoPort < 1 || mongoPort > 65535) throw new Error("Invalid loopback MongoDB fixture port.");
+const db = await mongoose.createConnection(`mongodb://127.0.0.1:${mongoPort}`, {
   dbName: database, serverSelectionTimeoutMS: 4000,
 }).asPromise();
 const app = express();
@@ -81,12 +84,200 @@ async function until(predicate, max = 15_000) {
 }
 
 try {
+  const financeEntry = {
+    id: randomUUID(), name: "Fixture expense", kind: "expense", amount: 1250,
+    currency: "USD", category: "Cloud", date: "2026-11-07",
+  };
+  const saveFinance = (body, user) => api("/finance", { method: "POST", body, user });
+  assert.equal((await saveFinance(financeEntry, other))[0], 403);
+  assert.equal((await saveFinance(financeEntry))[0], 201);
+  assert.equal((await saveFinance(financeEntry))[0], 200);
+  assert.equal((await saveFinance({ ...financeEntry, amount: 2500 }))[0], 409);
+  assert.equal((await saveFinance({ ...financeEntry, id: randomUUID(), date: "2026-02-31" }))[0], 400);
+  assert.equal((await saveFinance({ ...financeEntry, id: randomUUID(), kind: "monthly", amount: 200 }))[0], 201);
+  assert.equal((await saveFinance({ ...financeEntry, id: randomUUID(), kind: "budget", amount: 4000 }))[0], 201);
+  assert.equal((await saveFinance({ ...financeEntry, id: randomUUID(), currency: "EUR", amount: 190 }))[0], 201);
+  const [financeStatus, ledger] = await api("/finance?month=2026-11");
+  assert.equal(financeStatus, 200);
+  assert.deepEqual(ledger.totals.USD, { expenses: 1250, annualCommitments: 2400, budget: 4000 });
+  assert.deepEqual(ledger.totals.EUR, { expenses: 190, annualCommitments: null, budget: null });
+  assert.equal(ledger.renewals[0].date, "2026-11-07");
+  assert.equal(ledger.billing.status, "unavailable");
+  console.log("Finance owner boundary, replay, validation, and currency-specific totals PASS");
+
+  const referenceAssetId = randomUUID();
+  const referencePayload = {
+    id: randomUUID(), mediaId: referenceAssetId, category: "visual", projectId: "",
+    name: "Studio [fixture]", source: "Controlled fixture", tags: ["garment"],
+  };
+  const saveReference = (body, user) => api("/references", { method: "POST", body, user });
+  await db.db.collection("operations_media").insertOne({
+    _id: referenceAssetId, ownerId: other, state: "ready", mime: "image/png", size: 500,
+  });
+  assert.equal((await saveReference(referencePayload, other))[0], 403);
+  assert.equal((await saveReference(referencePayload))[0], 404);
+  await db.db.collection("operations_media").updateOne({ _id: referenceAssetId }, {
+    $set: { ownerId: owner, hostId: randomUUID(), sha256: "a".repeat(64) },
+  });
+  assert.equal((await saveReference(referencePayload))[0], 201);
+  assert.equal((await saveReference(referencePayload))[0], 200);
+  assert.equal((await saveReference({ ...referencePayload, name: "Different" }))[0], 409);
+  const [, referenceList] = await api("/references?q=%5Bfixture%5D");
+  assert.equal(referenceList.entries.length, 1);
+  const reference = referenceList.entries[0];
+  assert.equal(reference.status, "provisional");
+  assert.equal(reference.asset._id, referenceAssetId);
+  const updateReference = (revision, status) => api(`/references/${encodeURIComponent(reference._id)}/status`, {
+    method: "PUT", body: { revision, status },
+  });
+  assert.equal((await updateReference(0, "approved"))[0], 204);
+  assert.equal((await updateReference(0, "superseded"))[0], 409);
+  assert.equal((await updateReference(1, "superseded"))[0], 204);
+  const [, approvedReferences] = await api("/references?status=approved");
+  assert.equal(approvedReferences.entries.length, 0);
+  console.log("References owner scope, source metadata, literal search, replay, approval, and stale revision PASS");
+
   delete process.env.OPERATIONS_OWNER_ID;
   assert.equal((await api("/hosts"))[0], 404);
   process.env.OPERATIONS_OWNER_ID = owner;
   assert.equal((await api("/hosts", { user: other }))[0], 403);
   assert.equal((await api("/jobs", { user: null }))[0], 401);
   assert.equal((await fetch(`${base}/operations/worker/claim`, { method: "POST" })).status, 401);
+
+  // Exercise reconciliation in a different owner scope so existing scenarios keep their fixtures.
+  const foundationOwner = "3".repeat(24);
+  const projects = db.db.collection("operations_projects");
+  const existingProject = randomUUID();
+  const foreignProject = randomUUID();
+  await projects.insertMany([
+    { _id: existingProject, ownerId: foundationOwner, workspace: "workshop", name: "Sanguine Archipelago", status: "active", revision: 4 },
+    { _id: foreignProject, ownerId: "4".repeat(24), workspace: "development", name: "Sanguine Archipelago", status: "active" },
+  ]);
+  process.env.OPERATIONS_OWNER_ID = foundationOwner;
+  try {
+    const query = (path, options) => api(`/organization${path}`, { user: foundationOwner, ...options });
+    assert.equal((await query("", { user: null }))[0], 401);
+    assert.equal((await query("", { user: owner }))[0], 403);
+    const [status, preview] = await query("");
+    assert.equal(status, 200);
+    assert.deepEqual(preview.counts, { departments: 0, employees: 0, projects: 1, objectives: 0 });
+    assert.equal(preview.plan.find(({ key }) => key === "project-sanguine").id, existingProject);
+    assert.equal(preview.plan.some(({ id }) => id === foreignProject), false);
+    assert.equal((await query("/initialize", { user: owner, method: "POST", body: { planId: preview.planId } }))[0], 403);
+    assert.equal(await projects.countDocuments({ ownerId: foundationOwner }), 1);
+    const initialize = (planId) => query("/initialize", { method: "POST", body: { planId } });
+    await projects.updateOne({ _id: existingProject }, { $set: { status: "paused" } });
+    assert.equal((await initialize(preview.planId))[0], 409);
+    assert.equal((await query(""))[1].plan.find(({ key }) => key === "project-sanguine").state, "conflict");
+    await projects.updateOne({ _id: existingProject }, { $set: { status: "active" } });
+    const writes = await Promise.all([initialize(preview.planId), initialize(preview.planId)]);
+    assert.ok(writes.some(([result]) => result === 200));
+    assert.ok(writes.every(([result]) => [200, 409].includes(result)));
+    assert.equal(new Set(writes.flatMap(([, result]) => result.created || [])).size, preview.plan.length - 1);
+    const [, reconciled] = await query("");
+    assert.deepEqual(reconciled.counts, { departments: 1, employees: 2, projects: 4, objectives: 3 });
+    assert.equal(reconciled.plan.every(({ state }) => state === "retain"), true);
+    assert.deepEqual((await initialize(reconciled.planId))[1].created, []);
+    assert.equal((await projects.findOne({ _id: existingProject })).revision, 4);
+    const [, directory] = await api("/workforce", { user: foundationOwner });
+    const director = directory.employees.find(({ role }) => role === "art-director");
+    const barnaby = directory.employees.find(({ role }) => role === "first-mate");
+    assert.equal(director.supervisorId, barnaby._id);
+    assert.equal(directory.roles.find(({ name }) => name === "Art Director")._id, director.roleId);
+    assert.deepEqual(directory.projectAssignments.map(({ projectName }) => projectName).sort(),
+      ["Crossworld Operations", "Loom", "Sanguine Archipelago"]);
+    const design = directory.projectAssignments.find(({ projectName }) => projectName === "Crossworld Operations");
+    const artProduction = directory.projectAssignments.filter((assignment) => assignment !== design);
+    assert.equal(design.status, "assigned");
+    assert.equal(design.employeeId, director._id);
+    const [, designObjective] = await api(`/objectives/${design.objectiveId}`, { user: foundationOwner });
+    assert.equal(designObjective.projectId, design.projectId);
+    assert.equal(designObjective.status, "active");
+    const [, objective] = await api(`/objectives/${artProduction[0].objectiveId}`, { user: foundationOwner });
+    assert.equal(objective.status, "paused");
+    assert.ok(artProduction.every(({ status }) => status === "paused"));
+    assert.equal(objective.criteria.every(({ review }) => review === null), true);
+    assert.equal(objective.projectId, existingProject);
+    assert.ok(objective.provenance.sources.length);
+    const activation = { method: "POST", body: { id: objective._id, revision: objective.revision } };
+    assert.equal((await query("/clothing/activate", { ...activation, user: owner }))[0], 403);
+    assert.equal((await query("/clothing/activate", { ...activation, body: { ...activation.body, revision: 99 } }))[0], 409);
+    assert.equal((await query("/clothing/activate", activation))[0], 204);
+    assert.equal((await query("/clothing/activate", activation))[0], 409);
+    const [, activated] = await api("/workforce", { user: foundationOwner });
+    assert.ok(activated.projectAssignments.every(({ status }) => status === "assigned"));
+    console.log("Studio foundation authorization, conflict preview, idempotent writes and Art Director assignments PASS");
+
+    const creative = (path, method, body, user = foundationOwner) => api("/creative"+path, { user, method, body });
+    const loom = directory.projectAssignments.find(({ projectName }) => projectName === "Loom");
+    const referenceId = foundationOwner + ":" + randomUUID();
+    const otherReferenceId = foundationOwner + ":" + randomUUID();
+    const mediaId = randomUUID();
+    await db.db.collection("operations_references").insertMany([
+      { _id: referenceId, ownerId: foundationOwner, name: "Candidate fixture", category: "candidate",
+        status: "provisional", projectId: existingProject, mediaId },
+      { _id: otherReferenceId, ownerId: foundationOwner, name: "Other project", category: "candidate",
+        status: "provisional", projectId: loom.projectId, mediaId: randomUUID() },
+    ]);
+    const input = { id: randomUUID(), projectId: existingProject, kind: "brief", title: "Isolated garment test",
+      content: "Record independent evidence before requesting acceptance.", source: "Isolated test provenance",
+      referenceIds: [referenceId], objectiveId: objective._id };
+    assert.equal((await creative("", "POST", input, owner))[0], 403);
+    assert.equal((await creative("", "POST", { ...input, referenceIds: [otherReferenceId] }))[0], 404);
+    assert.equal((await creative("", "POST", { ...input, objectiveId: randomUUID() }))[0], 404);
+    const [briefStatus, brief] = await creative("", "POST", input);
+    assert.equal(briefStatus, 201);
+    assert.equal((await creative("", "POST", input))[0], 200);
+    assert.equal((await creative("", "POST", { ...input, title: "Changed replay" }))[0], 409);
+    const briefPath = "/" + encodeURIComponent(brief._id);
+    const review = (stage, revision, reviewTurnId) => creative(briefPath, "PUT", {
+      stage, revision, reviewTurnId, content: input.content, source: "Isolated review input",
+    });
+    assert.equal((await review("accepted", 0))[0], 409);
+    assert.equal((await review("active", 0))[1].stage, "active");
+    assert.equal((await review("technical-review", 0))[0], 409);
+    assert.equal((await review("technical-review", 1))[1].stage, "technical-review");
+    assert.equal((await review("revision", 2))[1].stage, "revision");
+    assert.equal((await review("active", 3))[1].stage, "active");
+    assert.equal((await review("technical-review", 4))[1].stage, "technical-review");
+    assert.equal((await review("artistic-review", 5))[1].stage, "artistic-review");
+    assert.equal((await review("independent-review", 6))[1].stage, "independent-review");
+    assert.equal((await review("recommended", 7))[0], 400);
+    const reviewTurnId = randomUUID();
+    await db.db.collection("operations_jobs").insertOne({
+      _id: reviewTurnId, ownerId: foundationOwner, status: "completed", workerRole: "qa", projectId: existingProject,
+      objectiveId: randomUUID(), eventCount: 1, events: [{ view: "response", text: "QA_VERDICT: FAIL" }],
+    });
+    assert.equal((await review("recommended", 7, reviewTurnId))[0], 404);
+    await db.db.collection("operations_jobs").updateOne({ _id: reviewTurnId }, { $set: { objectiveId: objective._id } });
+    assert.equal((await review("recommended", 7, reviewTurnId))[0], 409);
+    await db.db.collection("operations_jobs").updateOne({ _id: reviewTurnId }, {
+      $set: { events: [{ view: "response", text: "QA_VERDICT: PASS" }] },
+    });
+    assert.equal((await review("recommended", 7, reviewTurnId))[1].stage, "recommended");
+    assert.equal((await review("accepted", 8))[1].stage, "accepted");
+    const directionInput = { ...input, objectiveId: undefined, id: randomUUID(), kind: "direction", title: "Draft color constraints" };
+    const [directionStatus, direction] = await creative("", "POST", directionInput);
+    assert.equal(directionStatus, 201);
+    const directionPath = "/" + encodeURIComponent(direction._id);
+    assert.equal((await creative(directionPath, "PUT", {
+      stage: "proposed", revision: 0, content: input.content, source: input.source,
+    }))[0], 200);
+    assert.equal((await creative(directionPath, "PUT", {
+      stage: "approved", revision: 1, content: input.content, source: "Isolated approval",
+    }))[0], 200);
+    const [, studio] = await creative("");
+    assert.equal(studio.find(({ _id }) => _id === direction._id).stage, "approved");
+    assert.equal(studio.find(({ _id }) => _id === direction._id).history, undefined);
+    const [, accepted] = await creative(briefPath);
+    assert.equal(accepted.history.length, 10);
+    assert.ok(accepted.history.every(({ referenceIds }) => referenceIds[0] === referenceId));
+    assert.equal(accepted.linkedReferences[0].mediaId, mediaId);
+    console.log("Creative brief, reference linkage, versioned direction, revision conflicts, correction, QA link and separate owner acceptance PASS");
+  } finally {
+    process.env.OPERATIONS_OWNER_ID = owner;
+  }
+
   const [registered, device] = await api("/hosts", { method: "POST", body: { label: "Diagnostic Windows host" } });
   assert.equal(registered, 201);
   const host = await db.db.collection("operations_hosts").findOne({ _id: device.id });
@@ -94,6 +285,7 @@ try {
   assert.ok(!JSON.stringify(host).includes(device.token));
   assert.ok(!JSON.stringify(await api("/hosts")).includes(host.digest));
   process.env.OPERATIONS_LOOPBACK_TEST = "1";
+  await verifyMedia({ api, base, bearer: jwt.sign({ _id: owner }, jwtSecret), db: db.db, other });
   const send = backendClient(base, device.token);
   let offline = false;
   let launchCount = 0;
@@ -867,6 +1059,166 @@ try {
     }
     console.log(`${liveInteractive ? "Live Codex" : "Mock"} approval, steering, queued continuation, and session management PASS`);
   }
+  const historySession = randomUUID();
+  const foreignCursor = randomUUID();
+  const historyRows = Array.from({ length: 55 }, (_, index) => ({
+    _id: index === 0 ? historySession : randomUUID(), sessionId: historySession, ownerId: owner,
+    createdAt: new Date("2026-01-01T12:00:00Z"), status: "completed", prompt: "History cursor fixture",
+  }));
+  await db.db.collection("operations_jobs").insertMany([
+    ...historyRows, { ...historyRows[1], _id: foreignCursor, ownerId: other },
+  ]);
+  const sessionHistory = `/jobs?session=${historySession}&compact=true`;
+  const [pageStatus, latestPage] = await api(sessionHistory);
+  assert.equal(pageStatus, 200);
+  assert.equal(latestPage.length, 50);
+  assert.equal((await api(`${sessionHistory}&before=${foreignCursor}`))[0], 404);
+  assert.equal((await api(`${sessionHistory}&before=${latestPage.at(-1)._id}`, { user: other }))[0], 403);
+  assert.equal((await api(`${sessionHistory}&before=invalid`))[0], 400);
+  const [olderStatus, olderPage] = await api(`${sessionHistory}&before=${latestPage.at(-1)._id}`);
+  assert.equal(olderStatus, 200);
+  assert.equal(olderPage.length, 5);
+  assert.deepEqual([...latestPage, ...olderPage].map(({ _id }) => _id), historyRows.map(({ _id }) => _id).sort().reverse());
+  console.log("Owner-scoped conversation cursor, tied timestamps, and isolation PASS");
+
+  const { id: actionHost, token: actionToken } =
+    (await api("/hosts", { method: "POST", body: { label: "Typed action fixture" } }))[1];
+  const actionSend = backendClient(base, actionToken);
+  const instance = randomUUID();
+  await actionSend("/heartbeat", { instance, efforts: ["low"], media: true, resources: {
+    observedAt: Date.now(), cpu: 28, memory: { total: 4096, free: 1024, secret: "test-only" }, drives: {},
+  } });
+  const [, infrastructure] = await api("/infrastructure");
+  const observed = infrastructure.devices.find(item => item._id === actionHost);
+  assert.equal(observed.online, true);
+  assert.equal(observed.name, "Typed action fixture");
+  assert.deepEqual(observed.resources.memory, { total: 4096, free: 1024 });
+  assert.equal((await api("/infrastructure", { user: other }))[0], 403);
+  const actionProject = (await api("/projects", { method: "POST", body: {
+    name: "Action fixture project", description: "Controlled typed proposal", workspace: "development",
+  } }))[1]._id;
+  const actionJob = randomUUID();
+  const restrictedJob = randomUUID();
+  const now = new Date();
+  const actionRow = {
+    _id: actionJob, ownerId: owner, hostId: actionHost, activeHost: actionHost, instance, sessionId: actionJob,
+    status: "running", createdAt: now, leaseUntil: new Date(+now + 45000), workerRole: "direct",
+    studioTools: true, studioActor: { role: "first-mate", binding: "unassigned" },
+  };
+  const jobStore = db.db.collection("operations_jobs");
+  await jobStore.insertOne({ ...actionRow, _id: restrictedJob, workerRole: "qa" });
+  const proposalBody = {
+    instance, callId: "call_fixture", project: "Action fixture project", title: "Verify a real handoff",
+    instruction: "Check the fixture result.", criteria: ["Record the observed result."], priority: "normal",
+  };
+  await assert.rejects(actionSend(`/jobs/${restrictedJob}/objective-proposal`, proposalBody), { status: 409 });
+  await assert.rejects(actionSend(`/jobs/${restrictedJob}/studio-briefing`, { instance }), { status: 409 });
+  await jobStore.updateOne({ _id: restrictedJob }, { $set: { workerRole: "direct", studioTools: false } });
+  await assert.rejects(actionSend(`/jobs/${restrictedJob}/studio-briefing`, { instance }), { status: 409 });
+  await jobStore.updateOne({ _id: restrictedJob }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+  await jobStore.insertOne(actionRow);
+  const studioBrief = await actionSend(`/jobs/${actionJob}/studio-briefing`, { instance });
+  assert.ok(studioBrief.projects.some(item => item.name === "Action fixture project" && item.url.includes(actionProject)));
+  assert.equal(studioBrief.turns.running, 1);
+  const pathForAction = `/jobs/${actionJob}/objective-proposal`;
+  assert.equal((await actionSend(pathForAction, proposalBody)).state, "pending");
+  assert.equal((await actionSend(pathForAction, proposalBody)).state, "pending");
+  await assert.rejects(actionSend(pathForAction, { ...proposalBody, title: "Changed replay" }), { status: 409 });
+  const [, proposal] = await api(pathForAction);
+  assert.equal(proposal.projectId, actionProject);
+  assert.equal((await api(`/objectives/${proposal.objectiveId}`))[0], 404);
+  const approval = { method: "POST", body: { digest: proposal.digest, decision: "approve" } };
+  assert.equal((await api(pathForAction, { ...approval, user: other }))[0], 403);
+  assert.equal((await fetch(base + "/operations" + pathForAction, {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${actionToken}` },
+    body: JSON.stringify(approval.body),
+  })).status, 401);
+  assert.equal((await api(pathForAction, approval))[1].state, "applied");
+  assert.equal((await api(pathForAction, approval))[1].state, "applied");
+  const [, created] = await api(`/objectives/${proposal.objectiveId}`);
+  assert.equal(created.provenance.sourceTurnId, actionJob);
+  assert.equal(created.provenance.authorizedBy, "owner");
+  assert.equal(created.revision, 0);
+  console.log("Typed objective proposal, worker scope, explicit owner decision, and applied replay PASS");
+  await jobStore.updateOne({ _id: actionJob }, {
+    $set: { status: "failed", finishedAt: new Date() }, $unset: { activeHost: "" },
+  });
+  const mark = { method: "POST", body: { kind: "incident", id: actionJob } };
+  assert.equal((await api("/headquarters/attention", { ...mark, user: other }))[0], 403);
+  assert.equal((await api("/headquarters/attention", mark))[0], 204);
+  assert.equal((await api("/headquarters/attention", mark))[0], 204);
+  const [, afterRead] = await api("/headquarters");
+  assert.ok(afterRead.attentionRead.includes("incident:" + actionJob));
+  console.log("Owner-only infrastructure and durable attention read state PASS");
+
+  const staleJob = randomUUID();
+  await jobStore.insertOne({ ...actionRow, _id: staleJob, sessionId: staleJob, leaseUntil: new Date(Date.now() + 45000) });
+  const stalePath = `/jobs/${staleJob}/objective-proposal`;
+  assert.equal((await actionSend(stalePath, proposalBody)).state, "pending");
+  const [, stale] = await api(stalePath);
+  await db.db.collection("operations_projects").updateOne({ _id: actionProject }, { $inc: { revision: 1 } });
+  assert.equal((await api(stalePath, { method: "POST", body: { digest: stale.digest, decision: "approve" } }))[0], 409);
+  assert.equal((await api(`/objectives/${stale.objectiveId}`))[0], 404);
+  await jobStore.updateOne({ _id: staleJob }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+
+  const imageFixtures = Array.from({ length: 3 }, () => ({
+    _id: randomUUID(), ownerId: owner, hostId: actionHost, state: "ready",
+    mime: "image/png", size: 999, sha256: "c".repeat(64),
+  }));
+  await db.db.collection("operations_media").insertMany(imageFixtures);
+  const registerFixture = async (index, projectId, approve) => {
+    const [result, body] = await saveReference({
+      ...referencePayload, id: randomUUID(), mediaId: imageFixtures[index]._id, projectId,
+      name: "Approved reference selection fixture " + index,
+    });
+    assert.equal(result, 201);
+    if (approve) assert.equal((await api(`/references/${encodeURIComponent(body._id)}/status`, {
+      method: "PUT", body: { revision: 0, status: "approved" },
+    }))[0], 204);
+    return body._id;
+  };
+  const selectedReference = await registerFixture(0, actionProject, true);
+  await registerFixture(1, actionProject, false);
+  await registerFixture(2, "", true);
+  const [knowledgeStatus] = await api("/knowledge", { method: "POST", body: {
+    projectId: actionProject, kind: "procedure", status: "owner-approved", title: "Fixture method",
+    source: "Isolated test", evidence: "Observed", author: "Owner fixture", summary: "Use approved test results.", body: "Verification.",
+  } });
+  assert.equal(knowledgeStatus, 201);
+  const employee = randomUUID();
+  await db.db.collection("operations_workforce").insertOne({
+    _id: employee, ownerId: owner, kind: "employee", name: "Fixture Artist",
+    role: "art-director", workspace: "development", status: "available",
+  });
+  const assignmentBody = {
+    id: randomUUID(), objectiveId: created._id, employeeId: employee, hostId: actionHost,
+    workspace: "development", model: "gpt-6.2-sol", effort: "low",
+    prompt: "Check the approved reference.", includeProjectReferences: true,
+  };
+  await actionSend("/heartbeat", { instance, efforts: ["low"], media: true });
+  const submitWithReferences = body => api("/jobs", { method: "POST", body });
+  assert.equal((await submitWithReferences(assignmentBody))[0], 201);
+  assert.equal((await submitWithReferences(assignmentBody))[0], 200);
+  assert.equal((await submitWithReferences({ ...assignmentBody, includeProjectReferences: false }))[0], 409);
+  const referenceJob = await actionSend("/claim", { instance });
+  assert.equal(referenceJob._id, assignmentBody.id);
+  assert.deepEqual(referenceJob.mediaInputs.map(item => item.id), [imageFixtures[0]._id]);
+  assert.match(referenceJob.prompt, /untrusted supporting context/);
+  assert.match(referenceJob.prompt, /Fixture method/);
+  await actionSend(`/jobs/${referenceJob._id}/sync`, {
+    instance, offset: 0, events: [], result: { status: "completed", error: "" },
+  });
+  const withdrawnJob = randomUUID();
+  assert.equal((await submitWithReferences({ ...assignmentBody, id: withdrawnJob }))[0], 201);
+  assert.equal((await api(`/references/${encodeURIComponent(selectedReference)}/status`, {
+    method: "PUT", body: { revision: 1, status: "superseded" },
+  }))[0], 204);
+  assert.equal(await actionSend("/claim", { instance }), null);
+  const [, withdrawn] = await api(`/jobs/${withdrawnJob}`);
+  assert.equal(withdrawn.status, "interrupted");
+  assert.match(withdrawn.error, /approved project image changed/);
+  console.log("Assignment approved-image selection, category and scope separation, and replay PASS");
+
   assert.equal((await api(`/hosts/${device.id}`, { method: "DELETE" }))[0], 204);
   await assert.rejects(send("/claim", {}), { status: 403 });
   console.log(`${live ? "Live Codex" : "Mock worker"} integration PASS · ${liveCancellation ? "Live" : "Mock"} cancellation PASS`);
