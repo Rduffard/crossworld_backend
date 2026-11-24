@@ -1,0 +1,43 @@
+# Project Leviathan
+
+## Discovery checkpoint
+
+- The React/Vite Operations page lives in `crossworld_creative/src/Pages/Operations`. The public site and hosted backend deploy separately. Both worktrees were clean at intake. Operations ships inside the existing site and calls the owner-gated Express relay.
+- MongoDB stores hosts, jobs, immutable transcript batches, and governance requests. Session metadata is stored on the root job. The Windows worker polls the relay with an encrypted local device credential, maintains a lease, and calls the subscription-authenticated Codex app-server. The existing worker control and onboarding tools are under `tools/operations-worker`.
+- The development and workshop profiles already exist. Keep both roots, device authentication, the single active host lease, turn steering, and explicit Git and production promotion authorization. The local trust model and Windows sandbox limitations are documented in the worker README.
+- Owner job and steering POSTs accept up to 768 KiB JSON. The extended-worker capability allows 120,000 UTF-16 code units through the relay. The worker integration sends 104,000 UTF-16 code units through local HTTP to a mock worker. The VM reverse proxy and a real 100,000-character app-server submission require separate verification. The relay deliberately bounds individual command outputs and excludes private model reasoning.
+- Existing gates include backend CI, a deployment workflow with public endpoint verification, a separate engine dependency workflow, worker unit tests, and an isolated MongoDB integration with optional live Codex scenarios. The new schedule relies on existing host polling and jobs. No background service or separate dispatch lease is introduced.
+
+## Prioritized backlog
+
+| Priority | Requirements | Acceptance gate | Status and dependencies |
+| --- | --- | --- | --- |
+| P0 | 6, 116–121, 139–144 | Inspect both repos, run repeatable release-independent checks, keep this record current | Discovery recorded. See validation below. |
+| P0 | 15–22, 109–111 | Conversation and execution are readable independently at desktop and mobile sizes. Prompt, approvals, copy, and existing controls remain reachable. Large payloads round-trip without truncation. | Split, focused views, session grouping, execution search, and existing composer integrated. Virtualization, prompt templates, responsive browser checks, and hosted transport verification remain open. |
+| P0 | 30–35, 52 | Due future work survives a disconnected browser and host. Cancellation cannot start a cancelled unclaimed job. Recurrence, dependency triggers, overdue policies, and pause are observable. | One-shot schedule, rescheduling, cancellation, and durable pause integrated. Run when available is the current policy. A claim already in progress can complete as pause takes effect. Recurrence, calendar, and additional triggers remain open. |
+| P0 | 23–29, 91–95, 122–135 | Criteria and evidence outlive turns. Durable result events reactivate the First Mate. Independent QA rejects incomplete output, correction runs, and only verified evidence closes the objective. | Owner objective register and manual acceptance gate implemented. Assignments, event-driven First Mate reactivation, independent QA workers and correction dispatch remain open. |
+| P0 | Owner permissions amendments, 53–57, 99, 102 | Restricted profiles remain available. Full Access requires a local host opt-in and explicit profile selection. Confirm actual app-server settings and native execution. | Implemented opt-in Full Access, host command probe, and profile binding. See validation and worker README. |
+| P1 | 7–14, 58–61 | Headquarters reflects live data with traceable links, operational attention, and consistent accessible design. | Headquarters shows live host and job counts, pending worker approvals, and recent turn outcomes with source links. Executive briefing, unified timeline, broader attention center, and notification preferences remain open. |
+| P1 | 36–43, 44–57, 96–108 | Workforce, workspaces, permissions, tool availability, real usage, and recovery are visible. | Existing host health, approval plumbing, and diagnostics retained. Workforce, observed usage history, audit expansion, and controlled updates remain open. |
+| P1 | 62–80 | Search knowledge by provenance. Independent QA and AIR findings retain evidence and decision history. | Planned. Reuse workshop index and persistent objective evidence. |
+| P2 | 81–90, 112–115 | Accessible virtual office represents real worker states and consumes zero model turns. Record R&D with evidence and limitations. | Planned after workforce and event feeds. |
+| P0 | 136–138, 145–146 | Keep local development recoverable, preserve authorization and art boundaries, and document what validation actually covered. | Active throughout. |
+
+## Design records and opportunities
+
+- **Scheduling.** Directly claim due records with the same atomic MongoDB write and unique host lease used for immediate jobs. Keep the scheduled timestamp after dispatch so operators can compare planned and actual start. An interrupted run needs a new explicit request. The MongoDB [single-document atomicity guarantees](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/) support this approach. Recurrence should create distinct occurrences with stable identifiers before claiming.
+- **Continuation.** Derive controller inputs from canonical job results and separately stored validation evidence. Investigate a deterministic idempotent reconciliation pass before adding a dedicated broker. Dispatch must retain the workspace, role, and explicit approval boundaries of existing execution. [Codex app-server protocol](https://learn.chatgpt.com/docs/app-server)
+- **Operational history.** A reliable next step is to attach event identifiers and source entity references to timeline entries so briefing, attention, QA, and AIR can share evidence.
+
+## Validation
+
+- Backend fast suite passed 74 tests with the temporary directory set inside the workspace. Operations MongoDB mock-worker integration passed owner authorization, objective closure, offline schedule catch-up, pause/resume, transcript pagination, extended prompts, steering, cancellation, and continuation.
+- Independent review identified and drove fixes for the null-state startup render, scheduled submission version skew, stale effort capabilities, and cancellation after a lost claim acknowledgement.
+- Browser process launch was rejected by the runtime review. No responsive screenshots were captured. A production frontend build and targeted lint checks were run locally.
+- Full Access completed a live disposable app-server turn with no relay approval, actual Git launch, path existence checks on both drives, and an authenticated-boundary check using an unauthenticated loopback request. The production worker was kept running.
+- Git staging failed on `.git/index.lock`. The runtime rejected the elevated staging request. Work remains local and deployment verification is pending.
+
+## Rollout and recovery
+
+- Production deploys from each repository's main branch. Roll out the backend before the frontend and wait for their respective Actions runs. The currently running restricted worker can continue using its existing heartbeat and claim format.
+- Apply the worker update and opt-in only after active work drains. If Full Access fails its startup probe, use a restricted profile and inspect the worker console. To revoke dispatch while retaining a running turn, use Pause future dispatch. To recover from an unavailable Operations bridge, use standalone Codex and the worker README.

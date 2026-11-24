@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { approvalPolicy, sandboxFor, scopedGrant, verifySandbox } from "./profiles.mjs";
+import { approvalPolicy, autonomousNetworkGrant, sandboxFor, scopedGrant, verifySandbox } from "./profiles.mjs";
 
 const declines = {
   "item/commandExecution/requestApproval": { decision: "decline" },
@@ -226,24 +226,28 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
       }
     }
     signal.throwIfAborted();
-    const sandboxPolicy = sandboxFor(scope.root, scope.roots);
+    const fullAccess = job.profile === "full-access";
+    if (fullAccess && scope.fullAccess !== true) throw new Error("Full Access is disabled on this host.");
+    const sandboxPolicy = fullAccess ? { type: "dangerFullAccess" } : sandboxFor(scope.root, scope.roots);
     if (scope.protectedDirectories) await verifySandbox(server, cwd, sandboxPolicy, scope.protectedDirectories, scope.roots || scope.root);
     const settings = {
       cwd, model: job.model, modelProvider: "openai", approvalPolicy: "never", approvalsReviewer: "user",
-      sandbox: "read-only", serviceTier: "default",
+      sandbox: fullAccess ? "danger-full-access" : "read-only", serviceTier: "default",
       developerInstructions: [
         "Work within the selected Operations workspace. Use existing local authentication without printing or reading credentials.",
         "Commit, push, or open a pull request only when the owner explicitly instructs you.",
         "For GitHub pull requests, use gh if available. Otherwise use the Operations open-pull-request.mjs helper with the absolute repository path, source branch, base branch, title, and optional body.",
         "Never publish packages, releases, or release tags, or enable publishing workflows.",
         "Production art promotion requires a separate explicit human approval for the exact command and target. Follow the active filesystem permission profile.",
+        "If a tool or permission is unavailable, record the limitation and continue independent work when possible.",
       ].join(" "),
     };
     const thread = await server.request(threadId ? "thread/resume" : "thread/start",
       threadId ? { ...settings, threadId, excludeTurns: true } : settings);
+    const expectedSandbox = fullAccess ? "dangerFullAccess" : "readOnly";
     if (thread.approvalPolicy !== "never" || thread.model !== job.model ||
         thread.modelProvider !== "openai" || thread.cwd.toLowerCase() !== cwd.toLowerCase() ||
-        thread.sandbox?.type !== "readOnly" || thread.sandbox.networkAccess !== false) {
+        thread.sandbox?.type !== expectedSandbox || (!fullAccess && thread.sandbox.networkAccess !== false)) {
       throw new Error("Codex did not confirm the requested execution policy.");
     }
     threadId = thread.thread.id;
@@ -257,11 +261,17 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
         const p = message.params;
         let result = decline;
         try {
-          if (control && !signal.aborted && !finished && p?.threadId === threadId && (!turnId || p.turnId === turnId)) {
+          if (!fullAccess && control && !signal.aborted && !finished && p?.threadId === threadId && (!turnId || p.turnId === turnId)) {
             const elicitation = message.method === "mcpServer/elicitation/request";
             const confirm = elicitation && isMcpConfirmation(p, scope.reviewMcpConfirmation);
             const grant = message.method === "item/permissions/requestApproval"
               ? scopedGrant(p.permissions, scope) : null;
+            const automatic = grant && autonomousNetworkGrant(p.permissions, scope);
+            if (automatic) {
+              server.write({ id: message.id, result: { permissions: automatic, scope: "turn" } });
+              record("execution", "Network granted by host policy", "Development turn · network only");
+              return;
+            }
             const commandApproval = scope.supervised && message.method === "item/commandExecution/requestApproval" &&
               typeof p.command === "string" && !!p.command.trim();
             const paths = JSON.stringify(p.permissions || p.additionalPermissions || p.commandActions ||
@@ -342,7 +352,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     });
     const started = await server.request("turn/start", {
       threadId, input: [{ type: "text", text: job.prompt }], model: job.model, effort: job.effort,
-      approvalPolicy: !control ? "never" : { granular: {
+      approvalPolicy: !control || fullAccess ? "never" : { granular: {
         ...approvalPolicy.granular, sandbox_approval: !!scope.supervised, mcp_elicitations: !!scope.reviewMcpConfirmation,
       } }, approvalsReviewer: "user", sandboxPolicy,
       serviceTier: "default",

@@ -45,6 +45,7 @@ export function redact(text, token) {
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, log = console.log }) {
   const instance = randomUUID();
+  let advertisedProfiles = profiles;
   let active;
   let lastContact = Date.now();
   let heartbeat = 0;
@@ -70,16 +71,27 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     while (!signal.aborted) {
       try {
         if (Date.now() - heartbeat >= 5000) {
-          await send("/heartbeat", { instance, efforts, profiles, extendedPrompts: true });
+          const announce = () => send("/heartbeat", { instance, efforts, profiles: advertisedProfiles, extendedPrompts: true });
+          try { await announce(); }
+          catch (error) {
+            if (error.status !== 400 || !advertisedProfiles?.includes("full-access")) throw error;
+            advertisedProfiles = advertisedProfiles.filter((profile) => profile !== "full-access");
+            await announce();
+            log("Relay did not accept Full Access. Restricted profiles remain available until the worker restarts.");
+          }
           heartbeat = Date.now();
         }
         if (active) await sync();
         else {
           const job = await send("/claim", { instance, extendedPrompts: true });
           if (job && !signal.aborted) {
-            const state = { job, offset: 0, events: [], controller: new AbortController() };
+            const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
             state.control = turnControl(state.controller.signal, (value) => redact(value, token));
             active = state;
+            if (job.status === "cancelling") {
+              state.result = { status: "cancelled", error: "" };
+              continue;
+            }
             const record = (view, label, value) => {
               const clean = redact(value, token).toWellFormed();
               let index = 0;
@@ -165,6 +177,8 @@ function localSessions(deviceId) {
 async function startWorker() {
   const { exe, version } = discoverCodex();
   const workspaces = resolvedWorkspaces();
+  const autonomousNetwork = process.env.OPERATIONS_AUTONOMOUS_NETWORK === "development";
+  let fullAccess = false;
   const editRoots = {};
   const candidates = { development: developmentRepositories, workshop: [workspaces.workshop] };
   const exclusions = (roots) => protectedDirectories.filter((directory) => !roots.some((root) => {
@@ -179,6 +193,20 @@ async function startWorker() {
     if (!efforts.length) throw new Error("No supported reasoning efforts were reported.");
     console.log(`${version} · ChatGPT sign-in verified · ${model} (${efforts.join(", ")})`);
     console.log("Authorized workspaces:", ...Object.values(workspaces));
+    if (process.env.OPERATIONS_FULL_ACCESS === "1") {
+      try {
+        const result = await probe.request("command/exec", {
+          command: [process.execPath, "-e", "console.log('CW_FULL_ACCESS_READY')"],
+          cwd: workspaces.development, sandboxPolicy: { type: "dangerFullAccess" }, timeoutMs: 12000,
+        });
+        fullAccess = result.exitCode === 0 && result.stdout.trim() === "CW_FULL_ACCESS_READY";
+      } catch { /* Other profiles can still be used. */ }
+      if (fullAccess) {
+        console.log("Full Access enabled. Commands run with the Windows worker account's permissions.");
+      } else {
+        console.error("Full Access command probe failed. Other profiles can still be used.");
+      }
+    }
   } finally {
     probe.close();
   }
@@ -205,11 +233,13 @@ async function startWorker() {
   process.on("SIGINT", () => controller.abort());
   process.on("SIGTERM", () => controller.abort());
   await runWorker({
-    send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots)], signal: controller.signal,
+    send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])],
+    signal: controller.signal,
     execute: async (job, record, signal, control) => {
       const profile = job.profile || "read-only";
+      const unrestricted = profile === "full-access";
       if (!Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
-          (profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
+          (unrestricted ? !fullAccess : profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
           (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
         return { status: "failed", error: "Job is outside the worker allowlist." };
@@ -217,15 +247,17 @@ async function startWorker() {
       if (job.status === "cancelling" || job.eventCount > 0) {
         return { status: "interrupted", error: "Previous assignment cannot be safely replayed." };
       }
-      const roots = profile === "read-only" ? [] : editRoots[profile].map(verifyDirectory);
+      const roots = profile === "read-only" || unrestricted ? [] : editRoots[profile].map(verifyDirectory);
       const [root] = roots;
       const cwd = root || workspaces[job.workspace];
       return runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
         root,
         roots,
         gitRoots: profile === "development" ? roots : [],
-        protectedDirectories: exclusions(roots),
+        protectedDirectories: unrestricted ? undefined : exclusions(roots),
         supervised: !!root,
+        fullAccess: unrestricted && fullAccess,
+        autonomousNetwork: autonomousNetwork && profile === "development",
         localMcp: true,
         remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
       });

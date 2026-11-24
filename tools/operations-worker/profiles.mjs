@@ -76,6 +76,14 @@ export function scopedGrant(request, { root, gitRoots = [] }) {
   };
 }
 
+export function autonomousNetworkGrant(request, scope) {
+  if (scope.autonomousNetwork !== true || !scope.supervised ||
+      request?.network?.enabled !== true || request?.fileSystem != null ||
+      Object.keys(request).some((key) => !["network", "fileSystem"].includes(key)) ||
+      !scopedGrant(request, scope)) return null;
+  return { network: { enabled: true } };
+}
+
 function grantPathAllowed(value, root, gitRoots) {
   if (typeof value !== "string" || !path.isAbsolute(value) || value.split(/[\\/]/).some((part) => part === "." || part === "..") ||
       value.slice(path.parse(value).root.length).includes(":") || /^[\\/]{2}/.test(value)) return false;

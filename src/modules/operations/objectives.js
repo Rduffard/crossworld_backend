@@ -1,0 +1,73 @@
+const { randomUUID } = require("node:crypto");
+const express = require("express");
+
+const idPattern = /^[a-f\d-]{36}$/;
+const nonempty = (value, limit) =>
+  typeof value === "string" && value.length <= limit && value.isWellFormed() && !!value.trim();
+
+function createObjectives({ records, owner }) {
+  const router = express.Router();
+
+  router.get("/", async (_req, res) => {
+    const objectives = await records().find({ ownerId: owner() }, {
+      projection: { title: 1, priority: 1, status: 1 },
+    }).sort({ createdAt: -1, _id: 1 }).limit(50).toArray();
+    res.json(objectives);
+  });
+
+  router.post("/", async (req, res) => {
+    const { title, instruction, criteria, priority = "normal" } = req.body || {};
+    if (!nonempty(title, 120) || !nonempty(instruction, 6000) ||
+        !["low", "normal", "high"].includes(priority) ||
+        !Array.isArray(criteria) || !criteria.length || criteria.length > 12 ||
+        !criteria.every((criterion) => nonempty(criterion, 400)) ||
+        new Set(criteria.map((criterion) => criterion.trim())).size !== criteria.length) {
+      return res.status(400).json({ message: "Provide a title, instruction and 1 to 12 distinct acceptance criteria." });
+    }
+    const now = new Date();
+    const record = {
+      _id: randomUUID(), ownerId: owner(), title: title.trim(), instruction, priority, status: "active",
+      criteria: criteria.map((criterion) => ({ id: randomUUID(), text: criterion.trim(), review: null })),
+      createdAt: now, updatedAt: now, revision: 0,
+    };
+    await records().insertOne(record);
+    return res.status(201).json({ _id: record._id });
+  });
+
+  router.get("/:id", async (req, res) => {
+    const objective = await records().findOne({ _id: req.params.id, ownerId: owner() }, { projection: { ownerId: 0 } });
+    if (!objective) return res.status(404).json({ message: "Objective not found." });
+    return res.json(objective);
+  });
+
+  router.post("/:id/criteria/:criterionId/review", async (req, res) => {
+    const { decision, evidence, revision } = req.body || {};
+    const { id, criterionId } = req.params;
+    if (!idPattern.test(id) || !idPattern.test(criterionId) ||
+        !["accepted", "rejected"].includes(decision) || !nonempty(evidence, 1200) ||
+        !Number.isSafeInteger(revision) || revision < 0) {
+      return res.status(400).json({ message: "Provide an acceptance decision and its evidence." });
+    }
+    const filter = { _id: id, ownerId: owner(), status: "active", revision };
+    const objective = await records().findOne(filter);
+    if (!objective?.criteria.some((criterion) => criterion.id === criterionId)) {
+      return res.status(409).json({ message: "The objective or criterion changed. Reload the latest record." });
+    }
+    const now = new Date();
+    const review = { decision, evidence: evidence.trim(), at: now };
+    const criteria = objective.criteria.map((criterion) =>
+      criterion.id === criterionId ? { ...criterion, review } : criterion);
+    const complete = criteria.every((criterion) => criterion.review?.decision === "accepted");
+    const saved = await records().updateOne(filter, {
+      $set: { criteria, updatedAt: now, ...(complete ? { status: "completed", completedAt: now } : {}) },
+      $push: { reviewHistory: { criterionId, ...review } },
+      $inc: { revision: 1 },
+    });
+    if (!saved.matchedCount) return res.status(409).json({ message: "The objective changed. Reload the latest record." });
+    return res.sendStatus(204);
+  });
+
+  return router;
+}
+
+module.exports = { createObjectives };

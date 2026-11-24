@@ -3,16 +3,18 @@ const mongoose = require("mongoose");
 const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
+const { createObjectives } = require("./objectives");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
 const workspaces = ["development", "workshop"];
-const profiles = ["read-only", ...workspaces];
+const profiles = ["read-only", ...workspaces, "full-access"];
 const terminal = ["completed", "failed", "cancelled", "interrupted"];
 const leaseMs = 45_000;
 const syncEventLimit = 12;
 const eventPageSize = 40;
 const legacyEventLimit = 401;
+const maxScheduleDelayMs = 366 * 24 * 60 * 60 * 1000;
 const deviceHash = (token) => createHash("sha256").update(token).digest("hex");
 const uuid = (value) => typeof value === "string" && /^[a-f\d-]{36}$/.test(value);
 const text = (value, max) => typeof value === "string" && value.length <= max;
@@ -60,6 +62,7 @@ function createRouter({
   const hosts = () => db().collection("operations_hosts");
   const jobs = () => db().collection("operations_jobs");
   const eventBatches = () => db().collection("operations_event_batches");
+  const dispatch = () => db().collection("operations_dispatch");
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
     policies: () => db().collection("operations_github_policies"),
@@ -77,6 +80,7 @@ function createRouter({
       jobs().createIndex({ successorOf: 1 }, {
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
       }),
+      jobs().createIndex({ ownerId: 1, hostId: 1, status: 1, scheduledAt: 1, createdAt: 1 }),
     ]).catch((error) => { indexes = undefined; throw error; });
     return indexes;
   }
@@ -143,12 +147,16 @@ function createRouter({
           $set: next, ...(next.status === "interrupted" ? { $unset: { successorOf: "" } } : {}),
         });
       }
+      if ((await dispatch().findOne({ _id: scope.ownerId }))?.paused) return res.json(null);
       try {
         job = await jobs().findOneAndUpdate({
-          ...scope, status: "queued",
+          ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
-          $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }],
+          $and: [
+            { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
+            { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
+          ],
         }, { $set: {
           status: "running", instance, activeHost: req.operationsHost._id,
           leaseUntil: new Date(Date.now() + leaseMs), startedAt: new Date(),
@@ -267,8 +275,50 @@ function createRouter({
   const briefJson = express.json({ limit: "768kb" });
   const ownerJson = express.json({ limit: "64kb" });
   router.use((req, res, next) => {
-    const isBrief = req.method === "POST" && /^\/jobs(?:\/[^/]+\/steer)?\/?$/i.test(req.path);
+    const isBrief = req.method === "POST" && /^\/(?:schedule|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
+  });
+  router.use("/objectives", createObjectives({ records: () => db().collection("operations_objectives"), owner }));
+  router.get("/dispatch", async (_req, res) => {
+    const settings = await dispatch().findOne({ _id: owner() });
+    res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
+  });
+  router.patch("/dispatch", async (req, res) => {
+    const paused = req.body?.paused;
+    if (typeof paused !== "boolean") return reject(res, 400, "Choose whether to pause future dispatch.");
+    await dispatch().updateOne({ _id: owner() }, { $set: { paused, updatedAt: new Date() } }, { upsert: true });
+    res.sendStatus(204);
+  });
+  router.get("/headquarters", async (_req, res) => {
+    const now = new Date();
+    const scope = { ownerId: owner() };
+    const [hostCounts, jobCounts, approvals, recent] = await Promise.all([
+      hosts().aggregate([
+        { $match: { ...scope, revokedAt: null } },
+        { $group: { _id: { $gt: ["$lastSeen", new Date(+now - 15_000)] }, count: { $sum: 1 } } },
+      ]).toArray(),
+      jobs().aggregate([
+        { $match: scope },
+        { $group: { _id: { $cond: [
+          { $and: [{ $in: ["$status", ["running", "cancelling"]] }, { $lte: ["$leaseUntil", now] }] },
+          "interrupted", "$status",
+        ] }, count: { $sum: 1 } } },
+      ]).toArray(),
+      jobs().find({
+        ...scope, status: "running", leaseUntil: { $gt: now },
+        "approval.state": "pending", "approval.expiresAt": { $gt: +now },
+        $expr: { $ne: ["$approval.id", { $ifNull: ["$decision.id", null] }] },
+      }, { projection: { hostId: 1, workspace: 1, "approval.operation": 1, "approval.expiresAt": 1 } })
+        .sort({ "approval.expiresAt": 1 }).limit(20).toArray(),
+      jobs().find({ ...scope, finishedAt: { $type: "date" } }, {
+        projection: { status: 1, workspace: 1, finishedAt: 1 },
+      }).sort({ finishedAt: -1, _id: 1 }).limit(12).toArray(),
+    ]);
+    res.json({
+      hosts: Object.fromEntries(hostCounts.map(({ _id, count }) => [_id ? "online" : "offline", count])),
+      jobs: Object.fromEntries(jobCounts.map(({ _id, count }) => [_id, count])),
+      approvals, recent,
+    });
   });
   router.get("/approvals", async (_req, res) => {
     res.json({
@@ -301,7 +351,7 @@ function createRouter({
   router.delete("/hosts/:id", async (req, res) => {
     const filter = { hostId: req.params.id, ownerId: owner() };
     await hosts().updateOne({ _id: filter.hostId, ownerId: filter.ownerId }, { $set: { revokedAt: new Date() } });
-    await jobs().updateMany({ ...filter, status: { $in: ["waiting", "queued", "running", "cancelling"] } }, {
+    await jobs().updateMany({ ...filter, status: { $in: ["waiting", "scheduled", "queued", "running", "cancelling"] } }, {
       $set: { status: "interrupted", finishedAt: new Date(), error: "Device revoked." },
       $unset: { activeHost: "" },
     });
@@ -360,6 +410,30 @@ function createRouter({
       const root = metadata.get(job.sessionId || job._id);
       return { ...jobView(job), title: root?.title, archivedAt: root?.archivedAt };
     }));
+  });
+  router.get("/schedule", async (_req, res) => {
+    const records = await jobs().find({ ownerId: owner(), status: "scheduled" }, {
+      projection: { hostId: 1, scheduledAt: 1, status: 1, workspace: 1 },
+    }).sort({ scheduledAt: 1, _id: 1 }).limit(50).toArray();
+    res.json(records);
+  });
+  router.patch("/schedule/:id", async (req, res) => {
+    const scheduledAt = req.body?.scheduledAt;
+    if (!uuid(req.params.id) || !future(scheduledAt, maxScheduleDelayMs) || scheduledAt <= Date.now()) {
+      return reject(res, 400, "Select a future execution time within 366 days.");
+    }
+    const updated = await jobs().updateOne({ _id: req.params.id, ownerId: owner(), status: "scheduled" }, {
+      $set: { scheduledAt: new Date(scheduledAt) },
+    });
+    if (!updated.matchedCount) return reject(res, 409, "The schedule is no longer awaiting dispatch.");
+    res.sendStatus(204);
+  });
+  router.delete("/schedule/:id", async (req, res) => {
+    const updated = await jobs().updateOne({ _id: req.params.id, ownerId: owner(), status: "scheduled" }, {
+      $set: { status: "cancelled", finishedAt: new Date() },
+    });
+    if (!updated.matchedCount) return reject(res, 409, "The schedule is no longer awaiting dispatch.");
+    res.sendStatus(204);
   });
   router.patch("/sessions/:id", async (req, res) => {
     const { title, archived } = req.body || {};
@@ -452,22 +526,29 @@ function createRouter({
     if (!changed.matchedCount) return reject(res, 409, "The turn changed or an instruction is awaiting acknowledgement.");
     res.sendStatus(204);
   });
-  router.post("/jobs", async (req, res) => {
+  router.post(["/jobs", "/schedule"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
-    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only" } = req.body || {};
+    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt } = req.body || {};
+    const scheduling = /^\/schedule\/?$/i.test(req.path);
     if (!uuid(id) || !uuid(hostId) || !workspaces.includes(workspace) || model !== "gpt-6.2-sol" ||
         (parentId != null && !uuid(parentId)) || (queue !== false && (queue !== true || !parentId)) ||
-        (profile !== "read-only" && profile !== workspace)) {
+        (profile !== "read-only" && profile !== "full-access" && profile !== workspace) ||
+        (scheduling ? parentId || !future(scheduledAt, maxScheduleDelayMs) : scheduledAt !== undefined)) {
       return reject(res, 400, "Invalid job request.");
     }
     const invalid = promptError(prompt, "Prompt");
     if (invalid) return reject(res, 400, invalid);
     const existing = await jobs().findOne({ _id: id, ownerId: owner() });
     if (existing) return res.json({ _id: id });
+    if (scheduledAt !== undefined && scheduledAt <= Date.now()) {
+      return reject(res, 400, "Select a future execution time.");
+    }
     const host = await hosts().findOne({ _id: hostId, ownerId: owner(), revokedAt: null });
-    if (!host || (!queue && !online(host)) || !host.efforts?.includes(effort) ||
+    if (!host || (!queue && scheduledAt === undefined && !online(host)) || !host.efforts?.includes(effort) ||
         !(host.profiles || ["read-only"]).includes(profile)) {
-      return reject(res, 409, "Select an online host and a supported reasoning effort.");
+      return reject(res, 409, scheduledAt === undefined
+        ? "Select an online host and a supported reasoning effort."
+        : "Select a registered host with that execution profile and reasoning effort.");
     }
     if (prompt.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
     const parent = parentId && await jobs().findOne({
@@ -484,7 +565,9 @@ function createRouter({
         ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
         workerRole: "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,
         ...(parentId ? { successorOf: parentId } : {}),
-        codexThreadId: queue ? null : parent?.codexThreadId || null, status: queue ? "waiting" : "queued",
+        codexThreadId: queue ? null : parent?.codexThreadId || null,
+        status: scheduledAt !== undefined ? "scheduled" : queue ? "waiting" : "queued",
+        ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt) } : {}),
         createdAt: new Date(), events: [], eventCount: 0,
       });
     } catch (error) {
@@ -497,7 +580,7 @@ function createRouter({
   });
   router.post("/jobs/:id/cancel", async (req, res) => {
     const query = { _id: req.params.id, ownerId: owner() };
-    const queued = await jobs().updateOne({ ...query, status: { $in: ["waiting", "queued"] } }, {
+    const queued = await jobs().updateOne({ ...query, status: { $in: ["waiting", "scheduled", "queued"] } }, {
       $set: { status: "cancelled", finishedAt: new Date() }, $unset: { successorOf: "" },
     });
     if (!queued.matchedCount) {

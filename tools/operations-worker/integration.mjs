@@ -13,7 +13,8 @@ import { backendClient, runWorker } from "./worker.mjs";
 import { acquireWorkerLock } from "./windows.mjs";
 import { protectedDirectories, workspacePaths as workspaces } from "./profiles.mjs";
 
-const live = process.argv.includes("--live");
+const fullAccessLive = process.argv.includes("--full-access-live");
+const live = process.argv.includes("--live") && !fullAccessLive;
 const liveWorkshop = live || process.argv.includes("--workshop-live");
 const liveCancellation = process.argv.includes("--cancel-live");
 const liveInteractive = process.argv.includes("--interactive-live");
@@ -96,7 +97,7 @@ try {
   let lostClaim = false;
   let lostSync = false;
   let real;
-  if (liveWorkshop || liveCancellation || liveInteractive || directGit) real = discoverCodex();
+  if (liveWorkshop || liveCancellation || liveInteractive || directGit || fullAccessLive) real = discoverCodex();
   if (liveInteractive) {
     staging = mkdtempSync(path.join(workspaces.development, "cw-interactive-test-"));
     mkdirSync(path.join(staging, "scratch"));
@@ -111,7 +112,8 @@ try {
     git(gitFixture, "commit", "-m", "Disposable base");
   }
   worker = runWorker({
-    signal: controller.signal, efforts: ["low"], token: device.token, profiles: ["read-only", "development", "workshop"],
+    signal: controller.signal, efforts: ["low"], token: device.token,
+    profiles: ["read-only", "development", "workshop", ...(fullAccessLive ? ["full-access"] : [])],
     send: async (endpoint, body) => {
       if (offline) throw new Error("Simulated connection loss");
       const result = await send(endpoint, body);
@@ -127,6 +129,11 @@ try {
     },
     execute: async (job, record, signal, control) => {
       launchCount++;
+      if (fullAccessLive && job.profile === "full-access") {
+        return runTurn(new AppServer(real.exe, workspaces[job.workspace]), job, workspaces[job.workspace], record, signal, control, {
+          fullAccess: true, localMcp: true,
+        });
+      }
       if (job.prompt.startsWith("direct-git-probe")) {
         return runTurn(new AppServer(real.exe, gitFixture), job, gitFixture, record, signal, control, {
           root: gitFixture, gitRoots: [gitFixture], supervised: true, protectedDirectories, localMcp: true,
@@ -183,7 +190,15 @@ try {
     const [host] = (await api("/hosts"))[1];
     return host?.online && host;
   });
-  assert.deepEqual(advertised.profiles, ["read-only", "development", "workshop"]);
+  assert.deepEqual(advertised.profiles, ["read-only", "development", "workshop", ...(fullAccessLive ? ["full-access"] : [])]);
+  assert.equal((await api("/jobs", { method: "POST", body: {
+    id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol",
+    effort: "low", prompt: "Reject Full Access on a host without it", profile: "full-access",
+  }, user: other }))[0], 403);
+  if (!fullAccessLive) assert.equal((await api("/jobs", { method: "POST", body: {
+    id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol",
+    effort: "low", prompt: "Reject Full Access on a host without it", profile: "full-access",
+  } }))[0], 409);
   assert.equal((await api("/jobs", { method: "POST", body: {
     id: randomUUID(), hostId: device.id, workspace: "workshop", model: "gpt-6.2-sol",
     effort: "low", prompt: "Reject the wrong workspace profile", profile: "development",
@@ -200,7 +215,32 @@ try {
   const settle = (id) => until(async () => {
     const job = await detail(id);
     return ["completed", "failed", "cancelled", "interrupted"].includes(job.status) && job;
-  }, liveWorkshop || liveInteractive || directGit ? 105_000 : 15_000);
+  }, liveWorkshop || liveInteractive || directGit || fullAccessLive ? 105_000 : 15_000);
+  if (fullAccessLive) {
+    const prompt = `Perform four harmless checks using actual shell commands: use Git to print its version, check that both ${workspaces.development} and ${workspaces.workshop} exist without listing or reading their contents, and use Node or PowerShell to make a GET request to ${base}/operations/hosts without an authorization header and print the HTTP status (401 expected). Do not write files, contact other endpoints, read credentials, modify Git, or request approval. Print CW-FULL-ACCESS-OK only if the checks pass.`;
+    const id = await submit(prompt, "workshop", undefined, { profile: "full-access" });
+    const executed = await settle(id);
+    assert.equal(executed.status, "completed", executed.error);
+    assert.equal(executed.profile, "full-access");
+    assert.equal(executed.approvalHistory?.length || 0, 0);
+    const output = executed.events.filter(({ label }) => /^(Command output|Output)/.test(label)).map(({ text }) => text).join("\n");
+    assert.match(output, /git version/i);
+    assert.match(output, /\b401\b/);
+    assert.ok(executed.events.some(({ view, text }) => view === "response" && text.includes("CW-FULL-ACCESS-OK")));
+    const resume = {
+      id: randomUUID(), hostId: device.id, workspace: "workshop", model: "gpt-6.2-sol", effort: "low",
+      parentId: id, prompt: "Reply with only CW-FULL-ACCESS-RESUMED. Do not run tools.",
+    };
+    assert.equal((await api("/jobs", { method: "POST", body: { ...resume, profile: "read-only" } }))[0], 409);
+    assert.equal((await api("/jobs", { method: "POST", body: { ...resume, profile: "full-access", workspace: "development" } }))[0], 409);
+    const continued = await settle(await submit(resume.prompt, "workshop", id, { profile: "full-access" }));
+    assert.equal(continued.status, "completed", continued.error);
+    assert.equal(continued.codexThreadId, executed.codexThreadId);
+    assert.equal(continued.sessionId, executed.sessionId);
+    assert.ok(continued.events.some(({ view, text }) => view === "response" && text.includes("CW-FULL-ACCESS-RESUMED")));
+    console.log("Live Full Access app-server turn, native Git launch, both workspace checks and loopback network PASS");
+    console.log("Live Full Access continuation and profile/workspace binding PASS");
+  }
   const first = await submit(live ?
     "Run a read-only shell command that confirms your current Windows location and prints CW-BRIDGE-OK. Do not open files or write anything. Then reply with the exact marker CW-BRIDGE-OK." : "test");
   if (!live) {
@@ -215,7 +255,7 @@ try {
   assert.equal(initial.status, "completed", initial.error);
   assert.ok(initial.events.some(({ view }) => view === "response"));
   assert.equal(initial.events.filter(({ label }) => label === "Job assigned").length, 1);
-  assert.equal(launchCount, 1);
+  assert.equal(launchCount, fullAccessLive ? 3 : 1);
   if (live) {
     assert.ok(initial.events.some(({ label, text }) => label.startsWith("Command output") && text.includes("CW-BRIDGE-OK")));
     assert.ok(initial.events.some(({ view, text }) => view === "response" && text.includes("CW-BRIDGE-OK")));
@@ -286,6 +326,80 @@ try {
     console.log(`Live Codex Git metadata grant and local commit PASS · ${decisions.size} owner approvals`);
   }
   if (!liveWorkshop && !liveCancellation && !directGit) {
+    const objectiveRequest = {
+      title: "Validate disposable deliverable", instruction: "Collect independently reviewed evidence.",
+      criteria: ["Output includes the expected marker", "Output includes a validation report"],
+    };
+    assert.equal((await api("/objectives", { method: "POST", body: objectiveRequest, user: other }))[0], 403);
+    const [createdObjective, objective] = await api("/objectives", { method: "POST", body: objectiveRequest });
+    assert.equal(createdObjective, 201);
+    const objectivePath = `/objectives/${objective._id}`;
+    const fetchObjective = async () => (await api(objectivePath))[1];
+    const [marker, report] = (await fetchObjective()).criteria;
+    const review = (criterion, decision, evidence, revision, user = owner) =>
+      api(`${objectivePath}/criteria/${criterion.id}/review`, { method: "POST", body: { decision, evidence, revision }, user });
+    assert.equal((await review(marker, "accepted", "Expected marker observed.", 0, other))[0], 403);
+    assert.equal((await review(marker, "accepted", "Expected marker observed.", 0))[0], 204);
+    assert.equal((await review(report, "accepted", "Stale revision.", 0))[0], 409);
+    assert.equal((await review(report, "rejected", "No validation report supplied.", 1))[0], 204);
+    assert.equal((await fetchObjective()).status, "active");
+    assert.equal((await review(report, "accepted", "", 2))[0], 400);
+    assert.equal((await review(report, "accepted", "Corrected deliverable includes the report.", 2))[0], 204);
+    const completedObjective = await fetchObjective();
+    assert.equal(completedObjective.status, "completed");
+    assert.deepEqual(completedObjective.reviewHistory.map((entry) => entry.decision), ["accepted", "rejected", "accepted"]);
+    console.log("Objective authorization, revision checks, evidence and completion gate PASS");
+
+    const scheduledAt = Date.now() + 2600;
+    const scheduled = {
+      id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol",
+      effort: "low", prompt: "scheduled probe", scheduledAt,
+    };
+    assert.equal((await api("/jobs", { method: "POST", body: scheduled }))[0], 400);
+    assert.equal((await api("/schedule", { method: "POST", body: scheduled, user: other }))[0], 403);
+    assert.equal((await api("/schedule", { method: "POST", body: scheduled }))[0], 201);
+    assert.equal((await detail(scheduled.id)).status, "scheduled");
+    assert.equal((await api("/schedule"))[1][0]._id, scheduled.id);
+    const discarded = { ...scheduled, id: randomUUID(), scheduledAt: Date.now() + 60_000 };
+    assert.equal((await api("/schedule", { method: "POST", body: discarded }))[0], 201);
+    assert.equal((await api(`/schedule/${discarded.id}`, { method: "PATCH", body: { scheduledAt: Date.now() + 30_000 } }))[0], 204);
+    assert.equal((await api(`/schedule/${discarded.id}`, { method: "DELETE" }))[0], 204);
+    assert.equal((await detail(discarded.id)).status, "cancelled");
+    await sleep(1100);
+    assert.equal((await detail(scheduled.id)).status, "scheduled");
+    offline = true;
+    const hosts = db.db.collection("operations_hosts");
+    await hosts.updateOne({ _id: device.id }, { $set: { lastSeen: new Date(Date.now() - 20_000) } });
+    const late = { ...scheduled, id: randomUUID(), scheduledAt: Date.now() + 60_000 };
+    assert.equal((await api("/schedule", { method: "POST", body: late }))[0], 201);
+    await api(`/jobs/${late.id}/cancel`, { method: "POST" });
+    await sleep(Math.max(0, scheduledAt - Date.now() + 200));
+    assert.equal((await detail(scheduled.id)).status, "scheduled");
+    const priorLaunches = launchCount;
+    assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: true }, user: other }))[0], 403);
+    assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: true } }))[0], 204);
+    offline = false;
+    await until(async () => (await api("/hosts"))[1][0]?.online);
+    await sleep(1100);
+    assert.equal((await api("/dispatch"))[1].paused, true);
+    assert.equal((await detail(scheduled.id)).status, "scheduled");
+    assert.equal(launchCount, priorLaunches);
+    assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: false } }))[0], 204);
+    const executed = await settle(scheduled.id);
+    assert.equal(executed.status, "completed", executed.error);
+    assert.equal((await api(`/schedule/${scheduled.id}`, { method: "DELETE" }))[0], 409);
+    assert.ok(Date.parse(executed.startedAt) >= scheduledAt);
+    assert.equal(launchCount, priorLaunches + 1);
+    assert.equal((await api("/schedule", { method: "POST", body: scheduled }))[0], 200);
+    assert.deepEqual((await api("/schedule"))[1], []);
+    assert.equal((await api("/headquarters", { user: other }))[0], 403);
+    const [headquartersStatus, headquarters] = await api("/headquarters");
+    assert.equal(headquartersStatus, 200);
+    assert.equal(headquarters.hosts.online, 1);
+    assert.ok(headquarters.jobs.completed >= 1);
+    assert.ok(headquarters.recent.some((entry) => entry._id === scheduled.id && entry.status === "completed"));
+    console.log("Durable schedule, offline catch-up, dispatch pause, rescheduling, cancellation, and replay PASS");
+
     const transcriptId = await submit("extended-transcript-probe:" + "🧪".repeat(52_000));
     const transcript = await settle(transcriptId);
     const pages = [];

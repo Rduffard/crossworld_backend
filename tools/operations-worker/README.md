@@ -23,6 +23,24 @@ The worker advertises direct edit profiles after testing their write boundaries.
 - The current host uses Codex's unelevated Windows sandbox. It does not enforce denied read paths and has weaker network isolation than the elevated implementation. The working-directory allowlist and prompt instructions do not create a read isolation boundary. Use the bridge with a trusted VM and trusted prompts. Redaction is best-effort. The VM and database operators can read stored prompts and transcripts. Configure VM access logs to omit Authorization headers and request bodies, and protect MongoDB and its backups. [Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox)
 - Raw app-server streams, stderr, account metadata, and private model reasoning are excluded from the relay. Transcript limits are surfaced in the UI. Files and artifacts remain on the Windows host.
 
+## Optional unattended execution
+
+### Full Access
+
+Deploy the compatible backend and frontend first. When the Windows worker has finished active assignments, update its checkout and set the worker account's persistent user environment variable `OPERATIONS_FULL_ACCESS` to `1`. Start a new worker process from an environment that has picked up the setting. The worker probes the installed app-server's unrestricted command mode before advertising Full Access. Select Full Access explicitly when starting a session. Continuing a session preserves the original profile and workspace.
+
+The profile uses `danger-full-access` at thread start/resume and `dangerFullAccess` on turns, with approval policy `never`. The starting folder can be either company workspace. Shell commands can access both drives, the network, local Git, and installed browser or native executables to the extent available to the Windows worker account. Native dialogs and Windows security prompts can still require local interaction. The bridge's MCP tool selection remains in effect.
+
+Full Access trusts the owner, the relay VM, local execution inputs including instructions found in repositories and webpages, and the Windows user account. Workspace selection is a starting folder. Owner authorization, worker registration and thread-profile binding are application-enforced. Production-art promotion requires exact human authorization, and package publishing, releases and release tags are prohibited. In Full Access those constraints are agent instructions for shell activity. The broker enforces its own operation restrictions. Avoid using this profile when command-level enforcement is required.
+
+To disable it, drain active work, remove the environment variable, and restart the worker. Cancel any queued Full Access jobs you no longer want to run. They cannot be claimed by a worker that does not advertise the profile. Verify an unloaded candidate against a disposable relay using `node crossworld_backend/tools/operations-worker/integration.mjs --live --full-access-live`. [App-server sandbox configuration](https://learn.chatgpt.com/docs/app-server#command-execution)
+
+### Scoped development network
+
+Set the Windows worker's user environment variable `OPERATIONS_AUTONOMOUS_NETWORK` to `development` and apply it at a controlled worker restart after active assignments finish. The launcher inherits this setting. Remove the variable and restart to return to manual network review.
+
+An opted-in development editing turn can receive a network-only app-server permission request automatically for the remainder of that turn. The worker records each automatic grant in the execution transcript. Mixed filesystem and network requests retain manual review, as do Git metadata grants and approvals for commands that would run outside the sandbox. The read-only and workshop profiles do not receive automatic network grants. The Windows trust assumptions above apply when opting in because the grant covers all network destinations and Windows read isolation is limited. [App-server permission requests](https://learn.chatgpt.com/docs/app-server#permission-requests)
+
 ## Persistence and failure behavior
 
 | Record | Storage and identifiers |
