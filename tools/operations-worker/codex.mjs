@@ -3,8 +3,35 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { approvalPolicy, sandboxFor, scopedGrant, verifySandbox } from "./profiles.mjs";
+
+const declines = {
+  "item/commandExecution/requestApproval": { decision: "decline" },
+  "item/fileChange/requestApproval": { decision: "decline" },
+  "item/permissions/requestApproval": { permissions: {}, scope: "turn" },
+  "mcpServer/elicitation/request": { action: "decline", content: null, _meta: null },
+};
+const approvalNames = {
+  "item/commandExecution/requestApproval": "Command execution",
+  "item/fileChange/requestApproval": "File change",
+  "item/permissions/requestApproval": "Request additional permissions",
+  "mcpServer/elicitation/request": "MCP server confirmation",
+};
+
+export function isMcpConfirmation(params, verifiedServer) {
+  const schema = params?.requestedSchema;
+  return !!verifiedServer?.(params?.serverName) && params?.mode === "form" &&
+    schema?.type === "object" && schema.properties && typeof schema.properties === "object" &&
+    !Array.isArray(schema.properties) && Object.keys(schema.properties).length === 0 &&
+    !schema.required?.length;
+}
 
 export const model = "gpt-6.2-sol";
+const nativeInspectionTools = {
+  blender: ["get_addon_status", "get_scene_info"],
+  unityMCP: ["find_gameobjects", "get_test_job"],
+  aseprite: ["get_sprite_info"],
+};
 
 export function discoverCodex() {
   const platform = ({ x64: "x64", arm64: "arm64" })[process.arch];
@@ -30,26 +57,33 @@ export function discoverCodex() {
 
 // Pass only Windows runtime paths and the local Codex profile to the child.
 function codexEnvironment() {
-  const keys = /^(path|pathext|userprofile|home|homedrive|homepath|appdata|localappdata|systemroot|windir|systemdrive|comspec|temp|tmp|programdata|programfiles(?:\(x86\))?|codex_home)$/i;
+  const keys = /^(path|pathext|userprofile|home|homedrive|homepath|appdata|localappdata|systemroot|windir|systemdrive|comspec|temp|tmp|programdata|programfiles(?:\(x86\))?|programw6432|username|userdomain|ssh_auth_sock|codex_home)$/i;
   return Object.fromEntries(Object.entries(process.env).filter(([key]) => keys.test(key)));
 }
 
 export class AppServer extends EventEmitter {
-  constructor(exe, cwd, disabledServers = []) {
+  constructor(exe, cwd, disabledServers = [], scopedServers = {}) {
     super();
     this.exe = exe;
     this.pending = new Map();
     this.counter = 0;
     this.child = spawn(exe, [
       "app-server", "--listen", "stdio://",
+      "-c", 'approval_policy="never"',
+      "--enable", "request_permissions_tool",
       "-c", 'forced_login_method="chatgpt"',
       "-c", 'model_provider="openai"',
       "-c", 'service_tier="default"',
       "-c", 'web_search="disabled"',
-      "-c", 'shell_environment_policy.inherit="none"',
+      "-c", 'shell_environment_policy.inherit="all"',
       ...["multi_agent", "multi_agent_v2", "plugins", "computer_use", "browser_use", "in_app_browser"]
         .flatMap((feature) => ["--disable", feature]),
       ...disabledServers.flatMap((name) => ["-c", `mcp_servers.${name}.enabled=false`]),
+      ...Object.entries(scopedServers).flatMap(([name, allowed]) => [
+        "-c", `mcp_servers.${name}.enabled_tools=${JSON.stringify(allowed)}`,
+        "-c", `mcp_servers.${name}.required=false`,
+        ...allowed.flatMap((tool) => ["-c", `mcp_servers.${name}.tools.${tool}.approval_mode="approve"`]),
+      ]),
     ], { cwd, env: codexEnvironment(), windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
     const fail = (error) => {
       if (this.closed) return;
@@ -65,20 +99,17 @@ export class AppServer extends EventEmitter {
       let message;
       try { message = JSON.parse(line); } catch { fail(new Error("Invalid Codex protocol output.")); return; }
       if (message.method && message.id !== undefined) {
-        this.emit("approval", message.method);
-        const decisions = {
-          "item/commandExecution/requestApproval": { decision: "decline" },
-          "item/fileChange/requestApproval": { decision: "decline" },
-          "item/permissions/requestApproval": { permissions: {}, scope: "turn" },
-        };
-        const result = Object.hasOwn(decisions, message.method) && decisions[message.method];
+        const result = Object.hasOwn(declines, message.method) && declines[message.method];
+        if (result && this.emit("approval", message, result)) return;
         this.write(result ? { id: message.id, result } : {
           id: message.id, error: { code: -32601, message: "Server request unavailable in this worker." },
         });
       } else if (message.method) {
         this.emit("notification", message.method, message.params);
       } else {
-        this.pending.get(message.id)?.(message.error && new Error(message.error.message), message.result);
+        this.pending.get(message.id)?.(message.error && Object.assign(new Error(message.error.message), {
+          protocol: true,
+        }), message.result);
       }
     });
   }
@@ -104,7 +135,10 @@ export class AppServer extends EventEmitter {
   }
 
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "crossworld_operations", version: "0.1.0" } });
+    await this.request("initialize", {
+      clientInfo: { name: "crossworld_operations", version: "0.2.0" },
+      capabilities: { experimentalApi: true },
+    });
     this.write({ method: "initialized" });
     const { account } = await this.request("account/read", { refreshToken: false });
     if (account?.type !== "chatgpt") throw new Error("Codex must already be signed in using ChatGPT.");
@@ -133,12 +167,13 @@ export class AppServer extends EventEmitter {
   }
 }
 
-export async function runTurn(server, job, cwd, record, signal) {
+export async function runTurn(server, job, cwd, record, signal, control, scope = {}) {
   let threadId = job.codexThreadId;
   let turnId;
   let interruptSent = false;
   let timeout;
   let finalResponse = "";
+  let finished = false;
   const output = new Map();
   const stop = () => {
     timeout ||= setTimeout(() => server.close(), 8000);
@@ -157,16 +192,28 @@ export async function runTurn(server, job, cwd, record, signal) {
       if (connectors.some((name) => !/^[\w-]+$/.test(name))) {
         throw new Error("Use a local Codex profile without unsupported MCP server names.");
       }
+      const scopedServers = scope.localMcp ? Object.fromEntries(connectors.filter((name) =>
+        Object.hasOwn(nativeInspectionTools, name)).map((name) => [name, nativeInspectionTools[name]])) : {};
       server.close();
-      server = new AppServer(server.exe, cwd, connectors);
+      server = new AppServer(server.exe, cwd, connectors.filter((name) => !Object.hasOwn(scopedServers, name)), scopedServers);
       await server.initialize();
-      if ((await server.enabledServers(cwd)).length) throw new Error("Failed to disable local MCP servers.");
+      if ((await server.enabledServers(cwd)).some((name) => !Object.hasOwn(scopedServers, name))) {
+        throw new Error("Failed to restrict local MCP servers.");
+      }
     }
     signal.throwIfAborted();
+    const sandboxPolicy = sandboxFor(scope.root, scope.roots);
+    if (scope.protectedDirectories) await verifySandbox(server, cwd, sandboxPolicy, scope.protectedDirectories, scope.roots || scope.root);
     const settings = {
-      cwd, model: job.model, modelProvider: "openai", approvalPolicy: "never",
+      cwd, model: job.model, modelProvider: "openai", approvalPolicy: "never", approvalsReviewer: "user",
       sandbox: "read-only", serviceTier: "default",
-      developerInstructions: "Run this remote diagnostic in the selected workspace only. Do not read credentials, production secrets, or files outside the selected workspace. Do not write files or promote any production assets.",
+      developerInstructions: [
+        "Work within the selected Operations workspace. Use existing local authentication without printing or reading credentials.",
+        "Commit, push, or open a pull request only when the owner explicitly instructs you.",
+        "For GitHub pull requests, use gh if available. Otherwise use the Operations open-pull-request.mjs helper with the absolute repository path, source branch, base branch, title, and optional body.",
+        "Never publish packages, releases, or release tags, or enable publishing workflows.",
+        "Production art promotion requires a separate explicit human approval for the exact command and target. Follow the active filesystem permission profile.",
+      ].join(" "),
     };
     const thread = await server.request(threadId ? "thread/resume" : "thread/start",
       threadId ? { ...settings, threadId, excludeTurns: true } : settings);
@@ -176,16 +223,59 @@ export async function runTurn(server, job, cwd, record, signal) {
       throw new Error("Codex did not confirm the requested execution policy.");
     }
     threadId = thread.thread.id;
+    scope.remember?.(threadId);
     signal.throwIfAborted();
     record("activity", "Codex session ready", `${job.model} · ${job.effort} · ${cwd}`);
 
     const done = new Promise((resolve) => {
       server.once("closed", (error) => resolve({ status: "failed", error: { message: error.message } }));
-      server.on("approval", (method) => record("execution", "Approval request denied", method));
+      server.on("approval", async (message, decline) => {
+        const p = message.params;
+        let result = decline;
+        try {
+          if (control && !signal.aborted && !finished && p?.threadId === threadId && (!turnId || p.turnId === turnId)) {
+            const elicitation = message.method === "mcpServer/elicitation/request";
+            const confirm = elicitation && isMcpConfirmation(p, scope.reviewMcpConfirmation);
+            const grant = message.method === "item/permissions/requestApproval"
+              ? scopedGrant(p.permissions, scope.root) : null;
+            const commandApproval = scope.supervised && message.method === "item/commandExecution/requestApproval" &&
+              typeof p.command === "string" && !!p.command.trim();
+            if (elicitation && !confirm) {
+              record("execution", "Unsupported MCP prompt declined", p.serverName || "Unknown MCP server");
+              server.write({ id: message.id, result: decline });
+              return;
+            }
+            const choice = await control.approve({
+              operation: elicitation ? `MCP confirmation · ${p.serverName}` : p.command || approvalNames[message.method],
+              paths: JSON.stringify(p.permissions?.fileSystem || p.commandActions || [p.grantRoot || p.cwd].filter(Boolean)),
+              reason: commandApproval
+                ? [p.reason, "Approving once may run this command outside the workspace sandbox."].filter(Boolean).join("\n")
+                : (elicitation ? p.message : p.reason) || "",
+              canApprove: confirm || !!grant || commandApproval,
+            });
+            if (choice === "approve" && !finished && !signal.aborted) {
+              if (confirm && isMcpConfirmation(p, scope.reviewMcpConfirmation)) {
+                result = { action: "accept", content: {}, _meta: null };
+              } else if (commandApproval) {
+                result = { decision: "accept" };
+              } else if (grant) {
+                const checked = scopedGrant(p.permissions, scope.root);
+                if (checked) result = { permissions: checked, scope: "turn" };
+              }
+            }
+          }
+        } catch { /* Decline if the request cannot be relayed. */ }
+          record("execution", result === decline ? "Approval denied or expired" : "One-time approval granted", message.method);
+        server.write({ id: message.id, result });
+      });
       server.on("notification", (method, params) => {
+        if (["warning", "configWarning", "deprecationNotice"].includes(method)) {
+          record("execution", "Codex warning", params?.message || params?.summary || method);
+        }
         if (params?.threadId !== threadId) return;
         const item = params.item;
         if (method === "turn/completed") {
+          finished = true;
           if (params.turn.status === "interrupted") record("activity", "Turn interrupted", "Codex confirmed cancellation.");
           resolve(params.turn);
         }
@@ -216,14 +306,33 @@ export async function runTurn(server, job, cwd, record, signal) {
         if (item.type === "fileChange") {
           record("execution", `File changes ${item.status}`, JSON.stringify(item.changes, null, 2));
         }
+        if (["mcpToolCall", "dynamicToolCall", "webSearch", "imageView", "collabAgentToolCall"].includes(item.type)) {
+          record("execution", `Tool ${item.type} · ${method.split("/")[1]}`, JSON.stringify(item, null, 2));
+        }
       });
     });
     const started = await server.request("turn/start", {
       threadId, input: [{ type: "text", text: job.prompt }], model: job.model, effort: job.effort,
-      approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false },
+      approvalPolicy: !control ? "never" : { granular: {
+        ...approvalPolicy.granular, sandbox_approval: !!scope.supervised, mcp_elicitations: !!scope.reviewMcpConfirmation,
+      } }, approvalsReviewer: "user", sandboxPolicy,
       serviceTier: "default",
     });
     turnId = started.turn.id;
+    control?.ready(threadId, turnId, async (id, text) => {
+      if (finished || signal.aborted) return "rejected";
+      try {
+        const accepted = await server.request("turn/steer", {
+          threadId, expectedTurnId: turnId, clientUserMessageId: id,
+          input: [{ type: "text", text }],
+        });
+        if (accepted.turnId !== turnId) return "uncertain";
+        record("activity", "Steering accepted", id);
+        return "accepted";
+      } catch (error) {
+        return error.protocol ? "rejected" : "uncertain";
+      }
+    });
     record("activity", "Turn started", "Codex accepted the prompt.");
     if (signal.aborted) stop();
     const turn = await done;
@@ -236,6 +345,8 @@ export async function runTurn(server, job, cwd, record, signal) {
   } catch (error) {
     return { status: signal.aborted ? "interrupted" : "failed", threadId, error: error.message };
   } finally {
+    finished = true;
+    control?.finish();
     clearTimeout(timeout);
     signal.removeEventListener("abort", stop);
     server.close();

@@ -81,14 +81,10 @@ Select your online host, **C: · Development**, **GPT-6.2 Sol**, and **low** eff
 
 > Run a read-only command that prints your actual current Windows working directory and the marker CW-HOSTED-OK. If Windows PowerShell fails to start, use cmd.exe. Do not read or modify files. In your final response, report the command output and the marker.
 
-Open **Execution** and expand the command and output entries. Confirm the C: workspace and marker. Open **Summary**, then select **Copy response as Markdown** or **Copy session summary**. To verify continuation, keep this job selected, enter `What exact marker did you just report? Do not run tools.`, and select **Send follow-up**.
+Open **Execution** and expand the command and output entries. Confirm the C: workspace and marker. Open **Summary**, then select **Copy response as Markdown** or **Copy session summary**. To verify continuation, keep this job selected, enter `What exact marker did you just report? Do not run tools.`, and select **Continue session**.
 
-To verify cancellation, start a new session with a harmless read-only wait command, such as `Start-Sleep -Seconds 20` or a supported shell equivalent. Select **Cancel job** while the turn runs. The job may already have completed by the time a cancellation reaches the host.
+To verify cancellation, start a new session with a harmless read-only wait command, such as `Start-Sleep -Seconds 20` or a supported shell equivalent. Select **Cancel current task** while the turn runs. The job may already have completed by the time a cancellation reaches the host.
 
-## Active-turn steering and queued follow-ups
+## Updating an existing installation
 
-The installed Codex CLI 0.172.0 app-server schema includes `turn/steer`. It accepts `threadId`, text `input`, and `expectedTurnId`. It returns the accepted `turnId` for the existing turn. It requires a matching, active turn and carries no model, workspace, or sandbox overrides. The dashboard currently sends follow-ups as new turns after a resumable turn finishes. [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server#steer-an-active-turn)
-
-To add steering, an owner-only endpoint would need to persist each instruction with a request ID and target worker assignment, thread, and expected turn. The worker would need to issue `turn/steer` on the same app-server connection and report acceptance or rejection. A lost acknowledgement should be shown as an uncertain outcome unless the client can prove delivery. Automatically replaying such a request could duplicate the instruction.
-
-The installed schema exposes no separate queue for ordinary future user turns. A queued follow-up should be a durable Crossworld job tied to its predecessor. Dispatch it only after that predecessor has reached an eligible terminal state and the worker can resume its thread. Define ordering and cancellation in the relay. App-server's documented queueing for tool output is a separate capability. [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server)
+See the [worker README](README.md#configuration-and-startup) for the Phase 2 update and optional Windows edit staging directories. Use **Read-only inspection** for the first hosted diagnostic.

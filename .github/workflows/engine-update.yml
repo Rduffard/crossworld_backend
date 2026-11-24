@@ -1,8 +1,7 @@
 name: Prepare engine dependency update
 
 on:
-  schedule:
-    - cron: '27 11 * * *'
+  # Keep the vendored package in production until a registry migration is requested.
   workflow_dispatch:
 
 permissions:

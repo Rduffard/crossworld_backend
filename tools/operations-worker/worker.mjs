@@ -5,13 +5,11 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { AppServer, discoverCodex, model, runTurn } from "./codex.mjs";
+import { turnControl } from "./control.mjs";
+import { developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifySandbox, workspacePaths } from "./profiles.mjs";
 
 const interval = 1000;
 const offlineLimit = 15_000;
-const workspacePaths = {
-  development: "C:\\Users\\Romain\\projects\\Crossworld Creative",
-  workshop: "D:\\Loom Art Workshop",
-};
 
 export function backendClient(base, token) {
   if (!base) throw new Error("Set OPERATIONS_BACKEND_URL or open Start Crossworld Operations.cmd.");
@@ -42,7 +40,7 @@ export function redact(text, token) {
     .replace(/((?:access_token|refresh_token|id_token|api_key)["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, "$1[redacted]");
 }
 
-export async function runWorker({ send, efforts, execute, token, signal, log = console.log }) {
+export async function runWorker({ send, efforts, execute, token, signal, profiles, log = console.log }) {
   const instance = randomUUID();
   let active;
   let lastContact = Date.now();
@@ -55,17 +53,20 @@ export async function runWorker({ send, efforts, execute, token, signal, log = c
       const result = active.offset + events.length === active.events.length ? active.result : undefined;
       active.batch = { instance, offset: active.offset, events, result };
     }
-    const reply = await send(`/jobs/${active.job._id}/sync`, active.batch);
+    const reply = await send(`/jobs/${active.job._id}/sync`, { ...active.batch, control: active.control.snapshot() });
     active.batch = undefined;
     active.offset = reply.eventCount;
-    if (["cancelled", "cancelling", "interrupted"].includes(reply.status)) active.controller.abort();
+    if (["cancelled", "cancelling", "interrupted"].includes(reply.status)) {
+      active.controller.abort(reply.status === "interrupted" ? "interrupted" : "cancelled");
+    }
+    if (reply.status === "running") active.control.receive(reply);
     if (active.result && ["completed", "cancelled", "interrupted", "failed"].includes(reply.status)) active = undefined;
   };
   try {
     while (!signal.aborted) {
       try {
         if (Date.now() - heartbeat >= 5000) {
-          await send("/heartbeat", { instance, efforts });
+          await send("/heartbeat", { instance, efforts, profiles });
           heartbeat = Date.now();
         }
         if (active) await sync();
@@ -73,6 +74,7 @@ export async function runWorker({ send, efforts, execute, token, signal, log = c
           const job = await send("/claim", { instance });
           if (job && !signal.aborted) {
             const state = { job, offset: 0, events: [], controller: new AbortController() };
+            state.control = turnControl(state.controller.signal, (value) => redact(value, token));
             active = state;
             const record = (view, label, value) => {
               const clean = redact(value, token);
@@ -91,10 +93,12 @@ export async function runWorker({ send, efforts, execute, token, signal, log = c
               }
             };
             record("activity", "Job assigned", "The Windows worker received the job.");
-            state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal))
+            state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control))
               .catch(() => ({ status: "failed", error: "Local execution failed." }))
               .then((result) => {
-                state.result = { ...result, error: redact(result.error, token).slice(0, 2000) };
+                const status = state.controller.signal.aborted && result.status !== "completed"
+                  ? state.controller.signal.reason : result.status;
+                state.result = { ...result, status, error: redact(result.error, token).slice(0, 2000) };
               });
           }
         }
@@ -114,13 +118,13 @@ export async function runWorker({ send, efforts, execute, token, signal, log = c
           log(`${hint} Retrying.`);
         }
         disconnected = true;
-        if (Date.now() - lastContact >= offlineLimit) active?.controller.abort();
+        if (Date.now() - lastContact >= offlineLimit) active?.controller.abort("interrupted");
       }
       await sleep(interval, undefined, { signal }).catch(() => {});
     }
   } finally {
     if (active) {
-      active.controller.abort();
+      active.controller.abort("interrupted");
       await active.execution;
       await sync().catch(() => {});
     }
@@ -144,15 +148,18 @@ function localSessions(deviceId) {
   try { content = readFileSync(ledger, "utf8"); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   for (const line of content.split("\n").filter(Boolean)) {
-    const { threadId, workspace } = JSON.parse(line);
-    threads.set(threadId, workspace);
+    const { threadId, workspace, profile = "read-only" } = JSON.parse(line);
+    threads.set(threadId, { workspace, profile });
   }
   return {
-    allows: (threadId, workspace) => threads.get(threadId) === workspace,
-    remember(threadId, workspace) {
+    allows: (threadId, workspace, profile) => {
+      const saved = threads.get(threadId);
+      return saved?.workspace === workspace && saved?.profile === profile;
+    },
+    remember(threadId, workspace, profile) {
       if (threads.has(threadId)) return;
-      appendFileSync(ledger, JSON.stringify({ threadId, workspace }) + "\n", { flush: true });
-      threads.set(threadId, workspace);
+      appendFileSync(ledger, JSON.stringify({ threadId, workspace, profile }) + "\n", { flush: true });
+      threads.set(threadId, { workspace, profile });
     },
   };
 }
@@ -160,6 +167,12 @@ function localSessions(deviceId) {
 async function startWorker() {
   const { exe, version } = discoverCodex();
   const workspaces = resolvedWorkspaces();
+  const editRoots = {};
+  const candidates = { development: developmentRepositories, workshop: [workspaces.workshop] };
+  const exclusions = (roots) => protectedDirectories.filter((directory) => !roots.some((root) => {
+    const relative = path.relative(root, directory);
+    return !relative || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep));
+  }));
   const probe = new AppServer(exe, workspaces.development);
   let efforts;
   try {
@@ -171,6 +184,21 @@ async function startWorker() {
   } finally {
     probe.close();
   }
+  for (const [profile, directories] of Object.entries(candidates)) {
+    let profileProbe;
+    try {
+      const roots = directories.map(verifyDirectory);
+      profileProbe = new AppServer(exe, roots[0]);
+      await profileProbe.initialize();
+      await verifySandbox(profileProbe, roots[0], sandboxFor(roots[0], roots), exclusions(roots), roots);
+      editRoots[profile] = roots;
+      console.log(`Editing verified for ${profile}.`);
+    } catch (error) {
+      console.error(`Editing unavailable for ${profile}. ${error.message}`);
+    } finally {
+      profileProbe?.close();
+    }
+  }
   if (process.argv.includes("--check")) return;
   const token = loadCredential({ onboard: process.argv.includes("--onboard"), register: process.argv.includes("--register") });
   const sessions = localSessions(token.split(".")[0]);
@@ -179,20 +207,29 @@ async function startWorker() {
   process.on("SIGINT", () => controller.abort());
   process.on("SIGTERM", () => controller.abort());
   await runWorker({
-    send, token, efforts, signal: controller.signal,
-    execute: async (job, record, signal) => {
+    send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots)], signal: controller.signal,
+    execute: async (job, record, signal, control) => {
+      const profile = job.profile || "read-only";
       if (!Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
+          (profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
           typeof job.prompt !== "string" || job.prompt.length > 12000 ||
-          (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace))) {
+          (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
         return { status: "failed", error: "Job is outside the worker allowlist." };
       }
       if (job.status === "cancelling" || job.eventCount > 0) {
         return { status: "interrupted", error: "Previous assignment cannot be safely replayed." };
       }
-      const cwd = workspaces[job.workspace];
-      const result = await runTurn(new AppServer(exe, cwd), job, cwd, record, signal);
-      if (result.threadId) sessions.remember(result.threadId, job.workspace);
-      return result;
+      const roots = profile === "read-only" ? [] : editRoots[profile].map(verifyDirectory);
+      const [root] = roots;
+      const cwd = root || workspaces[job.workspace];
+      return runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
+        root,
+        roots,
+        protectedDirectories: exclusions(roots),
+        supervised: !!root,
+        localMcp: true,
+        remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
+      });
     },
   });
 }
