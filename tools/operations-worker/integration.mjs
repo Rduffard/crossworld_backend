@@ -111,7 +111,7 @@ try {
     git(gitFixture, "commit", "-m", "Disposable base");
   }
   worker = runWorker({
-    signal: controller.signal, efforts: ["low"], token: device.token, profiles: ["read-only", "development"],
+    signal: controller.signal, efforts: ["low"], token: device.token, profiles: ["read-only", "development", "workshop"],
     send: async (endpoint, body) => {
       if (offline) throw new Error("Simulated connection loss");
       const result = await send(endpoint, body);
@@ -172,7 +172,15 @@ try {
     },
   });
   worker.catch(() => {});
-  await until(async () => (await api("/hosts"))[1][0].online);
+  const advertised = await until(async () => {
+    const [host] = (await api("/hosts"))[1];
+    return host?.online && host;
+  });
+  assert.deepEqual(advertised.profiles, ["read-only", "development", "workshop"]);
+  assert.equal((await api("/jobs", { method: "POST", body: {
+    id: randomUUID(), hostId: device.id, workspace: "workshop", model: "gpt-6.2-sol",
+    effort: "low", prompt: "Reject the wrong workspace profile", profile: "development",
+  } }))[0], 400);
 
   async function submit(prompt, workspace = "development", parentId, options) {
     const id = randomUUID();
@@ -196,6 +204,7 @@ try {
     assert.ok(!JSON.stringify(progress).includes(device.token));
   }
   const initial = await settle(first);
+  assert.equal(initial.profile, "read-only");
   assert.equal(initial.status, "completed", initial.error);
   assert.ok(initial.events.some(({ view }) => view === "response"));
   assert.equal(initial.events.filter(({ label }) => label === "Job assigned").length, 1);
@@ -355,7 +364,11 @@ try {
   if (gitFixture) {
     const resolved = realpathSync(gitFixture);
     if (path.dirname(resolved) !== realpathSync(workspaces.development) ||
-        !path.basename(resolved).startsWith("cw-direct-git-test-")) throw new Error("Invalid fixture cleanup path.");
-    rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        !path.basename(resolved).startsWith("cw-direct-git-test-")) {
+      console.error("Invalid fixture cleanup path.");
+      process.exitCode = 1;
+    } else {
+      rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   }
 }

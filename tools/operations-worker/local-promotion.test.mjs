@@ -117,7 +117,9 @@ try {
   console.log("Disposable Git promotion, art protection, and worker restart/recovery PASS");
 } finally {
   if (path.dirname(fs.realpathSync(root)) !== temp || !path.basename(root).startsWith("cw-promotion-test-")) {
-    throw new Error("Invalid disposable fixture cleanup path.");
+    console.error("Invalid disposable fixture cleanup path.");
+    process.exitCode = 1;
+  } else {
+    fs.rmSync(root, { recursive: true, force: true });
   }
-  fs.rmSync(root, { recursive: true, force: true });
 }
