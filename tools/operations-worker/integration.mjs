@@ -384,6 +384,10 @@ try {
     assert.equal((await api("/dispatch"))[1].paused, true);
     assert.equal((await detail(scheduled.id)).status, "scheduled");
     assert.equal(launchCount, priorLaunches);
+    const pausedHeadquarters = (await api("/headquarters"))[1];
+    assert.equal(pausedHeadquarters.paused, true);
+    assert.equal(pausedHeadquarters.next[0]._id, scheduled.id);
+    assert.ok(Date.parse(pausedHeadquarters.next[0].scheduledAt) <= Date.now());
     assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: false } }))[0], 204);
     const executed = await settle(scheduled.id);
     assert.equal(executed.status, "completed", executed.error);
@@ -396,6 +400,11 @@ try {
     const [headquartersStatus, headquarters] = await api("/headquarters");
     assert.equal(headquartersStatus, 200);
     assert.equal(headquarters.hosts.online, 1);
+    assert.equal(headquarters.paused, false);
+    assert.equal(headquarters.objectives.completed, 1);
+    assert.ok(Number.isFinite(Date.parse(headquarters.observedAt)));
+    assert.deepEqual(headquarters.workforce.map(({ _id, state }) => [_id, state]), [[device.id, "idle"]]);
+    assert.ok(!JSON.stringify(headquarters).includes(host.digest));
     assert.ok(headquarters.jobs.completed >= 1);
     assert.ok(headquarters.recent.some((entry) => entry._id === scheduled.id && entry.status === "completed"));
     console.log("Durable schedule, offline catch-up, dispatch pause, rescheduling, cancellation, and replay PASS");
@@ -426,6 +435,11 @@ try {
       assert.ok(!["completed", "failed", "interrupted"].includes(job.status), job.error || "Turn ended before requesting approval.");
       return job.activeTurn && job.approval?.state === "pending" && job;
     }, liveInteractive ? 75_000 : 15_000);
+    const attention = (await api("/headquarters"))[1];
+    assert.equal(attention.workforce[0].state, "approval required");
+    assert.equal(attention.workforce[0].job._id, interactive);
+    assert.ok(attention.approvals.some((entry) => entry._id === interactive));
+
     const queued = await submit(liveInteractive ? "What marker did you just report? Reply with the marker. Do not use tools." :
       "queued continuation", "development", interactive, { profile: "development", queue: true });
     assert.equal((await detail(queued)).status, "waiting");

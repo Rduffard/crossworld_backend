@@ -4,6 +4,7 @@ const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
 const { createObjectives } = require("./objectives");
+const { createHeadquarters } = require("./headquarters");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -21,7 +22,7 @@ const text = (value, max) => typeof value === "string" && value.length <= max;
 const future = (value, max) => Number.isSafeInteger(value) && value <= Date.now() + max;
 const ownerAllowed = (owner, user) =>
   /^[a-f\d]{24}$/.test(owner || "") && owner === user?._id;
-const online = (host) => !host.revokedAt && Date.now() - Number(host.lastSeen) < 15_000;
+const online = (host, now = Date.now()) => !host.revokedAt && Number(now) - Number(host.lastSeen) < 15_000;
 const reject = (res, status, message) => res.status(status).json({ message });
 function promptError(value, label) {
   if (typeof value !== "string" || !value.trim()) return `${label} is required.`;
@@ -63,6 +64,8 @@ function createRouter({
   const jobs = () => db().collection("operations_jobs");
   const eventBatches = () => db().collection("operations_event_batches");
   const dispatch = () => db().collection("operations_dispatch");
+  const objectives = () => db().collection("operations_objectives");
+  const headquarters = createHeadquarters({ hosts, jobs, objectives, dispatch, online });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
     policies: () => db().collection("operations_github_policies"),
@@ -278,7 +281,7 @@ function createRouter({
     const isBrief = req.method === "POST" && /^\/(?:schedule|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
-  router.use("/objectives", createObjectives({ records: () => db().collection("operations_objectives"), owner }));
+  router.use("/objectives", createObjectives({ records: objectives, owner }));
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
     res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
@@ -289,37 +292,7 @@ function createRouter({
     await dispatch().updateOne({ _id: owner() }, { $set: { paused, updatedAt: new Date() } }, { upsert: true });
     res.sendStatus(204);
   });
-  router.get("/headquarters", async (_req, res) => {
-    const now = new Date();
-    const scope = { ownerId: owner() };
-    const [hostCounts, jobCounts, approvals, recent] = await Promise.all([
-      hosts().aggregate([
-        { $match: { ...scope, revokedAt: null } },
-        { $group: { _id: { $gt: ["$lastSeen", new Date(+now - 15_000)] }, count: { $sum: 1 } } },
-      ]).toArray(),
-      jobs().aggregate([
-        { $match: scope },
-        { $group: { _id: { $cond: [
-          { $and: [{ $in: ["$status", ["running", "cancelling"]] }, { $lte: ["$leaseUntil", now] }] },
-          "interrupted", "$status",
-        ] }, count: { $sum: 1 } } },
-      ]).toArray(),
-      jobs().find({
-        ...scope, status: "running", leaseUntil: { $gt: now },
-        "approval.state": "pending", "approval.expiresAt": { $gt: +now },
-        $expr: { $ne: ["$approval.id", { $ifNull: ["$decision.id", null] }] },
-      }, { projection: { hostId: 1, workspace: 1, "approval.operation": 1, "approval.expiresAt": 1 } })
-        .sort({ "approval.expiresAt": 1 }).limit(20).toArray(),
-      jobs().find({ ...scope, finishedAt: { $type: "date" } }, {
-        projection: { status: 1, workspace: 1, finishedAt: 1 },
-      }).sort({ finishedAt: -1, _id: 1 }).limit(12).toArray(),
-    ]);
-    res.json({
-      hosts: Object.fromEntries(hostCounts.map(({ _id, count }) => [_id ? "online" : "offline", count])),
-      jobs: Object.fromEntries(jobCounts.map(({ _id, count }) => [_id, count])),
-      approvals, recent,
-    });
-  });
+  router.get("/headquarters", async (_req, res) => res.json(await headquarters(owner())));
   router.get("/approvals", async (_req, res) => {
     res.json({
       githubEnabled: governance.available, toolsEnabled: governance.toolsAvailable, workerEnabled,
