@@ -207,6 +207,14 @@ try {
       instance: reviewInstance, status: "running", leaseUntil: new Date(Date.now() + 45000),
       workerRole: "direct", studioTools: true, studioActor: { id: barnaby._id }, model: "fixture", effort: "low",
     });
+    const recordsPath = "/jobs/" + source + "/studio-records";
+    const roster = await reviewSend(recordsPath, { instance: reviewInstance, kind: "employees", limit: 1 });
+    assert.equal(roster.items.length, 1);
+    assert.equal(roster.nextOffset, 1);
+    const profile = await reviewSend(recordsPath, { instance: reviewInstance, kind: "employees", id: director._id });
+    assert.equal(profile.items[0].name, director.name);
+    assert.equal(profile.items[0].ownerId, undefined);
+    await assert.rejects(reviewSend(recordsPath, { instance: reviewInstance, kind: "assignments", limit: 500 }), { status: 400 });
     const reviewPath = "/jobs/" + source + "/delegate-operations-review";
     const request = { instance: reviewInstance, callId: "review_fixture", employee: director.name };
     await assert.rejects(reviewSend(reviewPath, { ...request, employee: barnaby.name }), { status: 409 });
@@ -215,6 +223,12 @@ try {
     const [receipt] = receipts;
     assert.equal(receipt.state, "queued");
     assert.equal(receipt.objectiveId, designObjective._id);
+    const queued = await reviewSend(recordsPath, {
+      instance: reviewInstance, kind: "assignments", employeeId: director._id, id: receipt.assignmentId,
+    });
+    assert.equal(queued.items[0].status, "queued");
+    assert.equal(queued.items[0].delegatedBy.sourceTurnId, source);
+    assert.equal((await api("/jobs/" + source, { user: foundationOwner }))[1].delegatedReview._id, receipt.assignmentId);
     await assert.rejects(reviewSend(reviewPath, { ...request, callId: "another_review" }), { status: 409 });
     assert.equal((await reviewSend("/claim", { instance: reviewInstance }))._id, source);
     await jobs.updateOne({ _id: source }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
@@ -227,8 +241,127 @@ try {
     const [, reviews] = await api("/objectives/" + designObjective._id + "/assignments", { user: foundationOwner });
     assert.equal(reviews[0].delegatedBy.sourceTurnId, source);
     assert.equal(reviews[0].assigneeName, director.name);
-    await jobs.updateOne({ _id: claimedReview._id }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+    const handoff = await reviewSend("/jobs/" + claimedReview._id + "/sync", {
+      instance: reviewInstance, offset: 0, events: [
+        { view: "response", label: "Final response", text: "Observed finding. Bearer fixture-" },
+        { view: "response", label: "Final response", text: "credential" },
+      ],
+      result: { status: "completed", threadId: randomUUID(), error: "" },
+    });
+    assert.equal(handoff.status, "completed");
+    const [reportStatus, report] = await api("/reports/" + claimedReview._id, { user: foundationOwner });
+    assert.equal(reportStatus, 200);
+    assert.equal(report.response, "Observed finding. Bearer [redacted]");
+    assert.equal(report.supervisor.name, barnaby.name);
+    assert.equal(report.objective._id, designObjective._id);
+    assert.equal((await api("/reports/" + claimedReview._id, { user: other }))[0], 403);
+    const [, reportList] = await api("/reports?employeeId=" + director._id, { user: foundationOwner });
+    assert.equal(reportList.reports[0]._id, claimedReview._id);
     console.log("First Mate Operations review authorization, concurrent replay, queue, independent claim and attribution PASS");
+    const conversation = {
+      id: randomUUID(), recipientId: director._id, hostId: reviewHost, workspace: director.workspace,
+      model: "gpt-6.2-sol", effort: "low", prompt: "What are your current responsibilities?",
+    };
+    const sendConversation = (body, user = foundationOwner) => api("/jobs", { method: "POST", body, user });
+    assert.equal((await sendConversation(conversation, other))[0], 403);
+    assert.equal((await sendConversation(conversation))[0], 409);
+    await reviewSend("/heartbeat", {
+      instance: reviewInstance, efforts: ["low"], profiles: ["read-only"], employeeConversations: true,
+    });
+    assert.equal((await sendConversation({ ...conversation, profile: "full-access" }))[0], 400);
+    assert.equal((await sendConversation({ ...conversation, studioTools: true }))[0], 400);
+    assert.equal((await sendConversation(conversation))[0], 201);
+    assert.equal((await sendConversation(conversation))[0], 200);
+    assert.equal((await sendConversation({ ...conversation, recipientId: randomUUID() }))[0], 409);
+    const first = await reviewSend("/claim", { instance: reviewInstance });
+    assert.equal(first._id, conversation.id);
+    assert.equal(first.profile, "read-only");
+    assert.equal(first.workerRole, "employee-conversation");
+    assert.equal(first.employeeContext.id, director._id);
+    assert.equal(first.employeeContext.role, "Art Director");
+    assert.equal(first.employeeContext.supervisor.name, barnaby.name);
+    assert.deepEqual(first.employeeContext.projects.map(project => project.name), ["Crossworld Operations"]);
+    assert.equal(first.studioActions, undefined);
+    const providerThread = randomUUID();
+    await jobs.updateOne({ _id: first._id }, {
+      $set: { status: "completed", codexThreadId: providerThread }, $unset: { activeHost: "" },
+    });
+    const { recipientId: omittedRecipient, ...followUp } = conversation;
+    const secondId = randomUUID();
+    assert.equal((await sendConversation({ ...followUp, id: secondId, parentId: first._id }))[0], 201);
+    const second = await reviewSend("/claim", { instance: reviewInstance });
+    assert.equal(second._id, secondId);
+    assert.equal(second.codexThreadId, providerThread);
+    assert.equal(second.employeeContext.id, omittedRecipient);
+    const persisted = await jobs.find({ sessionId: first._id }).toArray();
+    assert.equal(persisted.length, 2);
+    assert.ok(persisted.every(turn => turn.employeeId === undefined && turn.objectiveId === undefined));
+    await jobs.updateOne({ _id: second._id }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+    console.log("Employee conversation capability, read-only scope, live identity, and continuation PASS");
+    if (process.argv.includes("--nexus-live")) {
+      const { exe } = discoverCodex();
+      const cwd = workspaces.development;
+      const relay = await api("/hosts", {
+        user: foundationOwner, method: "POST", body: { label: "Subscription-backed Nexus fixture" },
+      });
+      const sendLive = backendClient(base, relay[1].token);
+      const stopLive = new AbortController();
+      const liveRelay = runWorker({
+        send: sendLive, token: relay[1].token, signal: stopLive.signal, efforts: ["low"],
+        profiles: ["read-only"], employeeConversations: true,
+        execute: (job, record, signal, control, instance) => runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
+          strictReadOnly: true, employeeContext: job.employeeContext,
+          delegateOperationsReview: job.studioActions ? (callId, employee) =>
+            sendLive("/jobs/" + job._id + "/delegate-operations-review", { instance, callId, employee }) : undefined,
+        }),
+      });
+      try {
+        await until(async () => (await api("/hosts", { user: foundationOwner }))[1]
+          .find(host => host._id === relay[1].id && host.online && host.employeeConversations));
+        const settleLive = id => until(async () => {
+          const [, job] = await api("/jobs/" + id, { user: foundationOwner });
+          return ["completed", "failed", "cancelled", "interrupted"].includes(job.status) ? job : null;
+        }, 180_000);
+        const directId = randomUUID();
+        const mainRequest = { hostId: relay[1].id, workspace: director.workspace, model: "gpt-6.2-sol", effort: "low" };
+        assert.equal((await sendConversation({
+          ...mainRequest, id: directId, recipientId: director._id, prompt: "Introduce yourself and name the Operations objective you are assigned to.",
+        }))[0], 201);
+        const direct = await settleLive(directId);
+        assert.equal(direct.status, "completed", direct.error);
+        assert.match(direct.events.filter(event => event.view === "response").map(event => event.text).join(""), /Iona Keel/i);
+        assert.equal(direct.conversationActor.id, director._id);
+        assert.equal(direct.objectiveId, undefined);
+        const delegationId = randomUUID();
+        assert.equal((await sendConversation({
+          ...mainRequest, id: delegationId, studioTools: true,
+          prompt: "Delegate a read-only review of the Operations interface to Iona Keel. Do not modify code.",
+        }))[0], 201);
+        const delegated = await settleLive(delegationId);
+        assert.equal(delegated.status, "completed", delegated.error);
+        assert.ok(delegated.delegatedReview, "First Mate did not dispatch a separate assignment.");
+        const review = await settleLive(delegated.delegatedReview._id);
+        assert.equal(review.status, "completed", review.error);
+        assert.equal(review.assigneeName, director.name);
+        assert.equal(review.profile, "read-only");
+        assert.notEqual(review.codexThreadId, delegated.codexThreadId);
+        const events = [...review.events];
+        while (events.length < review.eventCount) {
+          const [, next] = await api("/jobs/" + review._id + "?offset=" + events.length, { user: foundationOwner });
+          assert.ok(next.events.length, "A committed result page was unavailable.");
+          events.push(...next.events);
+        }
+        assert.ok(events.some(event => event.view === "response" && event.text.trim()), "The independent review produced no final response.");
+        const [reportStatus, report] = await api("/reports/" + review._id, { user: foundationOwner });
+        assert.equal(reportStatus, 200);
+        assert.equal(report.assigneeName, director.name);
+        assert.ok(report.response.trim());
+        console.log("Subscription-backed direct Iona response and independent conversational delegation PASS");
+      } finally {
+        stopLive.abort();
+        await liveRelay;
+      }
+    }
     const [, objective] = await api(`/objectives/${artProduction[0].objectiveId}`, { user: foundationOwner });
     assert.equal(objective.status, "paused");
     assert.ok(artProduction.every(({ status }) => status === "paused"));

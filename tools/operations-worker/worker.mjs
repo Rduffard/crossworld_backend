@@ -43,7 +43,7 @@ export function backendClient(base, token) {
 export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
-  mediaOutput = false, boundedCorrections = false, log = console.log }) {
+  mediaOutput = false, boundedCorrections = false, employeeConversations = false, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
   const mediaTask = mediaStorage && pollMedia({ send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage });
@@ -74,7 +74,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       try {
         if (Date.now() - heartbeat >= 5000) {
           const announce = () => send("/heartbeat", {
-            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, media: !!mediaStorage, usage: getUsage?.() || undefined,
+            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, media: !!mediaStorage, usage: getUsage?.() || undefined,
             mediaVideoFrames: mediaStorage?.videoFrames === true,
             mediaOutput,
             mediaUsage: mediaStorage?.latestUsage(),
@@ -306,11 +306,14 @@ async function startWorker() {
       return usage;
     },
     boundedCorrections: true,
+    employeeConversations: true,
     execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
       const correction = job.workerRole === "correction";
-      if ((job.workerRole === "assignment" && profile !== "read-only") ||
+      const strictReadOnly = ["assignment", "employee-conversation"].includes(job.workerRole);
+      if ((strictReadOnly && profile !== "read-only") ||
+          (job.workerRole === "employee-conversation" && !job.employeeContext) ||
           (correction && profile !== job.workspace) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
           (unrestricted ? !fullAccess : profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
@@ -346,7 +349,8 @@ async function startWorker() {
           supervised: !!root && !correction,
           fullAccess: unrestricted && fullAccess,
           autonomousNetwork: !correction && autonomousNetwork && profile === "development",
-          strictReadOnly: job.workerRole === "assignment",
+          strictReadOnly,
+          employeeContext: job.employeeContext,
           localMcp: !job.workerRole || job.workerRole === "direct",
           observeUsage,
           imagePaths: staged?.files,
@@ -360,6 +364,8 @@ async function startWorker() {
           }) : undefined,
           delegateOperationsReview: job.studioActions === true ? (callId, employee) =>
             send(`/jobs/${job._id}/delegate-operations-review`, { instance, callId, employee: redact(employee, token) }) : undefined,
+          readStudioRecords: job.studioActions === true ? (query) =>
+            send(`/jobs/${job._id}/studio-records`, { ...query, instance }) : undefined,
           readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
           remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
         });

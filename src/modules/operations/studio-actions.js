@@ -2,15 +2,20 @@ const express = require("express");
 const { createHash, randomUUID } = require("node:crypto");
 const { objectiveInput, objectiveRecord } = require("./objectives");
 const { resolveAssignment, assignmentFields } = require("./assignments");
+const { studioRecords } = require("./studio-records");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
 const fingerprint = data => createHash("sha256").update(JSON.stringify(data)).digest("hex");
+// A deterministic identifier makes concurrent retries converge.
+const operationsReviewId = sourceId => fingerprint(["operations-review", sourceId]).slice(0, 32).replace(
+  /^(........)(....)(....)(....)(............)$/, "$1-$2-$3-$4-$5",
+);
 const fail = (res, status, message) => res.status(status).json({ message });
 const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
-function createStudioActions({ proposals, jobs, projects, objectives, workforce, owner, online, headquarters, hostLimit, workerEnabled }) {
+function createStudioActions({ proposals, jobs, projects, objectives, workforce, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -51,6 +56,14 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     });
   });
 
+  worker.post("/jobs/:id/studio-records", async (req, res) => {
+    if (!await directTurn(req)) return fail(res, 409, "An active First Mate turn is required.");
+    const results = await studioRecords({
+      sources: { workforce, projects, objectives, jobs }, ownerId: owner(), input: req.body, jobView, eventBatches,
+    });
+    return results ? res.json(results) : fail(res, 400, "Provide a supported record kind and filters.");
+  });
+
   worker.post("/jobs/:id/delegate-operations-review", async (req, res) => {
     const { callId, employee } = req.body ?? {};
     if (typeof callId !== "string" || !/^[\w-]{1,150}$/.test(callId) ||
@@ -60,10 +73,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const source = await directTurn(req);
     if (!source?.studioActor?.id || !workerEnabled) return fail(res, 409, "An active, bound First Mate is required.");
     const ownerId = owner();
-    // A deterministic identifier makes concurrent retries converge without a cross-document write.
-    const id = fingerprint(["operations-review", source._id]).slice(0, 32).replace(
-      /^(........)(....)(....)(....)(............)$/, "$1-$2-$3-$4-$5",
-    );
+    const id = operationsReviewId(source._id);
     const key = { _id: id, ownerId, "delegatedBy.sourceTurnId": source._id };
     const existing = await jobs().findOne(key);
     const receipt = job => ({
@@ -230,4 +240,4 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
   return { browser, worker };
 }
 
-module.exports = { createStudioActions };
+module.exports = { createStudioActions, operationsReviewId };
