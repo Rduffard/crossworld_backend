@@ -326,6 +326,51 @@ try {
     console.log(`Live Codex Git metadata grant and local commit PASS · ${decisions.size} owner approvals`);
   }
   if (!liveWorkshop && !liveCancellation && !directGit) {
+    const departmentBody = { name: "Verification", responsibilities: "Collect independent evidence." };
+    const departmentRequest = (user) => api("/workforce/departments", { method: "POST", body: departmentBody, user });
+    assert.equal((await departmentRequest(other))[0], 403);
+    const [departmentStatus, department] = await departmentRequest(owner);
+    assert.equal(departmentStatus, 201);
+    const profile = {
+      name: "Disposable reviewer", role: "qa", departmentId: department._id, workspace: "development",
+      status: "available", responsibilities: departmentBody.responsibilities, instructions: "Inspect the evidence.",
+    };
+    const hire = (body, user) => api("/workforce/employees", { method: "POST", body, user });
+    assert.equal((await hire({ ...profile, departmentId: randomUUID() }))[0], 400);
+    assert.equal((await hire({ ...profile, role: "air" }))[0], 400);
+    assert.equal((await hire(profile, other))[0], 403);
+    const [hireStatus, employee] = await hire(profile);
+    assert.equal(hireStatus, 201);
+    const update = (revision) => api("/workforce/employees/" + employee._id, {
+      method: "PUT", body: { ...profile, status: "retired", revision },
+    });
+    assert.equal((await update(0))[0], 204);
+    assert.equal((await update(0))[0], 409);
+    const [, directory] = await api("/workforce");
+    assert.equal(directory.departments[0]._id, department._id);
+    assert.equal(directory.employees[0].status, "retired");
+    assert.equal(directory.employees[0].revision, 1);
+    console.log("Workforce hierarchy, owner isolation, and revision checks PASS");
+
+    const note = {
+      kind: "procedure", status: "validated", title: "Disposable provenance check",
+      source: "fixture://workshop/procedure", author: "Integration fixture", project: "Leviathan",
+      summary: "Workshop calibration observations", body: "Disposable record.", evidence: "Expected marker found.",
+    };
+    const saveNote = (body, user) => api("/knowledge", { method: "POST", body, user });
+    assert.equal((await saveNote(note, other))[0], 403);
+    assert.equal((await saveNote({ ...note, evidence: "" }))[0], 400);
+    const [noteStatus, storedNote] = await saveNote(note);
+    assert.equal(noteStatus, 201);
+    assert.equal((await api("/knowledge?q=calibration&kind=procedure", { user: other }))[0], 403);
+    const [searchStatus, matches] = await api("/knowledge?q=calibration&kind=procedure");
+    assert.equal(searchStatus, 200);
+    assert.deepEqual(matches.map((match) => match._id), [storedNote._id]);
+    assert.equal(matches[0].body, undefined);
+    assert.deepEqual((await api("/knowledge?q=calibration&kind=research"))[1], []);
+    assert.equal((await api("/knowledge/" + storedNote._id))[1].evidence, note.evidence);
+    console.log("Knowledge provenance, full-text search, and owner isolation PASS");
+
     const objectiveRequest = {
       title: "Validate disposable deliverable", instruction: "Collect independently reviewed evidence.",
       criteria: ["Output includes the expected marker", "Output includes a validation report"],
@@ -349,6 +394,63 @@ try {
     assert.equal(completedObjective.status, "completed");
     assert.deepEqual(completedObjective.reviewHistory.map((entry) => entry.decision), ["accepted", "rejected", "accepted"]);
     console.log("Objective authorization, revision checks, evidence and completion gate PASS");
+
+    const [, orchestration] = await api("/objectives", { method: "POST", body: objectiveRequest });
+    const runs = "/objective-runs/" + orchestration._id;
+    const [, qaEmployee] = await hire(profile);
+    const [, mateEmployee] = await hire({ ...profile, role: "first-mate", departmentId: "" });
+    const [, airEmployee] = await hire({ ...profile, role: "air", departmentId: "" });
+    await api("/dispatch", { method: "PATCH", body: { paused: true } });
+    const sourceId = await submit("dependent-run source", "development", undefined, { profile: "development" });
+    const qa = { id: randomUUID(), role: "qa", sourceId, employeeId: qaEmployee._id, evidence: "Check the disposable marker." };
+    const mate = { id: randomUUID(), role: "first-mate", sourceId: qa.id, employeeId: mateEmployee._id, evidence: "Resolve findings." };
+    const air = { id: randomUUID(), role: "air", sourceId: mate.id, employeeId: airEmployee._id, evidence: "Inspect how the review proceeded." };
+    const createRun = (body, user) => api(runs, { method: "POST", body, user });
+    assert.equal((await createRun(qa, other))[0], 403);
+    assert.equal((await createRun(qa))[0], 201);
+    assert.equal((await createRun(qa))[0], 200);
+    assert.equal((await createRun({ ...qa, evidence: "Different digest" }))[0], 409);
+    assert.equal((await createRun(mate))[0], 201);
+    assert.equal((await createRun(air))[0], 201);
+    assert.equal((await api(runs, { user: other }))[0], 403);
+    const [, waitingRuns] = await api(runs);
+    assert.deepEqual(waitingRuns.map((run) => run.status), ["waiting", "waiting", "waiting"]);
+    const beforeRuns = launchCount;
+    await api("/dispatch", { method: "PATCH", body: { paused: false } });
+    const [sourceTurn, qaTurn, mateTurn, airTurn] = await Promise.all([sourceId, qa.id, mate.id, air.id].map(settle));
+    assert.equal(launchCount - beforeRuns, 4);
+    assert.equal(new Set([sourceTurn, qaTurn, mateTurn, airTurn].map((turn) => turn.codexThreadId)).size, 4);
+    for (const [turn, predecessor] of [[qaTurn, sourceTurn], [mateTurn, qaTurn], [airTurn, mateTurn]]) {
+      assert.equal(turn.status, "completed");
+      assert.equal(turn.profile, "read-only");
+      assert.ok(Date.parse(turn.startedAt) >= Date.parse(predecessor.finishedAt));
+      assert.match(turn.prompt, /Preceding turn result/);
+      assert.match(turn.prompt, /mock response/);
+    }
+    assert.equal((await api("/objectives/" + orchestration._id))[1].status, "active");
+    await api("/dispatch", { method: "PATCH", body: { paused: true } });
+    const unavailable = { ...qa, id: randomUUID() };
+    assert.equal((await createRun(unavailable))[0], 201);
+    assert.equal((await api("/workforce/employees/" + qaEmployee._id, {
+      method: "PUT", body: { ...profile, status: "paused", revision: 0 },
+    }))[0], 204);
+    const futureId = randomUUID();
+    assert.equal((await api("/schedule", { method: "POST", body: {
+      id: futureId, hostId: device.id, workspace: "development", model: "gpt-6.2-sol", effort: "low",
+      prompt: "Future dependency fixture", scheduledAt: Date.now() + 60_000,
+    } }))[0], 201);
+    const jobs = db.db.collection("operations_jobs");
+    const blockedIds = Array.from({ length: 51 }, () => randomUUID());
+    await jobs.insertMany(blockedIds.map((_id) => ({
+      _id, ownerId: owner, hostId: device.id, status: "waiting", parentId: futureId, createdAt: new Date(0),
+    })));
+    const beforeUnavailable = launchCount;
+    await api("/dispatch", { method: "PATCH", body: { paused: false } });
+    assert.equal((await settle(unavailable.id)).status, "interrupted");
+    assert.equal(launchCount, beforeUnavailable);
+    await api("/schedule/" + futureId, { method: "DELETE" });
+    await jobs.deleteMany({ _id: { $in: blockedIds } });
+    console.log("Dependent QA, First Mate and AIR dispatch, separate threads, and owner acceptance gate PASS");
 
     const scheduledAt = Date.now() + 2600;
     const scheduled = {

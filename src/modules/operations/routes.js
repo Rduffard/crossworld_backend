@@ -5,6 +5,9 @@ const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
 const { createObjectives } = require("./objectives");
 const { createHeadquarters } = require("./headquarters");
+const { createKnowledge } = require("./knowledge");
+const { createWorkforce } = require("./workforce");
+const { createObjectiveRuns, precedingResult } = require("./objective-runs");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -65,6 +68,7 @@ function createRouter({
   const eventBatches = () => db().collection("operations_event_batches");
   const dispatch = () => db().collection("operations_dispatch");
   const objectives = () => db().collection("operations_objectives");
+  const workforce = () => db().collection("operations_workforce");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, dispatch, online });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -84,6 +88,9 @@ function createRouter({
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
       }),
       jobs().createIndex({ ownerId: 1, hostId: 1, status: 1, scheduledAt: 1, createdAt: 1 }),
+      jobs().createIndex({ ownerId: 1, objectiveId: 1, workerRole: 1, createdAt: -1 }, {
+        partialFilterExpression: { objectiveId: { $type: "string" } },
+      }),
     ]).catch((error) => { indexes = undefined; throw error; });
     return indexes;
   }
@@ -139,13 +146,36 @@ function createRouter({
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
     let job = await jobs().findOne({ ...scope, activeHost: req.operationsHost._id, instance });
     if (!job) {
-      const blocked = await jobs().find({ ...scope, status: "waiting" }).sort({ createdAt: 1 }).limit(50).toArray();
+      const blocked = await jobs().aggregate([
+        { $match: { ...scope, status: "waiting" } },
+        { $set: { dependencyId: { $ifNull: ["$reviewOf", "$parentId"] } } },
+        { $lookup: {
+          from: "operations_jobs", localField: "dependencyId", foreignField: "_id", as: "predecessor",
+          pipeline: [{ $match: scope }, { $project: { status: 1, leaseUntil: 1 } }],
+        } },
+        { $unwind: { path: "$predecessor", preserveNullAndEmptyArrays: true } },
+        { $match: { $or: [
+          { predecessor: null },
+          { "predecessor.status": { $in: terminal } },
+          { "predecessor.status": { $in: ["running", "cancelling"] }, "predecessor.leaseUntil": { $lte: new Date() } },
+        ] } },
+        { $sort: { createdAt: 1, _id: 1 } }, { $limit: 50 },
+        { $project: { parentId: 1, reviewOf: 1, workerRole: 1, prompt: 1 } },
+      ]).toArray();
       for (const child of blocked) {
-        const parent = await jobs().findOne({ _id: child.parentId, ...scope });
-        if (parent && !terminal.includes(jobView(parent).status)) continue;
-        const next = parent?.status === "completed" && parent.codexThreadId
-          ? { status: "queued", codexThreadId: parent.codexThreadId }
+        const predecessor = await jobs().findOne({ _id: child.reviewOf || child.parentId, ...scope }, {
+          projection: { status: 1, codexThreadId: 1, leaseUntil: 1, events: 1, eventCount: 1 },
+        });
+        const parent = predecessor && jobView(predecessor);
+        if (parent && !terminal.includes(parent.status)) continue;
+        const next = parent && ((child.workerRole === "air" && child.reviewOf) ||
+          (parent.status === "completed" && (child.reviewOf || parent.codexThreadId)))
+          ? { status: "queued", codexThreadId: child.reviewOf ? null : parent.codexThreadId }
           : { status: "interrupted", error: "Preceding turn did not complete.", finishedAt: new Date() };
+        if (child.reviewOf && next.status === "queued") {
+          next.prompt = child.prompt + await precedingResult(parent, eventBatches());
+          if (next.prompt.length > LEGACY_PROMPT_LIMIT) next.requiresExtendedPrompt = true;
+        }
         await jobs().updateOne({ _id: child._id, ...scope, status: "waiting" }, {
           $set: next, ...(next.status === "interrupted" ? { $unset: { successorOf: "" } } : {}),
         });
@@ -170,6 +200,28 @@ function createRouter({
       }
     }
     if (!job) return res.json(null);
+    if (job.reviewOf && !job.runAuthorizedAt && job.status === "running") {
+      const [objective, employee] = await Promise.all([
+        objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active" }, { projection: { _id: 1 } }),
+        workforce().findOne({
+          _id: job.employeeId, ownerId: scope.ownerId, kind: "employee", role: job.workerRole,
+          workspace: job.workspace, status: "available",
+        }, { projection: { _id: 1 } }),
+      ]);
+      const authorization = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
+      if (!objective || !employee) {
+        await jobs().updateOne(authorization, {
+          $set: {
+            status: "interrupted", finishedAt: new Date(),
+            error: "The objective closed or the assigned employee is unavailable.",
+          },
+          $unset: { activeHost: "" },
+        });
+        return res.json(null);
+      }
+      const authorized = await jobs().updateOne(authorization, { $set: { runAuthorizedAt: new Date() } });
+      if (!authorized.matchedCount) return res.json(null);
+    }
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount } = job;
     res.json({ _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount });
   });
@@ -282,6 +334,11 @@ function createRouter({
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
   router.use("/objectives", createObjectives({ records: objectives, owner }));
+  router.use("/knowledge", createKnowledge({ records: () => db().collection("operations_knowledge"), owner }));
+  router.use("/workforce", createWorkforce({ records: workforce, jobs, owner, jobView }));
+  router.use("/objective-runs", createObjectiveRuns({
+    jobs, objectives, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage,
+  }));
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
     res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
@@ -536,7 +593,7 @@ function createRouter({
       await jobs().insertOne({
         _id: id, ownerId: owner(), hostId, workspace, profile, model, effort, prompt,
         ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
-        workerRole: "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,
+        workerRole: parent?.workerRole || "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,
         ...(parentId ? { successorOf: parentId } : {}),
         codexThreadId: queue ? null : parent?.codexThreadId || null,
         status: scheduledAt !== undefined ? "scheduled" : queue ? "waiting" : "queued",
