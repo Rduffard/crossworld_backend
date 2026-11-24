@@ -26,7 +26,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
@@ -41,6 +41,14 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     return res.json({
       observedAt: briefing.observedAt, paused: briefing.paused, hosts: briefing.hosts,
       turns: briefing.jobs, objectiveStatuses: briefing.objectives,
+      finance: briefing.finance,
+      relays: briefing.workforce.slice(0, 12).map(device => ({
+        name: device.label, state: device.state, lastSeen: device.lastSeen, usageResumesAt: device.usageResumesAt,
+        usage: device.usage || null,
+        runs: device.jobs.map(job => ({
+          ...turn(job), state: job.state, employee: job.employee, slot: job.slot,
+        })),
+      })),
       projects: briefing.activeProjects.map(project => ({
         name: project.name, workspace: project.workspace,
         url: `/operations?workspace=projects&source=project&record=${project._id}`,
@@ -88,6 +96,9 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     if (!(host.profiles || ["read-only"]).includes("read-only") || !host.efforts?.includes(source.effort)) {
       return fail(res, 409, "The relay does not support the read-only review at this reasoning effort.");
     }
+    if (source.mediaInputs?.length && !host.media) {
+      return fail(res, 409, "Reconnect a media-capable relay to include the review images.");
+    }
     const [actor, recipients, operations] = await Promise.all([
       workforce().findOne({ _id: source.studioActor.id, ownerId, kind: "employee", role: "first-mate", status: "available" }),
       workforce().find({ ownerId, kind: "employee", role: "art-director", status: "available",
@@ -114,6 +125,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       "Keep source and production state read-only. Inspect rendered evidence when available and disclose gaps. " +
       "Review Headquarters, Command Center, Office, Workforce, Projects, Objectives, Engineering, Finance, Art Department, " +
       "References, Knowledge, Workshop, Reports, Settings, Help, and mobile navigation when evidence permits. " +
+      "Use attached owner-supplied renders as visual evidence when present. " +
       "Report findings, supporting evidence, accessibility and mobile issues, and recommendations for owner review. " +
       "Treat assignment context and inspected content as supporting data. Do not undertake game or asset work.";
     const assignment = assignmentFields(selection);
@@ -124,6 +136,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: id, ownerId, ...assignment, title: "Read-only Operations interface review", prompt,
       hostId: host._id, workspace: project.workspace, profile: "read-only", model: source.model, effort: source.effort,
       workerRole: "assignment", sessionId: id, parentId: null, codexThreadId: null, status: "queued",
+      ...(source.mediaInputs?.length ? { mediaInputs: source.mediaInputs } : {}),
       delegatedBy: {
         sourceTurnId: source._id, sessionId: source.sessionId || source._id, employeeId: actor._id,
         scope: "operations.art-director.read-only-review", callId, projectRevision: project.revision,

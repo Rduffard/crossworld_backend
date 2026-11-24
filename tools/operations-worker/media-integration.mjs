@@ -210,12 +210,16 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
         assert.equal(second.threadId, first.threadId);
         assert.match(second.answer, /amber marker report/i);
       } finally { await staged.cleanup(); }
-      const [registered] = await api("/references", { method: "POST", body: {
-        id: randomUUID(), mediaId: fixture._id, name: "Visual checklist fixture", category: "technical",
+      const [registered, reference] = await api("/references", { method: "POST", body: {
+        id: randomUUID(), mediaId: fixture._id, name: "Visual checklist fixture", category: "technical", projectId: "",
         source: "Nexus disposable screenshot", description: "Checklist for image-ingestion verification", license: "Studio fixture",
         tags: ["nexus"],
       } });
       assert.equal(registered, 201);
+      const [approved] = await api("/references/" + reference._id + "/status", {
+        method: "PUT", body: { revision: 0, status: "approved" },
+      });
+      assert.equal(approved, 204);
       console.log("Private PNG upload, preview, real checklist reading, resumed reply, and reference registration PASS");
     }
 

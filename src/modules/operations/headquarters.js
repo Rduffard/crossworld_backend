@@ -4,7 +4,7 @@ const live = ["running", "cancelling"];
 function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts, online }) {
   return async function headquarters(ownerId, now = new Date()) {
     const scope = { ownerId };
-    const jobFields = { hostId: 1, status: 1, workspace: 1, title: 1 };
+    const jobFields = { hostId: 1, status: 1, workspace: 1, title: 1, assigneeName: 1, reviewerName: 1, "studioActor.name": 1, "conversationActor.name": 1 };
     const date = now.toISOString().slice(0, 10);
     const month = date.slice(0, 7);
     const [devices, jobCounts, approvals, recent, active, next, objectiveCounts, settings, activeProjects, expenses] = await Promise.all([
@@ -28,7 +28,7 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
         projection: { ...jobFields, finishedAt: 1 },
       }).sort({ finishedAt: -1, _id: 1 }).limit(12).toArray(),
       jobs().find({ ...scope, activeHost: { $type: "string" }, status: { $in: live } }, {
-        projection: { ...jobFields, leaseUntil: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },
+        projection: { ...jobFields, activeHost: 1, leaseUntil: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },
       }).toArray(),
       jobs().find({ ...scope, status: "scheduled" }, {
         projection: { ...jobFields, scheduledAt: 1 },
@@ -47,23 +47,31 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
       ]).toArray(),
     ]);
 
-    const activeByHost = new Map(active.map((job) => [job.hostId, job]));
+    const activeByHost = new Map();
+    for (const job of active) {
+      if (!activeByHost.has(job.hostId)) activeByHost.set(job.hostId, []);
+      activeByHost.get(job.hostId).push(job);
+    }
     const hostCounts = { online: 0, offline: 0 };
     const workforce = devices.map((host) => {
       const connected = online(host, now);
       hostCounts[connected ? "online" : "offline"] += 1;
-      const job = activeByHost.get(host._id);
+      const assignments = activeByHost.get(host._id) || [];
+      assignments.sort((a, b) => Number(b.activeHost === host._id) - Number(a.activeHost === host._id));
+      const current = assignments.map(job => {
+        let state = job.leaseUntil <= now ? "lease expired" : job.status;
+        if (state === "running" && job.approval?.state === "pending" &&
+            job.approval.expiresAt > +now && job.decision?.id !== job.approval.id) state = "approval required";
+        return {
+          _id: job._id, title: job.title, workspace: job.workspace, status: job.status, state,
+          employee: job.assigneeName || job.reviewerName || job.conversationActor?.name || job.studioActor?.name,
+          slot: job.activeHost === host._id + ":review" ? "background review" : "primary",
+        };
+      });
       const usageResumesAt = usageHoldUntil(host.usage, +now) || null;
       let state = connected ? (usageResumesAt ? "usage limited" : "idle") : "offline";
-      if (job) {
-        if (job.leaseUntil <= now) state = "lease expired";
-        else if (job.status === "running" && job.approval?.state === "pending" &&
-            job.approval.expiresAt > +now && job.decision?.id !== job.approval.id) state = "approval required";
-        else state = job.status;
-      }
-      return { ...host, online: connected, state, usageResumesAt, job: job && {
-        _id: job._id, title: job.title, workspace: job.workspace,
-      } };
+      if (connected && current.length) state = current.some(job => job.state === "approval required") ? "approval required" : current[0].state;
+      return { ...host, online: connected, state, usageResumesAt, job: current[0], jobs: current };
     });
 
     const attentionKeys = [

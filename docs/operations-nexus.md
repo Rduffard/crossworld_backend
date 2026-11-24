@@ -42,3 +42,9 @@ The optional live Nexus suite verified a subscription-backed Iona conversation, 
 To opt in after the active relay drains, set the worker account's persistent user environment variable OPERATIONS_BACKGROUND_REVIEWS to 1 before starting the refreshed launcher. The authenticated heartbeat must advertise support before the background slot can claim. Start a new Barnaby conversation to register the updated dynamic tools. Earlier Codex threads keep their original tool registration.
 
 The hosted gate remains a relay handover followed by the actual owner-account smoke tests and the full deployed-interface Iona assignment. Preserve the current primary orchestration execution until its result is recorded. Do not restart game work.
+
+## Visual evidence and both active executions
+
+A screenshot attached to the owner turn that requests an Operations review is carried to the delegated assignment through the same validated, job-scoped media manifests on the same relay. The review remains read-only. Headquarters and Office show both observed relay slots, and First Mate receives the available subscription and manually recorded finance observations.
+
+The live PNG regression uploaded a disposable rendered three-item checklist, retrieved the preview, read the heading, checklist title, completion count and all entries in real Codex, resumed the same provider conversation, and registered and approved the test reference. This uses fixture data and does not establish hosted acceptance.

@@ -199,13 +199,15 @@ try {
     }))[1];
     const reviewSend = backendClient(base, reviewToken);
     const reviewInstance = randomUUID();
-    await reviewSend("/heartbeat", { instance: reviewInstance, efforts: ["low"], profiles: ["read-only"] });
+    await reviewSend("/heartbeat", { instance: reviewInstance, efforts: ["low"], profiles: ["read-only"], media: true });
     const source = randomUUID();
+    const reviewImage = { id: randomUUID(), mime: "image/png", sha256: "d".repeat(64), size: 128 };
     const jobs = db.db.collection("operations_jobs");
     await jobs.insertOne({
       _id: source, ownerId: foundationOwner, hostId: reviewHost, activeHost: reviewHost,
       instance: reviewInstance, status: "running", leaseUntil: new Date(Date.now() + 45000),
       workerRole: "direct", studioTools: true, studioActor: { id: barnaby._id }, model: "fixture", effort: "low",
+      mediaInputs: [reviewImage],
     });
     const recordsPath = "/jobs/" + source + "/studio-records";
     const roster = await reviewSend(recordsPath, { instance: reviewInstance, kind: "employees", limit: 1 });
@@ -238,6 +240,7 @@ try {
     assert.equal(claimedReview.workerRole, "assignment");
     assert.equal(claimedReview.codexThreadId, null);
     assert.equal(claimedReview.studioActions, undefined);
+    assert.deepEqual(claimedReview.mediaInputs, [reviewImage]);
     const [, reviews] = await api("/objectives/" + designObjective._id + "/assignments", { user: foundationOwner });
     assert.equal(reviews[0].delegatedBy.sourceTurnId, source);
     assert.equal(reviews[0].assigneeName, director.name);
@@ -343,6 +346,9 @@ try {
     assert.equal(parallelReview._id, linked.assignmentId);
     const independent = await jobs.find({ _id: { $in: [reviewSource, parallelReview._id] }, status: "running" }).toArray();
     assert.equal(independent.length, 2);
+    const [, concurrentHeadquarters] = await api("/headquarters", { user: foundationOwner });
+    const observedRelay = concurrentHeadquarters.workforce.find(host => host._id === reviewHost);
+    assert.deepEqual(observedRelay.jobs.map(job => job._id), [reviewSource, parallelReview._id]);
     const finish = id => reviewSend("/jobs/" + id + "/sync", {
       instance: reviewInstance, offset: 0, events: [], result: { status: "completed", threadId: randomUUID(), error: "" },
     });
