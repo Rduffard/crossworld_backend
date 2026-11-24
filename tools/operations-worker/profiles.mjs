@@ -59,23 +59,48 @@ export function verifyEditTree(directory) {
   return root;
 }
 
-export function scopedGrant(request, root) {
+export function scopedGrant(request, { root, gitRoots = [] }) {
   const fs = request?.fileSystem;
-  if (!root || request.network || !fs || fs.globScanMaxDepth != null ||
-      (fs.entries || []).some((entry) => entry.path?.type !== "path" || !["read", "write"].includes(entry.access))) return null;
-  const grants = [...(fs.read || []), ...(fs.write || []), ...(fs.entries || []).map((entry) => entry.path.path)];
-  if (!grants.length || grants.some((value) => {
-    if (typeof value !== "string" || !path.isAbsolute(value)) return true;
+  const network = request?.network?.enabled === true;
+  if (!root || (network && !gitRoots.length) || fs?.globScanMaxDepth != null ||
+      (fs?.entries || []).some((entry) => entry.path?.type !== "path" || !["read", "write"].includes(entry.access))) return null;
+  const grants = [...(fs?.read || []), ...(fs?.write || []), ...(fs?.entries || []).map((entry) => entry.path.path)];
+  if (!network && !grants.length) return null;
+  if (grants.some((value) => !grantPathAllowed(value, root, gitRoots))) return null;
+  return {
+    ...(network ? { network: { enabled: true } } : {}),
+    ...(grants.length ? { fileSystem: {
+      read: fs.read || null, write: fs.write || null,
+      ...(fs.entries?.length ? { entries: fs.entries } : {}),
+    } } : {}),
+  };
+}
+
+function grantPathAllowed(value, root, gitRoots) {
+  if (typeof value !== "string" || !path.isAbsolute(value) || value.split(/[\\/]/).some((part) => part === "." || part === "..") ||
+      value.slice(path.parse(value).root.length).includes(":") || /^[\\/]{2}/.test(value)) return false;
+  value = path.normalize(value);
+  return [...new Set([root, ...gitRoots])].some((directory) => {
+    const relative = path.relative(directory, value);
+    if (!relative || relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) return false;
+    const parts = relative.split(path.sep);
+    const git = parts[0].toLowerCase() === ".git" && gitRoots.includes(directory);
+    if (parts.some((part, index) => /[. ]$/.test(part) || (part.startsWith(".") && !(git && index === 0)))) return false;
     try {
-      const relative = path.relative(root, realpathSync(value));
-      return !relative || relative === ".." || relative.startsWith(".." + path.sep) ||
-        path.isAbsolute(relative) || relative.split(path.sep).some((part) => part.startsWith("."));
-    } catch { return true; }
-  })) return null;
-  return { fileSystem: {
-    read: fs.read || null, write: fs.write || null,
-    ...(fs.entries?.length ? { entries: fs.entries } : {}),
-  } };
+      if (git) {
+        // A lockfile may not exist yet. Its Git directory and existing parents must be local.
+        verifyDirectory(path.join(directory, parts[0]));
+        let ancestor = value;
+        while (!existsSync(ancestor)) {
+          try { lstatSync(ancestor); return false; }
+          catch (error) { if (error.code !== "ENOENT") return false; }
+          ancestor = path.dirname(ancestor);
+        }
+        return realpathSync(ancestor).toLowerCase() === ancestor.toLowerCase();
+      }
+      return realpathSync(value).toLowerCase() === value.toLowerCase();
+    } catch { return false; }
+  });
 }
 
 export async function verifySandbox(server, cwd, sandboxPolicy, protectedDirectories, roots) {

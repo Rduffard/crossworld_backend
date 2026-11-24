@@ -8,6 +8,9 @@ import { AppServer, discoverCodex, model, runTurn } from "./codex.mjs";
 import { turnControl } from "./control.mjs";
 import { developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifySandbox, workspacePaths } from "./profiles.mjs";
 
+import promptLimits from "../../src/modules/operations/prompt-limits.js";
+
+const { PROMPT_LIMIT } = promptLimits;
 const interval = 1000;
 const offlineLimit = 15_000;
 
@@ -49,12 +52,13 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
   let connected = false;
   const sync = async () => {
     if (!active.batch) {
-      const events = active.events.slice(active.offset, active.offset + 5);
-      const result = active.offset + events.length === active.events.length ? active.result : undefined;
+      const events = active.events.slice(0, 5);
+      const result = events.length === active.events.length ? active.result : undefined;
       active.batch = { instance, offset: active.offset, events, result };
     }
     const reply = await send(`/jobs/${active.job._id}/sync`, { ...active.batch, control: active.control.snapshot() });
     active.batch = undefined;
+    active.events.splice(0, reply.eventCount - active.offset);
     active.offset = reply.eventCount;
     if (["cancelled", "cancelling", "interrupted"].includes(reply.status)) {
       active.controller.abort(reply.status === "interrupted" ? "interrupted" : "cancelled");
@@ -66,30 +70,24 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     while (!signal.aborted) {
       try {
         if (Date.now() - heartbeat >= 5000) {
-          await send("/heartbeat", { instance, efforts, profiles });
+          await send("/heartbeat", { instance, efforts, profiles, extendedPrompts: true });
           heartbeat = Date.now();
         }
         if (active) await sync();
         else {
-          const job = await send("/claim", { instance });
+          const job = await send("/claim", { instance, extendedPrompts: true });
           if (job && !signal.aborted) {
             const state = { job, offset: 0, events: [], controller: new AbortController() };
             state.control = turnControl(state.controller.signal, (value) => redact(value, token));
             active = state;
             const record = (view, label, value) => {
-              const clean = redact(value, token);
-              if (!clean || (!["response"].includes(view) && state.events.length >= 350)) {
-                if (clean && state.events.length === 350 && view !== "response") {
-                  state.events.push({ view: "activity", label: "Transcript limit reached", text: "Further execution details were omitted." });
-                }
-                return;
-              }
-              const remaining = view === "response" ? 400 - state.events.length : 350 - state.events.length;
-              for (let index = 0; index < clean.length && index < remaining * 3000; index += 3000) {
-                state.events.push({ view, label: label.slice(0, 120), text: clean.slice(index, index + 3000) });
-              }
-              if (view === "response" && clean.length > remaining * 3000) {
-                state.events.push({ view, label: "Final response", text: "\n[Response truncated by transcript limit]" });
+              const clean = redact(value, token).toWellFormed();
+              let index = 0;
+              while (index < clean.length) {
+                let end = Math.min(index + 3000, clean.length);
+                if (clean.charCodeAt(end - 1) >= 0xd800 && clean.charCodeAt(end - 1) <= 0xdbff) end--;
+                state.events.push({ view, label: label.slice(0, 120), text: clean.slice(index, end) });
+                index = end;
               }
             };
             record("activity", "Job assigned", "The Windows worker received the job.");
@@ -120,7 +118,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
         disconnected = true;
         if (Date.now() - lastContact >= offlineLimit) active?.controller.abort("interrupted");
       }
-      await sleep(interval, undefined, { signal }).catch(() => {});
+      await sleep(!disconnected && active?.events.length >= 5 ? 50 : interval, undefined, { signal }).catch(() => {});
     }
   } finally {
     if (active) {
@@ -212,7 +210,7 @@ async function startWorker() {
       const profile = job.profile || "read-only";
       if (!Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
           (profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
-          typeof job.prompt !== "string" || job.prompt.length > 12000 ||
+          typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
           (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
         return { status: "failed", error: "Job is outside the worker allowlist." };
       }
@@ -225,6 +223,7 @@ async function startWorker() {
       return runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
         root,
         roots,
+        gitRoots: profile === "development" ? roots : [],
         protectedDirectories: exclusions(roots),
         supervised: !!root,
         localMcp: true,

@@ -1,0 +1,4 @@
+const LEGACY_PROMPT_LIMIT = 12_000;
+const PROMPT_LIMIT = 120_000;
+
+module.exports = { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT };

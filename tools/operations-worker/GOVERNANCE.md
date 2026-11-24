@@ -14,6 +14,8 @@ Normal edit commands run with Codex workspace-write and its network-disabled set
 
 Operations uses existing Git Credential Manager and SSH configuration when available. Explicit owner instructions determine when Codex should commit, push, or open a pull request. No GitHub App, separate Windows account or VM is needed. Codex may request a one-time dashboard approval if Git metadata or network access needs to leave the sandbox. For pull requests, use an authenticated `gh` if available. The Windows worker also has a fallback that uses the local Git credential helper and prints only the pull request URL. It requires a stored credential with permission to create a PR on the origin repository. An SSH-only credential can push but cannot authenticate to the pull request API.
 
+Development editing can also request turn-scoped approval for authorized Git metadata paths and required network access. Review both in the dashboard before approving. Restart the worker from the updated checkout after the new backend is deployed. Longer prompts and the new event transport are available on the restarted worker. The prompt editor accepts up to 120,000 characters and can add a UTF-8 Markdown or text file to the prompt. Drafts stay in the current browser.
+
 ```powershell
 node crossworld_backend/tools/operations-worker/open-pull-request.mjs 'C:\Users\Romain\projects\Crossworld Creative\crossworld_backend' feature/my-branch main 'Pull request title'
 ```

@@ -4,10 +4,15 @@ const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
 
+const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
+
 const workspaces = ["development", "workshop"];
 const profiles = ["read-only", ...workspaces];
 const terminal = ["completed", "failed", "cancelled", "interrupted"];
 const leaseMs = 45_000;
+const syncEventLimit = 12;
+const eventPageSize = 40;
+const legacyEventLimit = 401;
 const deviceHash = (token) => createHash("sha256").update(token).digest("hex");
 const uuid = (value) => typeof value === "string" && /^[a-f\d-]{36}$/.test(value);
 const text = (value, max) => typeof value === "string" && value.length <= max;
@@ -16,6 +21,15 @@ const ownerAllowed = (owner, user) =>
   /^[a-f\d]{24}$/.test(owner || "") && owner === user?._id;
 const online = (host) => !host.revokedAt && Date.now() - Number(host.lastSeen) < 15_000;
 const reject = (res, status, message) => res.status(status).json({ message });
+function promptError(value, label) {
+  if (typeof value !== "string" || !value.trim()) return `${label} is required.`;
+  if (value.length > PROMPT_LIMIT) return `${label} exceeds the 120,000-character limit.`;
+  if (!value.isWellFormed()) return `${label} contains invalid Unicode.`;
+  return null;
+}
+const hostLimit = (host) => host?.extendedPrompts === true ? PROMPT_LIMIT : LEGACY_PROMPT_LIMIT;
+const upgradeMessage = "This worker supports up to 12,000 characters. Update and restart it to send longer prompts.";
+
 function jobView(job) {
   if (job.leaseUntil <= new Date() && ["running", "cancelling"].includes(job.status)) {
     job = { ...job, status: "interrupted", error: "Worker lease expired." };
@@ -45,6 +59,7 @@ function createRouter({
   const router = express.Router();
   const hosts = () => db().collection("operations_hosts");
   const jobs = () => db().collection("operations_jobs");
+  const eventBatches = () => db().collection("operations_event_batches");
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
     policies: () => db().collection("operations_github_policies"),
@@ -55,6 +70,7 @@ function createRouter({
   let indexes;
   function ensureIndexes() {
     indexes ||= Promise.all([
+      eventBatches().createIndex({ jobId: 1, offset: 1 }, { unique: true }),
       jobs().createIndex({ activeHost: 1 }, {
         unique: true, partialFilterExpression: { activeHost: { $type: "string" } },
       }),
@@ -83,10 +99,10 @@ function createRouter({
     req.operationsHost = host;
     next();
   });
-  worker.use(express.json({ limit: "100kb" }));
+  worker.use(express.json({ limit: "640kb" }));
   worker.post("/heartbeat", async (req, res) => {
-    const { efforts, instance, profiles: supported = ["read-only"] } = req.body || {};
-    if (!uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
+    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false } = req.body || {};
+    if (typeof extendedPrompts !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry))) {
       return reject(res, 400, "Invalid worker capabilities.");
@@ -95,7 +111,7 @@ function createRouter({
     const host = await hosts().findOneAndUpdate({
       _id: req.operationsHost._id, revokedAt: null,
       $or: [{ instance }, { lastSeen: { $lt: new Date(+now - leaseMs) } }, { lastSeen: null }],
-    }, { $set: { instance, efforts, profiles: supported, lastSeen: now } }, { returnDocument: "after" });
+    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, lastSeen: now } }, { returnDocument: "after" });
     if (!host) return reject(res, 409, "Another worker instance holds this device lease.");
     await jobs().updateMany({
       ownerId: owner(), activeHost: host._id, leaseUntil: { $lte: now },
@@ -130,6 +146,8 @@ function createRouter({
       try {
         job = await jobs().findOneAndUpdate({
           ...scope, status: "queued",
+          ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
+            ? {} : { requiresExtendedPrompt: { $ne: true } }),
           $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }],
         }, { $set: {
           status: "running", instance, activeHost: req.operationsHost._id,
@@ -149,8 +167,8 @@ function createRouter({
     const { instance, offset, events, result, control = {} } = req.body || {};
     const { turn, approval, steering } = control || {};
     if (!uuid(req.params.id) || !uuid(instance) || req.operationsHost.instance !== instance ||
-        !Number.isInteger(offset) || offset < 0 ||
-        !Array.isArray(events) || events.length > 12 || offset + events.length > 401 ||
+        !Array.isArray(events) || events.length > syncEventLimit ||
+        !Number.isSafeInteger(offset + events.length) || !Number.isSafeInteger(offset) || offset < 0 ||
         events.some((event) => !event || !["activity", "execution", "response"].includes(event.view) ||
           typeof event.label !== "string" || event.label.length > 120 ||
           typeof event.text !== "string" || event.text.length > 8000) ||
@@ -187,9 +205,21 @@ function createRouter({
     }
     if (steering?.id && steering.id === current.instruction?.id) update.$set["instruction.state"] = steering.state;
     if (events.length && offset === current.eventCount) {
-      update.$push = { events: { $each: events.map(({ view, label, text }) => ({
+      const payload = events.map(({ view, label, text }) => ({
         view, label, text, at: new Date(),
-      })) } };
+      }));
+      const key = { jobId: current._id, offset };
+      const digest = deviceHash(JSON.stringify(payload.map(({ view, label, text }) => [view, label, text])));
+      // Stage the immutable batch first. The job's eventCount commits it for readers.
+      // A lost acknowledgement or concurrent retry can reuse the same batch.
+      try {
+        await eventBatches().insertOne({ ...key, digest, events: payload });
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        if (!await eventBatches().findOne({ ...key, digest }, { projection: { _id: 1 } })) {
+          return reject(res, 409, "Event batch differs from the staged update.");
+        }
+      }
       update.$inc = { eventCount: events.length };
     } else if (offset > current.eventCount || offset + events.length > current.eventCount) {
       return reject(res, 409, "Event sequence mismatch.");
@@ -234,7 +264,12 @@ function createRouter({
     if (!ownerAllowed(owner(), req.user)) return reject(res, 403, "Operations access denied.");
     next();
   });
-  router.use(express.json({ limit: "64kb" }));
+  const briefJson = express.json({ limit: "768kb" });
+  const ownerJson = express.json({ limit: "64kb" });
+  router.use((req, res, next) => {
+    const isBrief = req.method === "POST" && /^\/jobs(?:\/[^/]+\/steer)?\/?$/i.test(req.path);
+    (isBrief ? briefJson : ownerJson)(req, res, next);
+  });
   router.get("/approvals", async (_req, res) => {
     res.json({
       githubEnabled: governance.available, toolsEnabled: governance.toolsAvailable, workerEnabled,
@@ -248,9 +283,9 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
-    res.json(records.map((host) => ({ ...host, online: online(host) })));
+    res.json(records.map((host) => ({ ...host, online: online(host), promptLimit: hostLimit(host) })));
   });
   router.post("/hosts", async (req, res) => {
     const label = req.body?.label?.trim?.();
@@ -287,14 +322,36 @@ function createRouter({
       }).toArray();
       filter.sessionId = { [archive === "true" ? "$in" : "$nin"]: archived.map(({ _id }) => _id) };
     }
-    if (pattern) filter.$or = [
+    const searchMatch = pattern && { $or: [
       { prompt: pattern },
       { sessionId: { $in: named.map(({ _id }) => _id) } },
       { events: { $elemMatch: { view: "response", text: pattern } } },
-    ];
-    const records = await jobs().find(filter, {
-      projection: { events: 0, instance: 0, activeHost: 0, approvalHistory: 0 },
-    }).sort({ createdAt: -1 }).limit(50).toArray();
+      { "matchingBatches.0": { $exists: true } },
+    ] };
+    const records = await jobs().aggregate([
+      { $match: filter },
+      ...(pattern ? [
+        { $lookup: {
+          from: "operations_event_batches", localField: "_id", foreignField: "jobId", as: "matchingBatches",
+          let: { committed: "$eventCount" },
+          pipeline: [
+            { $match: { $expr: { $lt: ["$offset", "$$committed"] },
+              events: { $elemMatch: { view: "response", text: pattern } } } },
+            { $limit: 1 },
+            { $project: { _id: 1 } },
+          ],
+        } },
+        { $match: searchMatch },
+        { $unset: "matchingBatches" },
+      ] : []),
+      { $sort: { createdAt: -1 } },
+      { $limit: 50 },
+      ...(_req.query.compact === "true" ? [
+        { $set: { prompt: { $substrCP: ["$prompt", 0, 55] } } },
+        { $unset: "instruction.text" },
+      ] : []),
+      { $unset: ["events", "instance", "activeHost", "approvalHistory"] },
+    ]).toArray();
     const roots = await jobs().find({
       ownerId: owner(), _id: { $in: [...new Set(records.map((job) => job.sessionId || job._id))] },
     }, { projection: { title: 1, archivedAt: 1 } }).toArray();
@@ -320,13 +377,25 @@ function createRouter({
   });
   router.get("/jobs/:id", async (req, res) => {
     const offset = Number(req.query.offset || 0);
-    if (!Number.isInteger(offset) || offset < 0 || offset > 401) {
+    if (!Number.isSafeInteger(offset) || offset < 0) {
       return reject(res, 400, "Invalid event offset.");
     }
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() }, {
-      projection: { events: { $slice: [offset, 40] }, instance: 0, activeHost: 0 },
+      projection: { events: { $slice: [Math.min(offset, legacyEventLimit), eventPageSize] }, instance: 0, activeHost: 0,
+        ...(req.query.compact === "true" ? { prompt: 0, "instruction.text": 0 } : {}) },
     });
     if (!job) return reject(res, 404, "Job not found.");
+    job.events ||= [];
+    const cursor = offset + job.events.length;
+    if (cursor < job.eventCount && job.events.length < eventPageSize) {
+      const end = Math.min(job.eventCount, offset + eventPageSize);
+      const batches = await eventBatches().find({
+        jobId: job._id, offset: { $gte: Math.max(0, cursor - syncEventLimit + 1), $lt: end },
+      }).sort({ offset: 1 }).toArray();
+      for (const batch of batches) {
+        job.events.push(...batch.events.slice(Math.max(0, cursor - batch.offset), end - batch.offset));
+      }
+    }
     const root = await jobs().findOne({ _id: job.sessionId || job._id, ownerId: owner() }, {
       projection: { title: 1, archivedAt: 1 },
     });
@@ -364,13 +433,16 @@ function createRouter({
   });
   router.post("/jobs/:id/steer", async (req, res) => {
     const { id, turnId, input } = req.body || {};
-    if (!uuid(id) || !text(turnId, 128) || !turnId || !text(input, 12000) || !input.trim()) {
+    if (!uuid(id) || !text(turnId, 128) || !turnId) {
       return reject(res, 400, "Invalid steering instruction.");
     }
+    const invalid = promptError(input, "Steering instruction");
+    if (invalid) return reject(res, 400, invalid);
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() });
     if (job?.instruction?.id === id) return res.sendStatus(204);
     const host = job && await hosts().findOne({ _id: job.hostId, ownerId: owner(), instance: job.instance });
     if (!host || !online(host)) return reject(res, 409, "The assigned worker is disconnected.");
+    if (input.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
     const changed = await jobs().updateOne({
       _id: job._id, ownerId: owner(), instance: host.instance, status: "running", leaseUntil: { $gt: new Date() },
       "activeTurn.turnId": turnId,
@@ -384,11 +456,12 @@ function createRouter({
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
     const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only" } = req.body || {};
     if (!uuid(id) || !uuid(hostId) || !workspaces.includes(workspace) || model !== "gpt-6.2-sol" ||
-        typeof prompt !== "string" || !prompt.trim() || prompt.length > 12000 ||
         (parentId != null && !uuid(parentId)) || (queue !== false && (queue !== true || !parentId)) ||
         (profile !== "read-only" && profile !== workspace)) {
       return reject(res, 400, "Invalid job request.");
     }
+    const invalid = promptError(prompt, "Prompt");
+    if (invalid) return reject(res, 400, invalid);
     const existing = await jobs().findOne({ _id: id, ownerId: owner() });
     if (existing) return res.json({ _id: id });
     const host = await hosts().findOne({ _id: hostId, ownerId: owner(), revokedAt: null });
@@ -396,6 +469,7 @@ function createRouter({
         !(host.profiles || ["read-only"]).includes(profile)) {
       return reject(res, 409, "Select an online host and a supported reasoning effort.");
     }
+    if (prompt.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
     const parent = parentId && await jobs().findOne({
       _id: parentId, ownerId: owner(), hostId, workspace,
       status: { $in: queue ? ["queued", "running", "completed"] : terminal },
@@ -407,6 +481,7 @@ function createRouter({
     try {
       await jobs().insertOne({
         _id: id, ownerId: owner(), hostId, workspace, profile, model, effort, prompt,
+        ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
         workerRole: "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,
         ...(parentId ? { successorOf: parentId } : {}),
         codexThreadId: queue ? null : parent?.codexThreadId || null, status: queue ? "waiting" : "queued",
@@ -434,7 +509,8 @@ function createRouter({
   router.use((error, _req, res, _next) => {
     const status = error.statusCode || error.status || 500;
     if (status >= 500) reportError(error);
-    reject(res, status, status >= 500 ? "Operations storage or service unavailable." : "Operations request rejected.");
+    if (status === 413) return reject(res, status, "Operations request body exceeds the transport limit.");
+    return reject(res, status, status >= 500 ? "Operations storage or service unavailable." : "Operations request rejected.");
   });
   return router;
 }

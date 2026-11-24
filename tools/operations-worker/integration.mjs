@@ -129,8 +129,15 @@ try {
       launchCount++;
       if (job.prompt.startsWith("direct-git-probe")) {
         return runTurn(new AppServer(real.exe, gitFixture), job, gitFixture, record, signal, control, {
-          root: gitFixture, supervised: true, protectedDirectories, localMcp: true,
+          root: gitFixture, gitRoots: [gitFixture], supervised: true, protectedDirectories, localMcp: true,
         });
+      }
+      if (job.prompt.startsWith("extended-transcript-probe:")) {
+        assert.equal(job.prompt, "extended-transcript-probe:" + "🧪".repeat(52_000));
+        for (let index = 0; index < 415; index++) record("execution", "Mock command output", String(index));
+        record("activity", "Agent message", "Activity after verbose execution");
+        record("response", "Final response", "x".repeat(2999) + "🧪 searchable-transcript-marker");
+        return { status: "completed", threadId: randomUUID() };
       }
       if (job.prompt === "expired-approval-probe") {
         control.ready(randomUUID(), randomUUID(), async () => "accepted");
@@ -247,14 +254,21 @@ try {
   assert.equal(cancelled.status, "cancelled", cancelled.error);
   if (liveCancellation) assert.ok(cancelled.events.some(({ label }) => label === "Turn interrupted"));
   if (directGit) {
-    const jobId = await submit("direct-git-probe: This repository is disposable. Edit probe.txt so it contains CW-DIRECT-GIT. Then run git add -- probe.txt and git commit -m CW-DIRECT-GIT locally. If the sandbox denies Git metadata writes, request command approval for the exact Git command. Do not use any network access or remote. Do not touch other paths.", "development", undefined, { profile: "development" });
+    const jobId = await submit(`direct-git-probe: This repository is disposable. First use request_permissions to ask for write access to ${path.join(gitFixture, ".git")} and network access. Once granted, edit probe.txt so it contains CW-DIRECT-GIT, then run git add -- probe.txt and git commit -m CW-DIRECT-GIT locally. If the sandbox still denies Git metadata writes, request command approval for the exact Git command. Do not contact any remote. Do not touch other paths.`, "development", undefined, { profile: "development" });
     const decisions = new Set();
+    let grantedMetadata = false;
     const complete = await until(async () => {
       const detail = await api(`/jobs/${jobId}`).then((result) => result[1]);
       if (detail.approval?.state === "pending" && !decisions.has(detail.approval.id)) {
         assert.equal(detail.approval.canApprove, true);
-        assert.match(detail.approval.operation, /\bgit\b[\s\S]*\b(add|commit)\b/);
-        assert.doesNotMatch(detail.approval.operation, /push|publish|remote|https?:/i);
+        if (detail.approval.operation === "Request additional permissions") {
+          assert.match(detail.approval.paths, /\.git/);
+          assert.match(detail.approval.paths, /"enabled":true/);
+          grantedMetadata = true;
+        } else {
+          assert.match(detail.approval.operation, /\bgit\b[\s\S]*\b(add|commit)\b/);
+          assert.doesNotMatch(detail.approval.operation, /push|publish|remote|https?:/i);
+        }
         assert.equal((await api(`/jobs/${jobId}/approval`, {
           method: "POST", body: { id: detail.approval.id, choice: "approve" },
         }))[0], 204);
@@ -263,12 +277,33 @@ try {
       return ["completed", "failed", "interrupted", "cancelled"].includes(detail.status) && detail;
     }, 90_000);
     assert.equal(complete.status, "completed", complete.error);
+    assert.ok(grantedMetadata, "Expected Codex to request and receive the metadata grant.");
     assert.equal(git(gitFixture, "log", "-1", "--format=%s"), "CW-DIRECT-GIT");
     assert.match(readFileSync(path.join(gitFixture, "probe.txt"), "utf8"), /CW-DIRECT-GIT/);
     assert.equal(git(gitFixture, "remote"), "");
-    console.log(`Live Codex direct edit and local commit PASS · ${decisions.size} one-time command approvals`);
+    assert.ok(complete.events.some(({ label, text }) => label === "Approval sent to Codex" &&
+      text === "item/permissions/requestApproval"));
+    console.log(`Live Codex Git metadata grant and local commit PASS · ${decisions.size} owner approvals`);
   }
   if (!liveWorkshop && !liveCancellation && !directGit) {
+    const transcriptId = await submit("extended-transcript-probe:" + "🧪".repeat(52_000));
+    const transcript = await settle(transcriptId);
+    const pages = [];
+    while (pages.length < transcript.eventCount) {
+      const [status, page] = await api(`/jobs/${transcriptId}?offset=${pages.length}&compact=true`);
+      assert.equal(status, 200);
+      assert.ok(page.events.length > 0 && page.events.length <= 40);
+      assert.equal(page.prompt, undefined);
+      pages.push(...page.events);
+    }
+    assert.deepEqual(pages.filter(({ view }) => view === "execution").map(({ text }) => Number(text)),
+      Array.from({ length: 415 }, (_, index) => index));
+    assert.ok(pages.some(({ text }) => text === "Activity after verbose execution"));
+    assert.equal(pages.filter(({ view }) => view === "response").map(({ text }) => text).join(""),
+      "x".repeat(2999) + "🧪 searchable-transcript-marker");
+    assert.ok((await api("/jobs?search=searchable-transcript-marker&compact=true"))[1]
+      .some((job) => job._id === transcriptId));
+    console.log("Extended prompt and paginated transcript with late activity PASS");
     const interactive = await submit(liveInteractive
       ? `interactive-probe: Immediately use request_permissions to request single-turn filesystem write access to the existing directory ${path.join(staging, "scratch")}. Request no other permissions. Only if approved, first create scratch/check.txt containing CW-EDIT-ONE, then in a separate edit append CW-EDIT-TWO on its own line. Leave that file in place for the local test. End with the marker CW-INTERACTIVE.`
       : "interactive-probe", "development", undefined, { profile: "development" });

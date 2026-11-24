@@ -175,6 +175,30 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
   let finalResponse = "";
   let finished = false;
   const output = new Map();
+  const headLimit = 48_000;
+  const tailLimit = 16_000;
+  function recordOutput(id, delta) {
+    const stream = output.get(id) || { remaining: headLimit, overflow: 0, tail: "", pending: "" };
+    const fragment = delta.slice(0, stream.remaining);
+    stream.remaining -= fragment.length;
+    if (fragment.length < delta.length) {
+      stream.overflow += delta.length - fragment.length;
+      stream.tail = (stream.tail + delta.slice(fragment.length)).slice(-tailLimit);
+    }
+    const combined = stream.pending + fragment;
+    const boundary = combined.length >= 3000 ? combined.lastIndexOf("\n") + 1 : 0;
+    if (boundary) record("execution", `Output · ${id}`, combined.slice(0, boundary));
+    stream.pending = combined.slice(boundary);
+    output.set(id, stream);
+  }
+  function flushOutput(id) {
+    const stream = output.get(id);
+    if (!stream) return;
+    const omitted = stream.overflow - stream.tail.length;
+    const notice = omitted ? `\n[${omitted} characters of command or file output omitted]\n` : "";
+    record("execution", `Output · ${id}`, stream.pending + notice + stream.tail);
+    output.delete(id);
+  }
   const stop = () => {
     timeout ||= setTimeout(() => server.close(), 8000);
     if (threadId && turnId && !interruptSent) {
@@ -237,9 +261,11 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
             const elicitation = message.method === "mcpServer/elicitation/request";
             const confirm = elicitation && isMcpConfirmation(p, scope.reviewMcpConfirmation);
             const grant = message.method === "item/permissions/requestApproval"
-              ? scopedGrant(p.permissions, scope.root) : null;
+              ? scopedGrant(p.permissions, scope) : null;
             const commandApproval = scope.supervised && message.method === "item/commandExecution/requestApproval" &&
               typeof p.command === "string" && !!p.command.trim();
+            const paths = JSON.stringify(p.permissions || p.additionalPermissions || p.commandActions ||
+              [p.grantRoot || p.cwd].filter(Boolean));
             if (elicitation && !confirm) {
               record("execution", "Unsupported MCP prompt declined", p.serverName || "Unknown MCP server");
               server.write({ id: message.id, result: decline });
@@ -247,11 +273,13 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
             }
             const choice = await control.approve({
               operation: elicitation ? `MCP confirmation · ${p.serverName}` : p.command || approvalNames[message.method],
-              paths: JSON.stringify(p.permissions?.fileSystem || p.commandActions || [p.grantRoot || p.cwd].filter(Boolean)),
+              paths,
               reason: commandApproval
                 ? [p.reason, "Approving once may run this command outside the workspace sandbox."].filter(Boolean).join("\n")
-                : (elicitation ? p.message : p.reason) || "",
-              canApprove: confirm || !!grant || commandApproval,
+                : [elicitation ? p.message : p.reason,
+                  grant?.network && "This grants network access for the remainder of the turn."].filter(Boolean).join("\n"),
+              canApprove: paths.length <= 4000 && (p.command?.length ?? 0) <= 4000 &&
+                (confirm || !!grant || commandApproval),
             });
             if (choice === "approve" && !finished && !signal.aborted) {
               if (confirm && isMcpConfirmation(p, scope.reviewMcpConfirmation)) {
@@ -259,14 +287,14 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
               } else if (commandApproval) {
                 result = { decision: "accept" };
               } else if (grant) {
-                const checked = scopedGrant(p.permissions, scope.root);
+                const checked = scopedGrant(p.permissions, scope);
                 if (checked) result = { permissions: checked, scope: "turn" };
               }
             }
           }
         } catch { /* Decline if the request cannot be relayed. */ }
-          record("execution", result === decline ? "Approval denied or expired" : "One-time approval granted", message.method);
         server.write({ id: message.id, result });
+        record("execution", result === decline ? "Approval denied or expired" : "Approval sent to Codex", message.method);
       });
       server.on("notification", (method, params) => {
         if (["warning", "configWarning", "deprecationNotice"].includes(method)) {
@@ -282,18 +310,20 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
         if (method === "error") record("execution", params.willRetry ? "Codex error · retrying" : "Codex error",
           params.error?.message || "Unknown error");
         if (method === "item/commandExecution/outputDelta" || method === "item/fileChange/outputDelta") {
-          const combined = (output.get(params.itemId) || "") + params.delta;
-          const boundary = combined.lastIndexOf("\n") + 1;
-          if (boundary) record("execution", `Output · ${params.itemId}`, combined.slice(0, boundary));
-          output.set(params.itemId, combined.slice(boundary, boundary + 64_000));
+          recordOutput(params.itemId, params.delta);
         }
         if (!["item/started", "item/completed"].includes(method) || !item) return;
         if (method === "item/completed") {
-          if (output.get(item.id)) record("execution", `Output · ${item.id}`, output.get(item.id));
-          output.delete(item.id);
+          if (!output.has(item.id) && item.type === "commandExecution" && item.aggregatedOutput) {
+            recordOutput(item.id, item.aggregatedOutput);
+          }
+          flushOutput(item.id);
           if (item.type === "agentMessage") {
             if (item.phase === "commentary") record("activity", "Agent message", item.text);
-            else finalResponse = item.text;
+            else {
+              if (finalResponse) record("activity", "Agent message", finalResponse);
+              finalResponse = item.text;
+            }
           }
         }
         if (item.type === "commandExecution") {
@@ -301,7 +331,6 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
           record("execution", `Command ${item.status} · ${item.id}`,
             [item.command, item.cwd, item.exitCode == null ? "" : `Exit code ${item.exitCode}`]
               .filter(Boolean).join("\n"));
-          if (item.aggregatedOutput) record("execution", `Command output · ${item.id}`, item.aggregatedOutput);
         }
         if (item.type === "fileChange") {
           record("execution", `File changes ${item.status}`, JSON.stringify(item.changes, null, 2));
@@ -346,6 +375,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     return { status: signal.aborted ? "interrupted" : "failed", threadId, error: error.message };
   } finally {
     finished = true;
+    for (const id of output.keys()) flushOutput(id);
     control?.finish();
     clearTimeout(timeout);
     signal.removeEventListener("abort", stop);
