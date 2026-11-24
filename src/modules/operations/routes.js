@@ -5,9 +5,11 @@ const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
 const { createObjectives } = require("./objectives");
 const { createHeadquarters } = require("./headquarters");
+const { createActivity } = require("./activity");
 const { createKnowledge } = require("./knowledge");
 const { createWorkforce } = require("./workforce");
-const { createObjectiveRuns, precedingResult } = require("./objective-runs");
+const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
+const { rateLimitObservation, usageHoldUntil } = require("./usage");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -69,6 +71,7 @@ function createRouter({
   const dispatch = () => db().collection("operations_dispatch");
   const objectives = () => db().collection("operations_objectives");
   const workforce = () => db().collection("operations_workforce");
+  const knowledge = () => db().collection("operations_knowledge");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, dispatch, online });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -88,6 +91,9 @@ function createRouter({
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
       }),
       jobs().createIndex({ ownerId: 1, hostId: 1, status: 1, scheduledAt: 1, createdAt: 1 }),
+      jobs().createIndex({ ownerId: 1, objectiveId: 1, reviewOf: 1 }, {
+        unique: true, partialFilterExpression: { workerRole: "correction", reviewOf: { $type: "string" } },
+      }),
       jobs().createIndex({ ownerId: 1, objectiveId: 1, workerRole: 1, createdAt: -1 }, {
         partialFilterExpression: { objectiveId: { $type: "string" } },
       }),
@@ -115,8 +121,8 @@ function createRouter({
   });
   worker.use(express.json({ limit: "640kb" }));
   worker.post("/heartbeat", async (req, res) => {
-    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false } = req.body || {};
-    if (typeof extendedPrompts !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
+    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false } = req.body || {};
+    if (typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry))) {
       return reject(res, 400, "Invalid worker capabilities.");
@@ -125,8 +131,15 @@ function createRouter({
     const host = await hosts().findOneAndUpdate({
       _id: req.operationsHost._id, revokedAt: null,
       $or: [{ instance }, { lastSeen: { $lt: new Date(+now - leaseMs) } }, { lastSeen: null }],
-    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, lastSeen: now } }, { returnDocument: "after" });
+    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, lastSeen: now } }, { returnDocument: "after" });
     if (!host) return reject(res, 409, "Another worker instance holds this device lease.");
+    const usage = rateLimitObservation(req.body?.usage, +now);
+    if (usage && usage.observedAt > (host.usage?.observedAt || 0)) {
+      await hosts().updateOne({
+        _id: host._id, instance, revokedAt: null,
+        $or: [{ usage: { $exists: false } }, { "usage.observedAt": { $lt: usage.observedAt } }],
+      }, { $set: { usage } });
+    }
     await jobs().updateMany({
       ownerId: owner(), activeHost: host._id, leaseUntil: { $lte: now },
     }, {
@@ -164,14 +177,26 @@ function createRouter({
       ]).toArray();
       for (const child of blocked) {
         const predecessor = await jobs().findOne({ _id: child.reviewOf || child.parentId, ...scope }, {
-          projection: { status: 1, codexThreadId: 1, leaseUntil: 1, events: 1, eventCount: 1 },
+          projection: { status: 1, codexThreadId: 1, leaseUntil: 1, events: 1, eventCount: 1, reviewOf: 1, workerRole: 1 },
         });
         const parent = predecessor && jobView(predecessor);
         if (parent && !terminal.includes(parent.status)) continue;
-        const next = parent && ((child.workerRole === "air" && child.reviewOf) ||
+        let next = parent && ((child.workerRole === "air" && child.reviewOf) ||
           (parent.status === "completed" && (child.reviewOf || parent.codexThreadId)))
           ? { status: "queued", codexThreadId: child.reviewOf ? null : parent.codexThreadId }
           : { status: "interrupted", error: "Preceding turn did not complete.", finishedAt: new Date() };
+        if (child.workerRole === "correction" && next.status === "queued") {
+          const qa = await jobs().findOne({ _id: parent.reviewOf, ...scope, workerRole: "qa" }, {
+            projection: { status: 1, events: 1, eventCount: 1 },
+          });
+          const [qaFailed, requestedCorrection] = await Promise.all([
+            responseMarker(qa, eventBatches(), "QA_VERDICT: FAIL"),
+            responseMarker(parent, eventBatches(), "CORRECTION_REQUIRED: YES"),
+          ]);
+          if (!qaFailed || !requestedCorrection) {
+            next = { status: "interrupted", error: "The QA and First Mate decision did not authorize correction.", finishedAt: new Date() };
+          }
+        }
         if (child.reviewOf && next.status === "queued") {
           next.prompt = child.prompt + await precedingResult(parent, eventBatches());
           if (next.prompt.length > LEGACY_PROMPT_LIMIT) next.requiresExtendedPrompt = true;
@@ -186,6 +211,8 @@ function createRouter({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
+          ...(req.operationsHost.boundedCorrections === true ? {} : { workerRole: { $ne: "correction" } }),
+          ...(usageHoldUntil(req.operationsHost.usage) ? { reviewOf: { $exists: false } } : {}),
           $and: [
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
@@ -204,7 +231,7 @@ function createRouter({
       const [objective, employee] = await Promise.all([
         objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active" }, { projection: { _id: 1 } }),
         workforce().findOne({
-          _id: job.employeeId, ownerId: scope.ownerId, kind: "employee", role: job.workerRole,
+          _id: job.employeeId, ownerId: scope.ownerId, kind: "employee", role: job.workerRole === "correction" ? "worker" : job.workerRole,
           workspace: job.workspace, status: "available",
         }, { projection: { _id: 1 } }),
       ]);
@@ -222,8 +249,8 @@ function createRouter({
       const authorized = await jobs().updateOne(authorization, { $set: { runAuthorizedAt: new Date() } });
       if (!authorized.matchedCount) return res.json(null);
     }
-    const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount } = job;
-    res.json({ _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount });
+    const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
+    res.json({ _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole });
   });
 
   worker.post("/jobs/:id/sync", async (req, res) => {
@@ -334,10 +361,11 @@ function createRouter({
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
   router.use("/objectives", createObjectives({ records: objectives, owner }));
-  router.use("/knowledge", createKnowledge({ records: () => db().collection("operations_knowledge"), owner }));
+  router.use("/knowledge", createKnowledge({ records: knowledge, owner }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, owner, jobView }));
+  router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
-    jobs, objectives, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage,
+    jobs, objectives, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes,
   }));
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });

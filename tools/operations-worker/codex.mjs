@@ -307,6 +307,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
         record("execution", result === decline ? "Approval denied or expired" : "Approval sent to Codex", message.method);
       });
       server.on("notification", (method, params) => {
+        if (method === "account/rateLimits/updated") scope.observeUsage?.(params?.rateLimits);
         if (["warning", "configWarning", "deprecationNotice"].includes(method)) {
           record("execution", "Codex warning", params?.message || params?.summary || method);
         }

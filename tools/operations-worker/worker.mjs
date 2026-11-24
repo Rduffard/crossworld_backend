@@ -9,8 +9,10 @@ import { turnControl } from "./control.mjs";
 import { developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifySandbox, workspacePaths } from "./profiles.mjs";
 
 import promptLimits from "../../src/modules/operations/prompt-limits.js";
+import usageTools from "../../src/modules/operations/usage.js";
 
 const { PROMPT_LIMIT } = promptLimits;
+const { rateLimitObservation, usageHoldUntil } = usageTools;
 const interval = 1000;
 const offlineLimit = 15_000;
 
@@ -43,7 +45,7 @@ export function redact(text, token) {
     .replace(/((?:access_token|refresh_token|id_token|api_key)["']?\s*[:=]\s*["']?)[^"'\s,}]+/gi, "$1[redacted]");
 }
 
-export async function runWorker({ send, efforts, execute, token, signal, profiles, log = console.log }) {
+export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, boundedCorrections = false, log = console.log }) {
   const instance = randomUUID();
   let advertisedProfiles = profiles;
   let active;
@@ -71,7 +73,9 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     while (!signal.aborted) {
       try {
         if (Date.now() - heartbeat >= 5000) {
-          const announce = () => send("/heartbeat", { instance, efforts, profiles: advertisedProfiles, extendedPrompts: true });
+          const announce = () => send("/heartbeat", {
+            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, usage: getUsage?.() || undefined,
+          });
           try { await announce(); }
           catch (error) {
             if (error.status !== 400 || !advertisedProfiles?.includes("full-access")) throw error;
@@ -187,10 +191,33 @@ async function startWorker() {
   }));
   const probe = new AppServer(exe, workspaces.development);
   let efforts;
+  let usage;
+  const observeUsage = (rateLimits) => {
+    if (rateLimits?.limitId != null && rateLimits.limitId !== "codex") return;
+    usage = rateLimitObservation({ ...rateLimits, observedAt: Date.now() }) || usage;
+  };
+  let lastUsageAttempt = 0;
+  async function refreshUsage(server) {
+    lastUsageAttempt = Date.now();
+    try {
+      const { rateLimits, rateLimitsByLimitId } = await server.request("account/rateLimits/read", {});
+      observeUsage(rateLimitsByLimitId?.codex || rateLimits);
+    } catch { /* Telemetry is optional. Stale readings automatically expire. */ }
+  }
+  async function refreshHeldUsage() {
+    lastUsageAttempt = Date.now();
+    const server = new AppServer(exe, workspaces.development);
+    try {
+      await server.initialize();
+      await refreshUsage(server);
+    } catch { /* Keep the observed snapshot until it expires. */ }
+    finally { server.close(); }
+  }
   try {
     await probe.initialize();
     efforts = await probe.capabilities();
     if (!efforts.length) throw new Error("No supported reasoning efforts were reported.");
+    await refreshUsage(probe);
     console.log(`${version} · ChatGPT sign-in verified · ${model} (${efforts.join(", ")})`);
     console.log("Authorized workspaces:", ...Object.values(workspaces));
     if (process.env.OPERATIONS_FULL_ACCESS === "1") {
@@ -235,10 +262,16 @@ async function startWorker() {
   await runWorker({
     send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])],
     signal: controller.signal,
+    getUsage: () => {
+      if (usageHoldUntil(usage) && Date.now() - lastUsageAttempt >= 120_000) void refreshHeldUsage();
+      return usage;
+    },
+    boundedCorrections: true,
     execute: async (job, record, signal, control) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
-      if (!Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
+      const correction = job.workerRole === "correction";
+      if ((correction && profile !== job.workspace) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
           (unrestricted ? !fullAccess : profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
           (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
@@ -253,12 +286,13 @@ async function startWorker() {
       return runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
         root,
         roots,
-        gitRoots: profile === "development" ? roots : [],
+        gitRoots: profile === "development" && !correction ? roots : [],
         protectedDirectories: unrestricted ? undefined : exclusions(roots),
-        supervised: !!root,
+        supervised: !!root && !correction,
         fullAccess: unrestricted && fullAccess,
-        autonomousNetwork: autonomousNetwork && profile === "development",
-        localMcp: true,
+        autonomousNetwork: !correction && autonomousNetwork && profile === "development",
+        localMcp: !job.workerRole || job.workerRole === "direct",
+        observeUsage,
         remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
       });
     },

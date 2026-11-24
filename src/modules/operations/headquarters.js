@@ -1,3 +1,4 @@
+const { usageHoldUntil } = require("./usage");
 const live = ["running", "cancelling"];
 
 function createHeadquarters({ hosts, jobs, objectives, dispatch, online }) {
@@ -6,7 +7,7 @@ function createHeadquarters({ hosts, jobs, objectives, dispatch, online }) {
     const jobFields = { hostId: 1, status: 1, workspace: 1, title: 1 };
     const [devices, jobCounts, approvals, recent, active, next, objectiveCounts, settings] = await Promise.all([
       hosts().find({ ...scope, revokedAt: null }, {
-        projection: { label: 1, lastSeen: 1, profiles: 1, efforts: 1 },
+        projection: { label: 1, lastSeen: 1, profiles: 1, efforts: 1, usage: 1 },
       }).sort({ label: 1, _id: 1 }).toArray(),
       jobs().aggregate([
         { $match: scope },
@@ -43,14 +44,15 @@ function createHeadquarters({ hosts, jobs, objectives, dispatch, online }) {
       const connected = online(host, now);
       hostCounts[connected ? "online" : "offline"] += 1;
       const job = activeByHost.get(host._id);
-      let state = connected ? "idle" : "offline";
+      const usageResumesAt = usageHoldUntil(host.usage, +now) || null;
+      let state = connected ? (usageResumesAt ? "usage limited" : "idle") : "offline";
       if (job) {
         if (job.leaseUntil <= now) state = "lease expired";
         else if (job.status === "running" && job.approval?.state === "pending" &&
             job.approval.expiresAt > +now && job.decision?.id !== job.approval.id) state = "approval required";
         else state = job.status;
       }
-      return { ...host, online: connected, state, job: job && {
+      return { ...host, online: connected, state, usageResumesAt, job: job && {
         _id: job._id, title: job.title, workspace: job.workspace,
       } };
     });

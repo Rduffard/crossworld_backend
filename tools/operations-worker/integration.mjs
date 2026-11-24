@@ -18,6 +18,7 @@ const live = process.argv.includes("--live") && !fullAccessLive;
 const liveWorkshop = live || process.argv.includes("--workshop-live");
 const liveCancellation = process.argv.includes("--cancel-live");
 const liveInteractive = process.argv.includes("--interactive-live");
+const liveObjectiveRuns = process.argv.includes("--objective-runs-live");
 const directGit = process.argv.includes("--direct-git-live");
 const owner = "1".repeat(24);
 const other = "2".repeat(24);
@@ -53,6 +54,8 @@ const controller = new AbortController();
 let worker;
 let staging;
 let gitFixture;
+let objectiveFixture;
+const liveRunIds = new Set();
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd,
   "-c", "user.name=Operations Test", "-c", "user.email=ops@example.invalid", ...args,
 ], { encoding: "utf8", env: {
@@ -94,10 +97,18 @@ try {
   const send = backendClient(base, device.token);
   let offline = false;
   let launchCount = 0;
+  let usageObservation = {
+    primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 1800 },
+    observedAt: Date.now(),
+  };
   let lostClaim = false;
   let lostSync = false;
   let real;
-  if (liveWorkshop || liveCancellation || liveInteractive || directGit || fullAccessLive) real = discoverCodex();
+  if (liveWorkshop || liveCancellation || liveInteractive || directGit || fullAccessLive || liveObjectiveRuns) real = discoverCodex();
+  if (liveObjectiveRuns) {
+    objectiveFixture = mkdtempSync(path.join(workspaces.development, "cw-objective-run-test-"));
+    writeFileSync(path.join(objectiveFixture, "candidate.txt"), "LEVIATHAN-PRESENT\n");
+  }
   if (liveInteractive) {
     staging = mkdtempSync(path.join(workspaces.development, "cw-interactive-test-"));
     mkdirSync(path.join(staging, "scratch"));
@@ -113,6 +124,8 @@ try {
   }
   worker = runWorker({
     signal: controller.signal, efforts: ["low"], token: device.token,
+    getUsage: () => ({ ...usageObservation, ignoredMetadata: "not exposed" }),
+    boundedCorrections: true,
     profiles: ["read-only", "development", "workshop", ...(fullAccessLive ? ["full-access"] : [])],
     send: async (endpoint, body) => {
       if (offline) throw new Error("Simulated connection loss");
@@ -129,6 +142,20 @@ try {
     },
     execute: async (job, record, signal, control) => {
       launchCount++;
+      if (liveRunIds.has(job._id)) {
+        const editScope = job.profile === "development" ? { root: objectiveFixture, roots: [objectiveFixture] } : {};
+        return runTurn(new AppServer(real.exe, objectiveFixture), job, objectiveFixture, record, signal, control, editScope);
+      }
+      if (job.prompt.startsWith("Perform an independent QA review")) {
+        const marker = job.prompt.includes("Retest after correction") ? "PASS" : "FAIL";
+        record("response", "Final response", "mock response" + "x".repeat(2_978) + "\nQA_VERDICT: " + marker);
+        return { status: "completed", threadId: randomUUID() };
+      }
+      if (job.prompt.startsWith("Review the independent QA findings")) {
+        const marker = job.prompt.includes("QA_VERDICT: FAIL") ? "YES" : "NO";
+        record("response", "Final response", "mock response\nCORRECTION_REQUIRED: " + marker);
+        return { status: "completed", threadId: randomUUID() };
+      }
       if (fullAccessLive && job.profile === "full-access") {
         return runTurn(new AppServer(real.exe, workspaces[job.workspace]), job, workspaces[job.workspace], record, signal, control, {
           fullAccess: true, localMcp: true,
@@ -212,10 +239,10 @@ try {
     return id;
   }
   const detail = async (id) => (await api(`/jobs/${id}`))[1];
-  const settle = (id) => until(async () => {
+  const settle = (id, timeout) => until(async () => {
     const job = await detail(id);
     return ["completed", "failed", "cancelled", "interrupted"].includes(job.status) && job;
-  }, liveWorkshop || liveInteractive || directGit || fullAccessLive ? 105_000 : 15_000);
+  }, timeout ?? (liveWorkshop || liveInteractive || directGit || fullAccessLive || liveObjectiveRuns ? 180_000 : 15_000));
   if (fullAccessLive) {
     const prompt = `Perform four harmless checks using actual shell commands: use Git to print its version, check that both ${workspaces.development} and ${workspaces.workshop} exist without listing or reading their contents, and use Node or PowerShell to make a GET request to ${base}/operations/hosts without an authorization header and print the HTTP status (401 expected). Do not write files, contact other endpoints, read credentials, modify Git, or request approval. Print CW-FULL-ACCESS-OK only if the checks pass.`;
     const id = await submit(prompt, "workshop", undefined, { profile: "full-access" });
@@ -395,16 +422,32 @@ try {
     assert.deepEqual(completedObjective.reviewHistory.map((entry) => entry.decision), ["accepted", "rejected", "accepted"]);
     console.log("Objective authorization, revision checks, evidence and completion gate PASS");
 
-    const [, orchestration] = await api("/objectives", { method: "POST", body: objectiveRequest });
+    const scenario = liveObjectiveRuns ? {
+      title: "Leviathan disposable live QA",
+      instruction: "Inspect the disposable candidate. The report must explicitly identify each marker as present or missing.",
+      criteria: ["candidate.txt contains LEVIATHAN-PRESENT", "candidate.txt contains LEVIATHAN-MISSING"],
+    } : objectiveRequest;
+    const [, orchestration] = await api("/objectives", { method: "POST", body: scenario });
     const runs = "/objective-runs/" + orchestration._id;
     const [, qaEmployee] = await hire(profile);
     const [, mateEmployee] = await hire({ ...profile, role: "first-mate", departmentId: "" });
     const [, airEmployee] = await hire({ ...profile, role: "air", departmentId: "" });
+    const [, correctionEmployee] = await hire({ ...profile, role: "worker" });
     await api("/dispatch", { method: "PATCH", body: { paused: true } });
-    const sourceId = await submit("dependent-run source", "development", undefined, { profile: "development" });
-    const qa = { id: randomUUID(), role: "qa", sourceId, employeeId: qaEmployee._id, evidence: "Check the disposable marker." };
+    const sourceId = await submit(liveObjectiveRuns
+      ? "The disposable candidate.txt contains LEVIATHAN-PRESENT. Report that the candidate is ready for QA. Do not use tools or modify files."
+      : "dependent-run source", "development", undefined, { profile: liveObjectiveRuns ? "read-only" : "development" });
+    const qa = { id: randomUUID(), role: "qa", sourceId, employeeId: qaEmployee._id, evidence: liveObjectiveRuns ? "Use a read-only shell command to read candidate.txt in the working directory. Report whether LEVIATHAN-MISSING is absent." : "Check the disposable marker." };
     const mate = { id: randomUUID(), role: "first-mate", sourceId: qa.id, employeeId: mateEmployee._id, evidence: "Resolve findings." };
     const air = { id: randomUUID(), role: "air", sourceId: mate.id, employeeId: airEmployee._id, evidence: "Inspect how the review proceeded." };
+    const correction = {
+      id: randomUUID(), role: "correction", sourceId: mate.id, employeeId: correctionEmployee._id,
+      evidence: "In the disposable working directory, append the line LEVIATHAN-MISSING to candidate.txt and verify both lines. Make no other changes.",
+    };
+    const retest = {
+      id: randomUUID(), role: "qa", sourceId: correction.id, employeeId: qaEmployee._id,
+      evidence: "Retest after correction. Use a read-only shell command to read candidate.txt and verify each marker.",
+    };
     const createRun = (body, user) => api(runs, { method: "POST", body, user });
     assert.equal((await createRun(qa, other))[0], 403);
     assert.equal((await createRun(qa))[0], 201);
@@ -412,22 +455,42 @@ try {
     assert.equal((await createRun({ ...qa, evidence: "Different digest" }))[0], 409);
     assert.equal((await createRun(mate))[0], 201);
     assert.equal((await createRun(air))[0], 201);
+    assert.equal((await createRun(correction))[0], 201);
+    assert.equal((await createRun({ ...correction, id: randomUUID() }))[0], 409);
+    assert.equal((await createRun(retest))[0], 201);
     assert.equal((await api(runs, { user: other }))[0], 403);
     const [, waitingRuns] = await api(runs);
-    assert.deepEqual(waitingRuns.map((run) => run.status), ["waiting", "waiting", "waiting"]);
+    assert.deepEqual(waitingRuns.map((run) => run.status), Array(5).fill("waiting"));
+    if (liveObjectiveRuns) [sourceId, qa.id, mate.id, air.id, correction.id, retest.id].forEach((id) => liveRunIds.add(id));
     const beforeRuns = launchCount;
     await api("/dispatch", { method: "PATCH", body: { paused: false } });
-    const [sourceTurn, qaTurn, mateTurn, airTurn] = await Promise.all([sourceId, qa.id, mate.id, air.id].map(settle));
-    assert.equal(launchCount - beforeRuns, 4);
-    assert.equal(new Set([sourceTurn, qaTurn, mateTurn, airTurn].map((turn) => turn.codexThreadId)).size, 4);
-    for (const [turn, predecessor] of [[qaTurn, sourceTurn], [mateTurn, qaTurn], [airTurn, mateTurn]]) {
+    const [sourceTurn, qaTurn, mateTurn, airTurn, correctedTurn, retestTurn] = await Promise.all(
+      [sourceId, qa.id, mate.id, air.id, correction.id, retest.id].map((id) => settle(id, liveObjectiveRuns ? 240_000 : 35_000)),
+    );
+    assert.equal(launchCount - beforeRuns, 6);
+    assert.equal(new Set([sourceTurn, qaTurn, mateTurn, airTurn, correctedTurn, retestTurn].map((turn) => turn.codexThreadId)).size, 6);
+    for (const [turn, predecessor] of [[qaTurn, sourceTurn], [mateTurn, qaTurn], [airTurn, mateTurn], [retestTurn, correctedTurn]]) {
       assert.equal(turn.status, "completed");
       assert.equal(turn.profile, "read-only");
       assert.ok(Date.parse(turn.startedAt) >= Date.parse(predecessor.finishedAt));
       assert.match(turn.prompt, /Preceding turn result/);
-      assert.match(turn.prompt, /mock response/);
+      if (!liveObjectiveRuns) assert.match(turn.prompt, /mock response/);
     }
+    assert.equal(correctedTurn.status, "completed", correctedTurn.error);
+    assert.equal(correctedTurn.profile, "development");
+    assert.ok(Date.parse(correctedTurn.startedAt) >= Date.parse(mateTurn.finishedAt));
+    assert.match(correctedTurn.prompt, /Preceding turn result/);
     assert.equal((await api("/objectives/" + orchestration._id))[1].status, "active");
+    if (liveObjectiveRuns) {
+      const response = qaTurn.events.filter((event) => event.view === "response").map((event) => event.text).join("");
+      assert.match(response, /LEVIATHAN-MISSING/);
+      assert.match(response, /fail|absent|missing/i);
+      assert.ok(qaTurn.events.some((event) => event.view === "execution" && /candidate\.txt/.test(event.text)));
+      assert.match(mateTurn.prompt, /LEVIATHAN-MISSING/);
+      assert.match(readFileSync(path.join(objectiveFixture, "candidate.txt"), "utf8"), /^LEVIATHAN-PRESENT\r?\nLEVIATHAN-MISSING\r?\n?$/);
+      assert.ok(retestTurn.events.some((event) => event.view === "response" && /QA_VERDICT: PASS/.test(event.text)));
+      console.log("Live subscription QA identified a missing criterion, woke the First Mate, dispatched a bounded correction and verified the corrected candidate.");
+    }
     await api("/dispatch", { method: "PATCH", body: { paused: true } });
     const unavailable = { ...qa, id: randomUUID() };
     assert.equal((await createRun(unavailable))[0], 201);
@@ -450,7 +513,46 @@ try {
     assert.equal(launchCount, beforeUnavailable);
     await api("/schedule/" + futureId, { method: "DELETE" });
     await jobs.deleteMany({ _id: { $in: blockedIds } });
-    console.log("Dependent QA, First Mate and AIR dispatch, separate threads, and owner acceptance gate PASS");
+    if (!liveObjectiveRuns) {
+      const noCorrection = { ...mate, id: randomUUID(), sourceId: retest.id };
+      assert.equal((await createRun(noCorrection))[0], 201);
+      const skipped = { ...correction, id: randomUUID(), sourceId: noCorrection.id };
+      assert.equal((await createRun(skipped))[0], 201);
+      const outcome = await settle(skipped.id);
+      assert.equal(outcome.status, "interrupted");
+      assert.match(outcome.error, /did not authorize correction/);
+    }
+    const quotaHold = { ...air, id: randomUUID() };
+    const oldUsage = usageObservation;
+    const heldUntil = Math.floor(Date.now() / 1000) + 120;
+    usageObservation = {
+      primary: { usedPercent: 100, windowDurationMins: null, resetsAt: heldUntil }, observedAt: Date.now(),
+    };
+    await until(async () => (await api("/headquarters"))[1].workforce[0].usageResumesAt === heldUntil * 1000);
+    const beforeHold = launchCount;
+    assert.equal((await createRun(quotaHold))[0], 201);
+    await until(async () => (await detail(quotaHold.id)).status === "queued");
+    assert.equal(launchCount, beforeHold);
+    usageObservation = { ...oldUsage, observedAt: Date.now() };
+    assert.equal((await settle(quotaHold.id)).status, "completed");
+    assert.equal(launchCount, beforeHold + 1);
+    assert.equal((await api("/activity", { user: other }))[0], 403);
+    assert.equal((await api("/activity?after=invalid"))[0], 400);
+    const [, activity] = await api("/activity");
+    assert.ok(activity.some((event) => event.sourceId === orchestration._id && event.type === "objective-opened"));
+    assert.ok(activity.some((event) => event.sourceId === retest.id && event.type === "turn-finished" && event.status === "completed"));
+    assert.ok(activity.every((event, index) => index === 0 || Date.parse(activity[index - 1].at) >= Date.parse(event.at)));
+    assert.deepEqual((await api("/activity?type=knowledge-recorded"))[1].map((event) => event.sourceId), [storedNote._id]);
+    const [, activeObjective] = await api("/objectives/" + orchestration._id);
+    for (const [revision, criterion] of activeObjective.criteria.entries()) {
+      const reviewed = await api("/objectives/" + orchestration._id + "/criteria/" + criterion.id + "/review", {
+        method: "POST", body: { decision: "accepted", evidence: "Confirmed against the independent retest transcript.", revision },
+      });
+      assert.equal(reviewed[0], 204);
+    }
+    assert.equal((await api("/objectives/" + orchestration._id))[1].status, "completed");
+    assert.ok((await api("/activity?type=objective-accepted"))[1].some((event) => event.sourceId === orchestration._id));
+    console.log("Dependent QA, First Mate, AIR, correction, retest, and owner acceptance gate PASS");
 
     const scheduledAt = Date.now() + 2600;
     const scheduled = {
@@ -503,10 +605,11 @@ try {
     assert.equal(headquartersStatus, 200);
     assert.equal(headquarters.hosts.online, 1);
     assert.equal(headquarters.paused, false);
-    assert.equal(headquarters.objectives.completed, 1);
+    assert.equal(headquarters.objectives.completed, 2);
     assert.ok(Number.isFinite(Date.parse(headquarters.observedAt)));
     assert.deepEqual(headquarters.workforce.map(({ _id, state }) => [_id, state]), [[device.id, "idle"]]);
     assert.ok(!JSON.stringify(headquarters).includes(host.digest));
+    assert.deepEqual(headquarters.workforce[0].usage, { ...usageObservation, secondary: null });
     assert.ok(headquarters.jobs.completed >= 1);
     assert.ok(headquarters.recent.some((entry) => entry._id === scheduled.id && entry.status === "completed"));
     console.log("Durable schedule, offline catch-up, dispatch pause, rescheduling, cancellation, and replay PASS");
@@ -625,6 +728,10 @@ try {
     if (existsSync(file)) unlinkSync(file);
     rmdirSync(path.join(staging, "scratch"));
     rmdirSync(staging);
+  }
+  if (objectiveFixture) {
+    unlinkSync(path.join(objectiveFixture, "candidate.txt"));
+    rmdirSync(objectiveFixture);
   }
   if (gitFixture) {
     const resolved = realpathSync(gitFixture);
