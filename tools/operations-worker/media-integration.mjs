@@ -148,9 +148,9 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
     assert.equal((await json(`/${cancelled._id}`, "GET"))[0], 404);
     assert.equal((await json(`/${id}`, "DELETE"))[0], 409);
 
-    const submit = (ids, prompt = "Report the image contents.") => api("/jobs", { method: "POST", body: {
+    const submit = (ids, prompt = "Report the image contents.", parentId) => api("/jobs", { method: "POST", body: {
       id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol", effort: "low",
-      prompt, attachmentIds: ids,
+      prompt, attachmentIds: ids, parentId,
     } });
     assert.equal((await submit([randomUUID()]))[0], 409);
     assert.equal((await submit([id, id]))[0], 409);
@@ -164,6 +164,60 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
       result: { status: "completed", threadId: randomUUID(), error: "" } });
     await verifyOutput({ api, send, db, device, instance, storage, pixel: prefix, outputJobs, files, fetchMedia });
     await heartbeat();
+
+    if (process.argv.includes("--media-image-live")) {
+      const imagePath = path.resolve("..", "docs", "nexus-validation", "visual-checklist-fixture.png");
+      const screenshot = await readFile(imagePath);
+      const [status, fixture] = await reserve("visual-checklist-fixture.png", screenshot.length);
+      assert.equal(status, 201);
+      files.push(fixture._id);
+      for (let offset = 0; offset < screenshot.length; offset += CHUNK) {
+        assert.equal((await upload(fixture._id, offset, screenshot.subarray(offset, offset + CHUNK))).status, 200);
+      }
+      const [, saved] = await json("/" + fixture._id + "/finalize", "POST", {});
+      assert.equal(saved.mime, "image/png");
+      const preview = await fetchMedia("/" + fixture._id + "/content");
+      assert.deepEqual(Buffer.from(await preview.arrayBuffer()), screenshot);
+
+      const cwd = process.cwd();
+      const exe = discoverCodex().exe;
+      async function observe(job, imagePaths = []) {
+        let answer = "";
+        const result = await runTurn(new AppServer(exe, cwd), job, cwd, (view, _label, value) => {
+          if (view === "response") answer += value;
+        }, AbortSignal.timeout(120_000), undefined, { imagePaths, strictReadOnly: true });
+        assert.equal(result.status, "completed", result.error);
+        const events = answer.match(/[\s\S]{1,3000}/gu).map(text => ({ view: "response", label: "Final response", text }));
+        await send("/jobs/" + job._id + "/sync", { instance, offset: 0, events, result });
+        return { answer, threadId: result.threadId };
+      }
+      const [queued, receipt] = await submit([fixture._id],
+        "Read the attached screenshot. Repeat its main heading, checklist title, completion count, and all items. Do not call tools.");
+      assert.equal(queued, 201);
+      const job = await send("/claim", { instance });
+      assert.equal(job._id, receipt._id);
+      const staged = await storage.stageImages(job.mediaInputs);
+      try {
+        const first = await observe(job, staged.files);
+        for (const phrase of [/Operations visual smoke test/i, /Harbor readiness checklist/i, /2 (?:of|out of) 3/i, /beacon log/i, /north gate/i, /amber marker report/i]) {
+          assert.match(first.answer, phrase);
+        }
+        const [continuation, next] = await submit([], "What was the pending checklist item? Answer from our conversation.", job._id);
+        assert.equal(continuation, 201);
+        const followUp = await send("/claim", { instance });
+        assert.equal(followUp._id, next._id);
+        const second = await observe(followUp);
+        assert.equal(second.threadId, first.threadId);
+        assert.match(second.answer, /amber marker report/i);
+      } finally { await staged.cleanup(); }
+      const [registered] = await api("/references", { method: "POST", body: {
+        id: randomUUID(), mediaId: fixture._id, name: "Visual checklist fixture", category: "technical",
+        source: "Nexus disposable screenshot", description: "Checklist for image-ingestion verification", license: "Studio fixture",
+        tags: ["nexus"],
+      } });
+      assert.equal(registered, 201);
+      console.log("Private PNG upload, preview, real checklist reading, resumed reply, and reference registration PASS");
+    }
 
     if (ffmpeg) {
       await promisify(execFile)(ffmpeg, ["-hide_banner", "-loglevel", "error", "-f", "lavfi",

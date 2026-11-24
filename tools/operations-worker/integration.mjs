@@ -257,6 +257,14 @@ try {
     assert.equal((await api("/reports/" + claimedReview._id, { user: other }))[0], 403);
     const [, reportList] = await api("/reports?employeeId=" + director._id, { user: foundationOwner });
     assert.equal(reportList.reports[0]._id, claimedReview._id);
+    const workflowPath = "/workflow?jobId=" + source;
+    const [workflowStatus, workflow] = await api(workflowPath, { user: foundationOwner });
+    assert.equal(workflowStatus, 200);
+    const workflowReview = workflow.nodes.find(item => item._id === claimedReview._id);
+    assert.equal(workflowReview.delegatedBy.sourceTurnId, source);
+    assert.equal(workflowReview.employee.name, director.name);
+    assert.equal(workflowReview.hasReport, true);
+    assert.equal((await api(workflowPath, { user: other }))[0], 403);
     console.log("First Mate Operations review authorization, concurrent replay, queue, independent claim and attribution PASS");
     const conversation = {
       id: randomUUID(), recipientId: director._id, hostId: reviewHost, workspace: director.workspace,
@@ -270,6 +278,13 @@ try {
     });
     assert.equal((await sendConversation({ ...conversation, profile: "full-access" }))[0], 400);
     assert.equal((await sendConversation({ ...conversation, studioTools: true }))[0], 400);
+    const decision = {
+      kind: "decision", memoryKind: "preference", status: "owner-approved", projectId: design.projectId,
+      title: "Fixture operating preference", summary: "Use dated observations.", body: "Include dates in test findings.",
+      author: "Fixture owner", source: "Fixture owner direction", evidence: "The fixture owner confirmed the wording.",
+    };
+    const [, savedDecision] = await api("/knowledge", { user: foundationOwner, method: "POST", body: decision });
+    const decisionPath = "/knowledge/" + savedDecision._id;
     assert.equal((await sendConversation(conversation))[0], 201);
     assert.equal((await sendConversation(conversation))[0], 200);
     assert.equal((await sendConversation({ ...conversation, recipientId: randomUUID() }))[0], 409);
@@ -282,6 +297,12 @@ try {
     assert.equal(first.employeeContext.supervisor.name, barnaby.name);
     assert.deepEqual(first.employeeContext.projects.map(project => project.name), ["Crossworld Operations"]);
     assert.equal(first.studioActions, undefined);
+    assert.equal(first.approvedDecisions[0].summary, decision.summary);
+    const revised = { ...decision, summary: "Use time-stamped observations.", revision: 0, action: "revise" };
+    const revise = (body, user = foundationOwner) => api(decisionPath + "/decision", { user, method: "PATCH", body });
+    assert.equal((await revise(revised, other))[0], 403);
+    assert.equal((await revise(revised))[0], 204);
+    assert.equal((await revise(revised))[0], 409);
     const providerThread = randomUUID();
     await jobs.updateOne({ _id: first._id }, {
       $set: { status: "completed", codexThreadId: providerThread }, $unset: { activeHost: "" },
@@ -293,14 +314,57 @@ try {
     assert.equal(second._id, secondId);
     assert.equal(second.codexThreadId, providerThread);
     assert.equal(second.employeeContext.id, omittedRecipient);
+    assert.equal(second.approvedDecisions[0].summary, revised.summary);
+    assert.equal((await revise({ revision: 1, action: "retire" }))[0], 204);
+    const [, retired] = await api(decisionPath, { user: foundationOwner });
+    assert.equal(retired.status, "deprecated");
+    assert.equal(retired.decisionHistory[0].summary, decision.summary);
     const persisted = await jobs.find({ sessionId: first._id }).toArray();
     assert.equal(persisted.length, 2);
     assert.ok(persisted.every(turn => turn.employeeId === undefined && turn.objectiveId === undefined));
     await jobs.updateOne({ _id: second._id }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
     console.log("Employee conversation capability, read-only scope, live identity, and continuation PASS");
+    const reviewLane = { instance: reviewInstance, lane: "review" };
+    await assert.rejects(reviewSend("/claim", reviewLane), { status: 409 });
+    const capability = await reviewSend("/heartbeat", {
+      instance: reviewInstance, efforts: ["low"], profiles: ["read-only", "development"],
+      backgroundReviews: true, employeeConversations: true,
+    });
+    assert.equal(capability.backgroundReviews, true);
+    const reviewSource = randomUUID();
+    const browse = {
+      id: reviewSource, hostId: reviewHost, workspace: "development",
+      model: "gpt-6.2-sol", effort: "low", prompt: "Coordinate the read-only review.", studioTools: true,
+    };
+    assert.equal((await sendConversation(browse))[0], 201);
+    assert.equal((await reviewSend("/claim", { instance: reviewInstance }))._id, reviewSource);
+    const linked = await reviewSend("/jobs/" + reviewSource + "/delegate-operations-review", request);
+    const parallelReview = await reviewSend("/claim", reviewLane);
+    assert.equal(parallelReview._id, linked.assignmentId);
+    const independent = await jobs.find({ _id: { $in: [reviewSource, parallelReview._id] }, status: "running" }).toArray();
+    assert.equal(independent.length, 2);
+    const finish = id => reviewSend("/jobs/" + id + "/sync", {
+      instance: reviewInstance, offset: 0, events: [], result: { status: "completed", threadId: randomUUID(), error: "" },
+    });
+    await finish(reviewSource);
+    const editId = randomUUID();
+    assert.equal((await sendConversation({ ...browse, id: editId, profile: "development", prompt: "Editing slot fixture" }))[0], 201);
+    assert.equal(await reviewSend("/claim", { instance: reviewInstance }), null);
+    const [, heldEdit] = await api("/jobs/" + editId, { user: foundationOwner });
+    assert.equal(heldEdit.queueReason, "Waiting for the read-only review to finish");
+    const nextMessage = randomUUID();
+    assert.equal((await sendConversation({ ...browse, id: nextMessage, prompt: "Independent studio question" }))[0], 201);
+    assert.equal((await reviewSend("/claim", { instance: reviewInstance }))._id, nextMessage);
+    await finish(nextMessage);
+    await finish(parallelReview._id);
+    assert.equal((await reviewSend("/claim", { instance: reviewInstance }))._id, editId);
+    await finish(editId);
+    console.log("Optional review slot, concurrent conversation, and same-workspace editing exclusion PASS");
     if (process.argv.includes("--nexus-live")) {
       const { exe } = discoverCodex();
       const cwd = workspaces.development;
+      const visualEvidence = process.argv.includes("--nexus-ui-evidence") ? [320, 390, 768, 1440].map(width =>
+        path.join(cwd, "docs", "nexus-validation", "direct-conversation-fixture-" + width + ".png")) : [];
       const relay = await api("/hosts", {
         user: foundationOwner, method: "POST", body: { label: "Subscription-backed Nexus fixture" },
       });
@@ -308,9 +372,12 @@ try {
       const stopLive = new AbortController();
       const liveRelay = runWorker({
         send: sendLive, token: relay[1].token, signal: stopLive.signal, efforts: ["low"],
-        profiles: ["read-only"], employeeConversations: true,
+        profiles: ["read-only"], employeeConversations: true, backgroundReviews: true,
         execute: (job, record, signal, control, instance) => runTurn(new AppServer(exe, cwd), job, cwd, record, signal, control, {
-          strictReadOnly: true, employeeContext: job.employeeContext,
+          strictReadOnly: true, employeeContext: job.employeeContext, delegatedOutcomes: job.delegatedOutcomes,
+          imagePaths: job.workerRole === "assignment" ? visualEvidence : [],
+          readStudioRecords: job.studioActions ? query =>
+            sendLive("/jobs/" + job._id + "/studio-records", { ...query, instance }) : undefined,
           delegateOperationsReview: job.studioActions ? (callId, employee) =>
             sendLive("/jobs/" + job._id + "/delegate-operations-review", { instance, callId, employee }) : undefined,
         }),
@@ -332,6 +399,15 @@ try {
         assert.match(direct.events.filter(event => event.view === "response").map(event => event.text).join(""), /Iona Keel/i);
         assert.equal(direct.conversationActor.id, director._id);
         assert.equal(direct.objectiveId, undefined);
+        const followUpId = randomUUID();
+        assert.equal((await sendConversation({
+          ...mainRequest, id: followUpId, parentId: directId, prompt: "Who do you report to?",
+        }))[0], 201);
+        const followUpResult = await settleLive(followUpId);
+        assert.equal(followUpResult.status, "completed", followUpResult.error);
+        assert.equal(followUpResult.sessionId, directId);
+        assert.equal(followUpResult.codexThreadId, direct.codexThreadId);
+        assert.match(followUpResult.events.filter(event => event.view === "response").map(event => event.text).join(""), /Barnaby/i);
         const delegationId = randomUUID();
         assert.equal((await sendConversation({
           ...mainRequest, id: delegationId, studioTools: true,
@@ -340,7 +416,18 @@ try {
         const delegated = await settleLive(delegationId);
         assert.equal(delegated.status, "completed", delegated.error);
         assert.ok(delegated.delegatedReview, "First Mate did not dispatch a separate assignment.");
-        const review = await settleLive(delegated.delegatedReview._id);
+        const concurrentId = randomUUID();
+        assert.equal((await sendConversation({
+          ...mainRequest, id: concurrentId, studioTools: true,
+          prompt: "What is Iona Keel doing? Read actual assignment records and answer in one sentence.",
+        }))[0], 201);
+        const [review, concurrent] = await Promise.all([
+          settleLive(delegated.delegatedReview._id), settleLive(concurrentId),
+        ]);
+        assert.equal(concurrent.status, "completed", concurrent.error);
+        assert.ok(Date.parse(review.startedAt) < Date.parse(concurrent.finishedAt) &&
+          Date.parse(concurrent.startedAt) < Date.parse(review.finishedAt), "The live executions did not overlap.");
+        assert.match(concurrent.events.filter(event => event.view === "response").map(event => event.text).join(""), /Iona/i);
         assert.equal(review.status, "completed", review.error);
         assert.equal(review.assigneeName, director.name);
         assert.equal(review.profile, "read-only");
@@ -356,7 +443,16 @@ try {
         assert.equal(reportStatus, 200);
         assert.equal(report.assigneeName, director.name);
         assert.ok(report.response.trim());
-        console.log("Subscription-backed direct Iona response and independent conversational delegation PASS");
+        if (visualEvidence.length && visualEvidence.every(file => existsSync(file))) {
+          const folder = path.join(cwd, "docs", "nexus-validation");
+          writeFileSync(path.join(folder, "iona-isolated-review.md"), [
+            "# Iona Keel ? isolated Operations interface review",
+            "Executed under the Art Director identity on an isolated, subscription-backed relay.",
+            "Rendered fixtures covered Command Center at 320, 390, 768 and 1440 pixels. Production visual acceptance remains open.",
+            report.response,
+          ].join("\n\n"), "utf8");
+        }
+        console.log("Subscription-backed Iona conversation, resumed thread, delegation, concurrent execution and report PASS");
       } finally {
         stopLive.abort();
         await liveRelay;

@@ -43,83 +43,88 @@ export function backendClient(base, token) {
 export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
-  mediaOutput = false, boundedCorrections = false, employeeConversations = false, log = console.log }) {
+  mediaOutput = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
   const mediaTask = mediaStorage && pollMedia({ send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage });
   let advertisedProfiles = profiles;
-  let active;
+  const active = new Map();
+  let reviewSupported = false;
   let lastContact = Date.now();
   let heartbeat = 0;
   let disconnected = false;
   let connected = false;
-  const sync = async () => {
-    if (!active.batch) {
-      const events = active.events.slice(0, 5);
-      const result = events.length === active.events.length ? active.result : undefined;
-      active.batch = { instance, offset: active.offset, events, result };
+  async function sync(lane, state) {
+    if (!state.batch) {
+      const events = state.events.slice(0, 5);
+      const result = events.length === state.events.length ? state.result : undefined;
+      state.batch = { instance, offset: state.offset, events, result };
     }
-    const reply = await send(`/jobs/${active.job._id}/sync`, { ...active.batch, control: active.control.snapshot() });
-    active.batch = undefined;
-    active.events.splice(0, reply.eventCount - active.offset);
-    active.offset = reply.eventCount;
+    const reply = await send(`/jobs/${state.job._id}/sync`, { ...state.batch, control: state.control.snapshot() });
+    state.batch = undefined;
+    state.events.splice(0, reply.eventCount - state.offset);
+    state.offset = reply.eventCount;
     if (["cancelled", "cancelling", "interrupted"].includes(reply.status)) {
-      active.controller.abort(reply.status === "interrupted" ? "interrupted" : "cancelled");
+      state.controller.abort(reply.status === "interrupted" ? "interrupted" : "cancelled");
     }
-    if (reply.status === "running") active.control.receive(reply);
-    if (active.result && ["completed", "cancelled", "interrupted", "failed"].includes(reply.status)) active = undefined;
-  };
+    if (reply.status === "running") state.control.receive(reply);
+    if (state.result && ["completed", "cancelled", "interrupted", "failed"].includes(reply.status)) active.delete(lane);
+  }
+  async function step(lane) {
+    const previous = active.get(lane);
+    if (previous) return sync(lane, previous);
+    const job = await send("/claim", { instance, extendedPrompts: true, lane });
+    if (!job || signal.aborted) return;
+    const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
+    state.control = turnControl(state.controller.signal, (value) => redact(value, token));
+    active.set(lane, state);
+    if (job.status === "cancelling") {
+      state.result = { status: "cancelled", error: "" };
+      return;
+    }
+    const record = (view, label, value) => {
+      const clean = redact(value, token).toWellFormed();
+      let index = 0;
+      while (index < clean.length) {
+        let end = Math.min(index + 3000, clean.length);
+        if (clean.charCodeAt(end - 1) >= 0xd800 && clean.charCodeAt(end - 1) <= 0xdbff) end--;
+        state.events.push({ view, label: redact(label, token).slice(0, 120), text: clean.slice(index, end) });
+        index = end;
+      }
+    };
+    record("activity", "Job assigned", "The Windows worker received the job.");
+    state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control, instance))
+      .catch(() => ({ status: "failed", error: "Local execution failed." }))
+      .then((result) => {
+        const status = state.controller.signal.aborted && result.status !== "completed"
+          ? state.controller.signal.reason : result.status;
+        state.result = { ...result, status, error: redact(result.error, token).slice(0, 2000) };
+      });
+  }
   try {
     while (!signal.aborted) {
       try {
         if (Date.now() - heartbeat >= 5000) {
           const announce = () => send("/heartbeat", {
-            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, media: !!mediaStorage, usage: getUsage?.() || undefined,
+            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, backgroundReviews, media: !!mediaStorage, usage: getUsage?.() || undefined,
             mediaVideoFrames: mediaStorage?.videoFrames === true,
             mediaOutput,
             mediaUsage: mediaStorage?.latestUsage(),
             resources: getResources?.(),
           });
-          try { await announce(); }
+          let capabilities;
+          try { capabilities = await announce(); }
           catch (error) {
             if (error.status !== 400 || !advertisedProfiles?.includes("full-access")) throw error;
             advertisedProfiles = advertisedProfiles.filter((profile) => profile !== "full-access");
-            await announce();
+            capabilities = await announce();
             log("Relay did not accept Full Access. Restricted profiles remain available until the worker restarts.");
           }
+          reviewSupported = backgroundReviews && capabilities?.backgroundReviews === true;
           heartbeat = Date.now();
         }
-        if (active) await sync();
-        else {
-          const job = await send("/claim", { instance, extendedPrompts: true });
-          if (job && !signal.aborted) {
-            const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
-            state.control = turnControl(state.controller.signal, (value) => redact(value, token));
-            active = state;
-            if (job.status === "cancelling") {
-              state.result = { status: "cancelled", error: "" };
-              continue;
-            }
-            const record = (view, label, value) => {
-              const clean = redact(value, token).toWellFormed();
-              let index = 0;
-              while (index < clean.length) {
-                let end = Math.min(index + 3000, clean.length);
-                if (clean.charCodeAt(end - 1) >= 0xd800 && clean.charCodeAt(end - 1) <= 0xdbff) end--;
-                state.events.push({ view, label: redact(label, token).slice(0, 120), text: clean.slice(index, end) });
-                index = end;
-              }
-            };
-            record("activity", "Job assigned", "The Windows worker received the job.");
-            state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control, instance))
-              .catch(() => ({ status: "failed", error: "Local execution failed." }))
-              .then((result) => {
-                const status = state.controller.signal.aborted && result.status !== "completed"
-                  ? state.controller.signal.reason : result.status;
-                state.result = { ...result, status, error: redact(result.error, token).slice(0, 2000) };
-              });
-          }
-        }
+        await step("primary");
+        if (reviewSupported || active.has("review")) await step("review");
         lastContact = Date.now();
         if (disconnected) log("Operations connection restored.");
         else if (!connected) log("Connected to Crossworld Operations. Device authentication verified.");
@@ -136,18 +141,21 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
           log(`${hint} Retrying.`);
         }
         disconnected = true;
-        if (Date.now() - lastContact >= offlineLimit) active?.controller.abort("interrupted");
+        if (Date.now() - lastContact >= offlineLimit) {
+          for (const state of active.values()) state.controller.abort("interrupted");
+        }
       }
-      await sleep(!disconnected && active?.events.length >= 5 ? 50 : interval, undefined, { signal }).catch(() => {});
+      const backlog = [...active.values()].some(state => state.events.length >= 5);
+      await sleep(!disconnected && backlog ? 50 : interval, undefined, { signal }).catch(() => {});
     }
   } finally {
     mediaController.abort();
     await mediaTask;
-    if (active) {
-      active.controller.abort("interrupted");
-      await active.execution;
-      await sync().catch(() => {});
-    }
+    await Promise.all([...active].map(async ([lane, state]) => {
+      state.controller.abort("interrupted");
+      await state.execution;
+      await sync(lane, state).catch(() => {});
+    }));
   }
 }
 
@@ -307,6 +315,7 @@ async function startWorker() {
     },
     boundedCorrections: true,
     employeeConversations: true,
+    backgroundReviews: process.env.OPERATIONS_BACKGROUND_REVIEWS === "1",
     execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
@@ -351,6 +360,8 @@ async function startWorker() {
           autonomousNetwork: !correction && autonomousNetwork && profile === "development",
           strictReadOnly,
           employeeContext: job.employeeContext,
+          delegatedOutcomes: job.delegatedOutcomes,
+          approvedDecisions: job.approvedDecisions,
           localMcp: !job.workerRole || job.workerRole === "direct",
           observeUsage,
           imagePaths: staged?.files,

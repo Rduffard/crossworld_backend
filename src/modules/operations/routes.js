@@ -7,9 +7,10 @@ const { createObjectives } = require("./objectives");
 const { createProjects } = require("./projects");
 const { createHeadquarters } = require("./headquarters");
 const { createActivity } = require("./activity");
-const { createKnowledge } = require("./knowledge");
+const { createKnowledge, approvedDecisions } = require("./knowledge");
 const { createWorkshopRegistry } = require("./workshop-registry");
 const { createReports } = require("./reports");
+const { createWorkflow } = require("./workflow");
 const { createWorkforce } = require("./workforce");
 const { createOrganization } = require("./organization");
 const { createReferences } = require("./references");
@@ -96,7 +97,7 @@ function createRouter({
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
   const studioActions = createStudioActions({
-    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView,
+    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -115,6 +116,9 @@ function createRouter({
       finance().createIndex({ ownerId: 1, month: 1 }),
       db().collection("operations_creative").createIndex({ ownerId: 1, updatedAt: -1, _id: -1 }),
       attentionReceipts().createIndex({ ownerId: 1, key: 1 }),
+      jobs().createIndex({ ownerId: 1, "delegatedBy.sessionId": 1, finishedAt: -1 }, {
+        partialFilterExpression: { "delegatedBy.sessionId": { $type: "string" } },
+      }),
       jobs().createIndex({ activeHost: 1 }, {
         unique: true, partialFilterExpression: { activeHost: { $type: "string" } },
       }),
@@ -156,8 +160,8 @@ function createRouter({
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
   worker.post("/heartbeat", async (req, res) => {
-    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false } = req.body || {};
-    if (typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
+    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false } = req.body || {};
+    if (typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry))) {
       return reject(res, 400, "Invalid worker capabilities.");
@@ -167,7 +171,7 @@ function createRouter({
     const host = await hosts().findOneAndUpdate({
       _id: req.operationsHost._id, revokedAt: null,
       $or: [{ instance }, { lastSeen: { $lt: new Date(+now - leaseMs) } }, { lastSeen: null }],
-    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations,
+    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations, backgroundReviews,
       media: req.body?.media === true, mediaVideoFrames: req.body?.media === true && req.body?.mediaVideoFrames === true,
       mediaOutput: req.body?.media === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       mediaUsage: req.body?.media === true ? mediaObservation(req.body?.mediaUsage, +now) : null,
@@ -181,24 +185,29 @@ function createRouter({
       }, { $set: { usage } });
     }
     await jobs().updateMany({
-      ownerId: owner(), activeHost: host._id, leaseUntil: { $lte: now },
+      ownerId: owner(), activeHost: { $in: [host._id, host._id + ":review"] }, leaseUntil: { $lte: now },
     }, {
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
     });
-    res.json({ ok: true });
+    res.json({ ok: true, backgroundReviews });
   });
 
   worker.post("/claim", async (req, res) => {
     if (!workerEnabled) return res.json(null);
-    const instance = req.body?.instance;
+    const { instance, lane = "primary" } = req.body || {};
     if (!uuid(instance) || req.operationsHost.instance !== instance || !online(req.operationsHost)) {
       return reject(res, 409, "Worker heartbeat required.");
     }
+    const background = lane === "review";
+    if (lane !== "primary" && (!background || req.operationsHost.backgroundReviews !== true)) {
+      return reject(res, 409, "This relay has no background review slot.");
+    }
     await ensureIndexes();
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
-    let job = await jobs().findOne({ ...scope, activeHost: req.operationsHost._id, instance });
-    if (!job) {
+    const activeHost = background ? scope.hostId + ":review" : scope.hostId;
+    let job = await jobs().findOne({ ...scope, activeHost, instance });
+    if (!job && !background) {
       const blocked = await jobs().aggregate([
         { $match: { ...scope, status: "waiting" } },
         { $set: { dependencyId: { $ifNull: ["$reviewOf", "$parentId"] } } },
@@ -245,29 +254,44 @@ function createRouter({
           $set: next, ...(next.status === "interrupted" ? { $unset: { successorOf: "" } } : {}),
         });
       }
+    }
+    if (!job) {
       if ((await dispatch().findOne({ _id: scope.ownerId }))?.paused) return res.json(null);
-      await recurrence.reconcile(req.operationsHost);
+      if (!background) await recurrence.reconcile(req.operationsHost);
+      const allocated = req.operationsHost.backgroundReviews === true;
+      const other = allocated && await jobs().findOne({
+        ...scope, activeHost: background ? scope.hostId : scope.hostId + ":review", instance,
+        status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
+      }, { projection: { workspace: 1, profile: 1 } });
+      const sameWorkspaceRestriction = other && (!background || (other.profile && other.profile !== "read-only"));
+      const held = usageHoldUntil(req.operationsHost.usage);
+      if (background && (held || other?.profile === "full-access")) return res.json(null);
       try {
         job = await jobs().findOneAndUpdate({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
-          ...(req.operationsHost.boundedCorrections === true ? {} : { workerRole: { $ne: "correction" } }),
+          ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
           ...(req.operationsHost.media === true ? {} : { mediaInputs: { $exists: false } }),
           ...(req.operationsHost.mediaOutput === true ? {} : { outputMedia: { $ne: true } }),
-          ...(usageHoldUntil(req.operationsHost.usage) ? { reviewOf: { $exists: false }, seriesId: { $exists: false }, delegatedBy: { $exists: false } } : {}),
+          ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false } } : {}),
+          ...(background ? { delegatedBy: { $exists: true }, workerRole: "assignment", profile: "read-only" }
+            : allocated || held ? { delegatedBy: { $exists: false } } : {}),
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            ...(sameWorkspaceRestriction ? [background ? { workspace: { $ne: other.workspace } } : {
+              $or: [{ workspace: { $ne: other.workspace }, profile: { $ne: "full-access" } }, { profile: { $in: [null, "read-only"] } }],
+            }] : []),
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
           ],
         }, { $set: {
-          status: "running", instance, activeHost: req.operationsHost._id,
+          status: "running", instance, activeHost,
           leaseUntil: new Date(Date.now() + leaseMs), startedAt: new Date(),
         } }, { sort: { createdAt: 1 }, returnDocument: "after" });
       } catch (error) {
         if (error.code !== 11000) throw error;
-        job = await jobs().findOne({ ...scope, activeHost: req.operationsHost._id, instance });
+        job = await jobs().findOne({ ...scope, activeHost, instance });
       }
     }
     if (!job) return res.json(null);
@@ -333,11 +357,25 @@ function createRouter({
       });
       return res.json(null);
     }
+    const outcomes = job.studioTools === true ? await jobs().find({
+      ownerId: scope.ownerId, "delegatedBy.sessionId": job.sessionId || job._id,
+      status: { $in: terminal }, finishedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    }, { projection: { assigneeName: 1, status: 1, error: 1, eventCount: 1, finishedAt: 1 } })
+      .sort({ finishedAt: -1, _id: 1 }).limit(2).toArray() : [];
+    const delegatedOutcomes = await Promise.all(outcomes.map(async result => ({
+      employee: result.assigneeName, status: result.status, finishedAt: result.finishedAt,
+      result: result.status === "completed" ? (await precedingResult(result, eventBatches)).trim() : result.error,
+      url: "/operations?workspace=command&job=" + result._id,
+    })));
     const identity = actor && await employeeContext({ workforce, projects, objectives, jobs }, scope.ownerId, actor);
+    const projectIds = job.projectId ? [job.projectId] : (identity?.projects || []).map(project => project.projectId);
+    const decisions = identity ? await approvedDecisions(knowledge, scope.ownerId, projectIds) : [];
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
     res.json({ _id, prompt: job.assignmentContext ? prompt + job.assignmentContext : prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole,
       ...(job.studioTools === true ? { studioActions: true } : {}),
       ...(identity ? { employeeContext: identity } : {}),
+      ...(decisions.length ? { approvedDecisions: decisions } : {}),
+      ...(delegatedOutcomes.length ? { delegatedOutcomes } : {}),
       ...(job.mediaInputs ? { mediaInputs: job.mediaInputs } : {}), ...(job.outputMedia === true ? { outputMedia: true } : {}) });
   });
 
@@ -479,6 +517,7 @@ function createRouter({
   } }));
   router.use("/workshop-registry", createWorkshopRegistry({ records: () => db().collection("operations_workshop_registry"), owner }));
   router.use("/reports", createReports({ jobs, objectives, projects, workforce, eventBatches, owner }));
+  router.use("/workflow", createWorkflow({ jobs, projects, objectives, workforce, owner, jobView }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, objectives, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
@@ -522,7 +561,7 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, employeeConversations: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, employeeConversations: 1, backgroundReviews: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
     res.json(records.map((host) => ({ ...host, online: online(host), promptLimit: hostLimit(host) })));
   });
@@ -663,6 +702,30 @@ function createRouter({
     if (!saved.matchedCount) return reject(res, 404, "Session not found.");
     res.sendStatus(204);
   });
+  async function queueReason(job) {
+    if (job?.status !== "queued") return undefined;
+    const ownerId = owner();
+    const [settings, host] = await Promise.all([
+      dispatch().findOne({ _id: ownerId }),
+      hosts().findOne({ _id: job.hostId, ownerId, revokedAt: null }),
+    ]);
+    if (settings?.paused) return "Dispatch paused";
+    if (!host || !online(host)) return "Waiting for the relay to reconnect";
+    if ((job.delegatedBy || job.reviewOf || job.seriesId) && usageHoldUntil(host.usage)) return "Waiting for subscription capacity";
+    if (host.backgroundReviews === true) {
+      const other = await jobs().findOne({
+        ownerId, hostId: job.hostId, activeHost: job.delegatedBy ? job.hostId : job.hostId + ":review",
+        ...(job.profile === "full-access" ? {} : { $or: [{ workspace: job.workspace }, { profile: "full-access" }] }),
+        status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
+      }, { projection: { profile: 1 } });
+      const editing = job.delegatedBy ? other?.profile : job.profile;
+      if (other && editing && editing !== "read-only") {
+        return job.delegatedBy ? "Waiting for an editing turn to finish" : "Waiting for the read-only review to finish";
+      }
+    }
+    return "Queued for worker";
+  }
+
   router.get("/jobs/:id", async (req, res) => {
     const offset = Number(req.query.offset || 0);
     if (!Number.isSafeInteger(offset) || offset < 0) {
@@ -689,9 +752,13 @@ function createRouter({
       job.outputMedia === true ? media.outputs(job._id) : undefined,
       job.studioTools ? jobs().findOne({
         ownerId: owner(), _id: operationsReviewId(job._id), "delegatedBy.sourceTurnId": job._id,
-      }, { projection: { title: 1, status: 1, assigneeName: 1, leaseUntil: 1 } }) : null,
+      }, { projection: { title: 1, status: 1, assigneeName: 1, leaseUntil: 1, hostId: 1, workspace: 1, profile: 1, "delegatedBy.sourceTurnId": 1 } }) : null,
     ]);
-    res.json({ ...jobView(job), title: root?.title, archivedAt: root?.archivedAt, mediaOutputs, delegatedReview: delegatedReview ? jobView(delegatedReview) : undefined });
+    const [reason, reviewReason] = await Promise.all([queueReason(job), queueReason(delegatedReview)]);
+    res.json({
+      ...jobView(job), title: root?.title, archivedAt: root?.archivedAt, mediaOutputs, queueReason: reason,
+      delegatedReview: delegatedReview ? { ...jobView(delegatedReview), queueReason: reviewReason } : undefined,
+    });
   });
   router.post("/jobs/:id/approval", async (req, res) => {
     const { id, choice, fingerprint } = req.body || {};

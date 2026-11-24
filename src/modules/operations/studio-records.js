@@ -1,17 +1,24 @@
 const { precedingResult } = require("./objective-runs");
 
+const knowledgeStatuses = ["owner-approved", "validated", "failed"];
 const definitions = {
   employees: { source: "workforce", filter: { kind: "employee" },
     fields: ["name", "role", "roleId", "departmentId", "supervisorId", "responsibilities", "workspace", "status"],
     workspace: "workforce", record: "employee" },
   roles: { source: "workforce", filter: { kind: "role" }, fields: ["name", "key", "responsibilities"] },
   departments: { source: "workforce", filter: { kind: "department" }, fields: ["name", "responsibilities"] },
-  mandates: { source: "workforce", filter: { kind: "project-assignment" },
+  mandates: { source: "workforce", filter: { kind: "project-assignment" }, scope: ["employeeId", "projectId", "objectiveId"],
     fields: ["name", "employeeId", "projectId", "objectiveId", "supervisorId", "responsibilities", "status", "activationSource"] },
   projects: { source: "projects", fields: ["name", "description", "workspace", "status", "revision"],
     workspace: "projects", record: "project" },
   objectives: { source: "objectives", fields: ["title", "projectId", "priority", "status", "criteria", "revision"],
     scope: ["projectId"], workspace: "objectives", record: "objective" },
+  knowledge: { source: "knowledge", filter: { status: { $in: knowledgeStatuses } }, allowedStatuses: knowledgeStatuses,
+    fields: ["title", "projectId", "kind", "summary", "source", "author", "status", "memoryKind", "createdAt", "updatedAt"],
+    scope: ["projectId"], workspace: "knowledge", record: "knowledge" },
+  references: { source: "references", filter: { status: "approved" }, allowedStatuses: ["approved"],
+    fields: ["name", "projectId", "status", "category", "source", "description", "mediaId"],
+    scope: ["projectId"], workspace: "references" },
   assignments: { source: "jobs", filter: { employeeId: { $type: "string" } },
     scope: ["employeeId", "projectId", "objectiveId"], workspace: "command",
     fields: ["title", "employeeId", "assigneeName", "reviewerName", "projectId", "objectiveId", "status", "error", "reviewOf",
@@ -31,12 +38,15 @@ async function studioRecords({ sources, ownerId, input, jobView, eventBatches })
   for (const [key, value] of Object.entries({ id, employeeId, projectId, objectiveId })) {
     if (value === undefined) continue;
     if (typeof value !== "string" || !idPattern.test(value) ||
-        (key !== "id" && !definition.scope?.includes(key) && !(kind === "mandates" && key !== "objectiveId"))) return null;
-    filter[key === "id" ? "_id" : key] = value;
+        (key !== "id" && !definition.scope?.includes(key))) return null;
+    filter[key === "id" ? "_id" : key] = kind === "references" && key === "id" ? ownerId + ":" + value : value;
   }
-  if (status !== undefined && definition.fields.includes("status")) filter.status = status;
+  if (status !== undefined) {
+    if (!definition.fields.includes("status") || (definition.allowedStatuses && !definition.allowedStatuses.includes(status))) return null;
+    filter.status = status;
+  }
   const records = await sources[definition.source]().find(filter, {
-    projection: Object.fromEntries(definition.fields.map(field => [field, 1])),
+    projection: { ...Object.fromEntries(definition.fields.map(field => [field, 1])), ...(kind === "knowledge" && id ? { body: 1 } : {}) },
   }).sort(kind === "assignments" ? { createdAt: -1, _id: 1 } : { _id: 1 }).skip(offset).limit(limit + 1).toArray();
   const items = records.slice(0, limit).map(record => {
     const item = kind === "assignments" ? jobView(record) : record;
@@ -45,9 +55,11 @@ async function studioRecords({ sources, ownerId, input, jobView, eventBatches })
       if (definition.record) {
         query.set("source", definition.record);
         query.set("record", item._id);
-      } else query.set("job", item._id);
+      } else if (definition.workspace === "command") query.set("job", item._id);
       item.url = "/operations?" + query;
     }
+    if (kind === "references") item._id = item._id.slice(ownerId.length + 1);
+    if (kind === "knowledge" && typeof item.body === "string") item.body = item.body.slice(0, 2500).toWellFormed();
     if (kind === "mandates" && item.activationSource === "foundation-objective") {
       item.statusExplanation = "The objective records effective activation and acceptance.";
     }

@@ -30,7 +30,7 @@ async function employeeContext({ workforce, projects, objectives, jobs }, ownerI
     roleResponsibilities: role?.responsibilities, supervisor: supervisor || { name: "Owner" },
     responsibilities: employee.responsibilities, guidance: employee.instructions,
     projects: mandates.filter(item => projectNames.has(item.projectId) && objectiveNames.has(item.objectiveId)).map(item => ({
-      name: projectNames.get(item.projectId), objective: objectiveNames.get(item.objectiveId),
+      projectId: item.projectId, name: projectNames.get(item.projectId), objective: objectiveNames.get(item.objectiveId),
       responsibilities: item.responsibilities,
       url: "/operations?workspace=objectives&source=objective&record=" + item.objectiveId,
     })),

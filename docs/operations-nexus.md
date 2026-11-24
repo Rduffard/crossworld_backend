@@ -28,3 +28,17 @@ The backend unit suite passed 689 tests, and the loopback relay integration pass
 The first backend rollout was verified in Actions run 45450306917. Hosted health returned OK and unauthenticated Operations access returned HTTP 401. Browser fixtures passed Profile to Message, recipient persistence, draft restoration, and attributed response at 320, 390, 768, and 1440 pixels. Raw fixture screenshots are in the workspace docs/nexus-validation directory.
 
 Production acceptance still requires the updated registered relay after active work drains. The sole online relay held an active orchestration turn during this implementation, so preserve it until handover. Hosted Iona visual review, authenticated mobile acceptance, true concurrent processing, broader governed actions, institutional memory, and integration expansion remain open. A single relay currently runs one job at a time.
+
+## Third milestone
+
+- An opt-in background slot runs one delegated read-only Operations review alongside the primary relay slot. The updated relay and backend negotiate support. Scoped editing defers when its workspace is under review, and full-access turns and background reviews do not overlap. The existing single-slot behavior is the default.
+- Command Center shows recorded queue reasons and links to the worker report. Relevant completed or failed delegate outcomes are delivered as bounded context when the source conversation next executes. There is no autonomous model follow-up when that conversation is idle.
+- Workflow links actual handoffs and review dependencies to employee, objective, transcript and report records. The owner can enter it from Command Center, Office, Workforce, Projects, Objectives or Reports.
+- Knowledge can hold owner-approved decisions, preferences and operating policies with sources, revision checks and retained superseded versions. Retired records stop entering execution context. First Mate can query approved references and validated or approved knowledge. Draft conversation text is never promoted into memory automatically.
+- Iona's isolated read-only review identified the clipped mobile workspace strip as the first design priority. The correction adds a labeled grouped Workspaces dialog, focus transfer and a compact report download control. The rendered fixture evidence and the attributed review are in workspace docs/nexus-validation.
+
+The optional live Nexus suite verified a subscription-backed Iona conversation, a resumed Codex thread, actual typed delegation, a separate read-only Iona review, overlapping Barnaby and Iona execution timestamps, and the resulting report. It also verified private video staging and actual Codex vision from an extracted frame. Browser fixture coverage is 320, 390, 768 and 1440 pixels; it is separate from signed-in production acceptance.
+
+To opt in after the active relay drains, set the worker account's persistent user environment variable OPERATIONS_BACKGROUND_REVIEWS to 1 before starting the refreshed launcher. The authenticated heartbeat must advertise support before the background slot can claim. Start a new Barnaby conversation to register the updated dynamic tools. Earlier Codex threads keep their original tool registration.
+
+The hosted gate remains a relay handover followed by the actual owner-account smoke tests and the full deployed-interface Iona assignment. Preserve the current primary orchestration execution until its result is recorded. Do not restart game work.
