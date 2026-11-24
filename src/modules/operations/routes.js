@@ -4,6 +4,7 @@ const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const auth = require("../../core/middleware/auth");
 const { createGovernance } = require("./github-governance");
 const { createObjectives } = require("./objectives");
+const { createProjects } = require("./projects");
 const { createHeadquarters } = require("./headquarters");
 const { createActivity } = require("./activity");
 const { createKnowledge } = require("./knowledge");
@@ -71,6 +72,7 @@ function createRouter({
   const eventBatches = () => db().collection("operations_event_batches");
   const dispatch = () => db().collection("operations_dispatch");
   const objectives = () => db().collection("operations_objectives");
+  const projects = () => db().collection("operations_projects");
   const workforce = () => db().collection("operations_workforce");
   const knowledge = () => db().collection("operations_knowledge");
   const series = () => db().collection("operations_recurrence");
@@ -242,20 +244,23 @@ function createRouter({
       }
       if (!(await jobs().updateOne(key, { $set: { runAuthorizedAt: new Date() } })).matchedCount) return res.json(null);
     }
-    if (job.reviewOf && !job.runAuthorizedAt && job.status === "running") {
+    if (job.objectiveId && job.employeeId && !job.runAuthorizedAt && job.status === "running") {
       const [objective, employee] = await Promise.all([
-        objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active" }, { projection: { _id: 1 } }),
+        objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active" }, { projection: { projectId: 1 } }),
         workforce().findOne({
-          _id: job.employeeId, ownerId: scope.ownerId, kind: "employee", role: job.workerRole === "correction" ? "worker" : job.workerRole,
+          _id: job.employeeId, ownerId: scope.ownerId, kind: "employee", role: job.assignedRole || (job.workerRole === "correction" ? "worker" : job.workerRole),
           workspace: job.workspace, status: "available",
         }, { projection: { _id: 1 } }),
       ]);
       const authorization = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
-      if (!objective || !employee) {
+      const activeProject = !objective?.projectId || await projects().findOne({
+        _id: objective.projectId, ownerId: scope.ownerId, status: "active", workspace: job.workspace,
+      }, { projection: { _id: 1 } });
+      if (!objective || !employee || !activeProject) {
         await jobs().updateOne(authorization, {
           $set: {
             status: "interrupted", finishedAt: new Date(),
-            error: "The objective closed or the assigned employee is unavailable.",
+            error: "The objective closed, the project is inactive, or the assigned employee is unavailable.",
           },
           $unset: { activeHost: "" },
         });
@@ -265,7 +270,7 @@ function createRouter({
       if (!authorized.matchedCount) return res.json(null);
     }
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
-    res.json({ _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole });
+    res.json({ _id, prompt: job.assignmentContext ? prompt + job.assignmentContext : prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole });
   });
 
   worker.post("/jobs/:id/sync", async (req, res) => {
@@ -375,12 +380,13 @@ function createRouter({
     const isBrief = req.method === "POST" && /^\/(?:schedule|recurrence|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
-  router.use("/objectives", createObjectives({ records: objectives, owner }));
+  router.use("/projects", createProjects({ records: projects, owner }));
+  router.use("/objectives", createObjectives({ records: objectives, projects, jobs, jobView, owner }));
   router.use("/knowledge", createKnowledge({ records: knowledge, owner }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
-    jobs, objectives, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes,
+    jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes,
   }));
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
@@ -476,7 +482,7 @@ function createRouter({
         { $set: { prompt: { $substrCP: ["$prompt", 0, 55] } } },
         { $unset: "instruction.text" },
       ] : []),
-      { $unset: ["events", "instance", "activeHost", "approvalHistory"] },
+      { $unset: ["events", "instance", "activeHost", "approvalHistory", "assignmentContext", "assignmentDigest"] },
     ]).toArray();
     const roots = await jobs().find({
       ownerId: owner(), _id: { $in: [...new Set(records.map((job) => job.sessionId || job._id))] },
@@ -540,8 +546,8 @@ function createRouter({
       return reject(res, 400, "Invalid event offset.");
     }
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() }, {
-      projection: { events: { $slice: [Math.min(offset, legacyEventLimit), eventPageSize] }, instance: 0, activeHost: 0,
-        ...(req.query.compact === "true" ? { prompt: 0, "instruction.text": 0 } : {}) },
+      projection: { events: { $slice: [Math.min(offset, legacyEventLimit), eventPageSize] }, instance: 0, activeHost: 0, assignmentDigest: 0,
+        ...(req.query.compact === "true" ? { prompt: 0, assignmentContext: 0, "instruction.text": 0 } : {}) },
     });
     if (!job) return reject(res, 404, "Job not found.");
     job.events ||= [];
@@ -613,12 +619,14 @@ function createRouter({
   });
   router.post(["/jobs", "/schedule", "/recurrence"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
-    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat } = req.body || {};
+    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId } = req.body || {};
     const repeating = /^\/recurrence\/?$/i.test(req.path);
     const scheduling = repeating || /^\/schedule\/?$/i.test(req.path);
+    const assigning = objectiveId !== undefined || employeeId !== undefined;
     if (!uuid(id) || !uuid(hostId) || !workspaces.includes(workspace) || model !== "gpt-6.2-sol" ||
         (parentId != null && !uuid(parentId)) || (queue !== false && (queue !== true || !parentId)) ||
         (profile !== "read-only" && profile !== "full-access" && profile !== workspace) ||
+        (assigning && (scheduling || parentId || !uuid(objectiveId) || !uuid(employeeId))) ||
         (repeating ? !validRepeat(repeat) : repeat !== undefined) ||
         (scheduling ? parentId || !future(scheduledAt, maxScheduleDelayMs) : scheduledAt !== undefined)) {
       return reject(res, 400, "Invalid job request.");
@@ -634,8 +642,13 @@ function createRouter({
       if (replay === "replay") return res.json({ _id: id, recurring: true });
       if (replay) return reject(res, 409, "Repeating schedule identifier already in use.");
     }
-    const existing = await jobs().findOne({ _id: id, ownerId: owner() });
-    if (existing) return seriesRequest ? reject(res, 409, "Identifier already belongs to a single turn.") : res.json({ _id: id });
+    const assignmentDigest = assigning ? createHash("sha256")
+      .update(JSON.stringify([objectiveId, employeeId, hostId, workspace, profile, model, effort, prompt])).digest("hex") : undefined;
+    const existingJob = () => jobs().findOne({ _id: id, ownerId: owner() }, { projection: { assignmentDigest: 1 } });
+    const replayJob = (record) => seriesRequest || record.assignmentDigest !== assignmentDigest
+      ? reject(res, 409, "Identifier already belongs to a different turn.") : res.json({ _id: id });
+    const existing = await existingJob();
+    if (existing) return replayJob(existing);
     if (scheduledAt !== undefined && scheduledAt <= Date.now()) {
       return reject(res, 400, "Select a future execution time.");
     }
@@ -646,7 +659,33 @@ function createRouter({
         ? "Select an online host and a supported reasoning effort."
         : "Select a registered host with that execution profile and reasoning effort.");
     }
-    if (prompt.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
+    let assignment = {};
+    if (assigning) {
+      const ownerId = owner();
+      const [objective, employee] = await Promise.all([
+        objectives().findOne({ _id: objectiveId, ownerId, status: "active" }),
+        workforce().findOne({ _id: employeeId, ownerId, kind: "employee", workspace, status: "available", role: { $in: ["worker", "lead"] } }),
+      ]);
+      const project = objective?.projectId && await projects().findOne({
+        _id: objective.projectId, ownerId, status: "active", workspace,
+      });
+      if (!objective || !employee || (objective.projectId && !project)) {
+        return reject(res, 409, "Select an active objective and an available worker in the project workspace.");
+      }
+      assignment = {
+        objectiveId, employeeId, assignedRole: employee.role, assigneeName: employee.name, title: objective.title, assignmentDigest,
+        ...(project ? { projectId: project._id } : {}),
+        assignmentContext: "\n\nOwner-provided assignment context (JSON): " + JSON.stringify({
+          objective: objective.title, instruction: objective.instruction, criteria: objective.criteria.map(({ text: criterion }) => criterion),
+          employee: employee.name, responsibilities: employee.responsibilities, employeeInstructions: employee.instructions,
+          ...(project ? { project: project.name, projectInstructions: project.instructions } : {}),
+        }),
+      };
+    }
+    const deliveredLength = prompt.length + (assignment.assignmentContext?.length || 0);
+    if (deliveredLength > hostLimit(host)) {
+      return reject(res, 409, assigning ? "The prompt and assignment context exceed this worker's prompt limit." : upgradeMessage);
+    }
     if (seriesRequest) {
       const registered = await recurrence.register(seriesRequest);
       if (registered === "conflict") return reject(res, 409, "Repeating schedule identifier already in use.");
@@ -659,11 +698,16 @@ function createRouter({
     if (parentId && (!parent || (!queue && !parent.codexThreadId) || (parent.profile || "read-only") !== profile)) {
       return reject(res, 409, "Session cannot be continued with that execution profile.");
     }
+    const inherited = parent?.objectiveId && parent?.employeeId ? {
+      objectiveId: parent.objectiveId, employeeId: parent.employeeId,
+      ...(parent.projectId ? { projectId: parent.projectId } : {}),
+      ...(parent.assignedRole ? { assignedRole: parent.assignedRole, assigneeName: parent.assigneeName } : {}),
+    } : {};
     if (parentId) await ensureIndexes();
     try {
       await jobs().insertOne({
-        _id: id, ownerId: owner(), hostId, workspace, profile, model, effort, prompt,
-        ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
+        _id: id, ownerId: owner(), hostId, workspace, profile, model, effort, prompt, ...inherited, ...assignment,
+        ...(deliveredLength > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
         workerRole: parent?.workerRole || "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,
         ...(parentId ? { successorOf: parentId } : {}),
         codexThreadId: queue ? null : parent?.codexThreadId || null,
@@ -673,9 +717,9 @@ function createRouter({
       });
     } catch (error) {
       if (error.code !== 11000) throw error;
-      if (!(await jobs().findOne({ _id: id, ownerId: owner() }))) {
-        return reject(res, 409, "This turn already has a continuation. Select that turn to continue the session.");
-      }
+      const replay = await existingJob();
+      if (replay) return replayJob(replay);
+      return reject(res, 409, "This turn already has a continuation. Select that turn to continue the session.");
     }
     res.status(201).json({ _id: id });
   });

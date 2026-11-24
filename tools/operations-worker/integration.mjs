@@ -199,6 +199,14 @@ try {
         }
         return { status: "completed", threadId };
       }
+      if (job.prompt.startsWith("Ordinary assignment test")) {
+        const [brief, context] = job.prompt.split("\n\nOwner-provided assignment context (JSON): ");
+        assert.equal(brief, "Ordinary assignment test");
+        assert.equal(JSON.parse(context).project, "Disposable project");
+        assert.equal(JSON.parse(context).employee, "Disposable reviewer");
+        record("response", "Final response", "Assignment context observed.");
+        return { status: "completed", threadId: randomUUID() };
+      }
       const cancelProbe = job.prompt.startsWith("cancel-probe");
       const liveJob = cancelProbe ? liveCancellation : job.workspace === "workshop" ? liveWorkshop : live;
       if (!liveJob) {
@@ -553,6 +561,59 @@ try {
     assert.equal((await api("/objectives/" + orchestration._id))[1].status, "completed");
     assert.ok((await api("/activity?type=objective-accepted"))[1].some((event) => event.sourceId === orchestration._id));
     console.log("Dependent QA, First Mate, AIR, correction, retest, and owner acceptance gate PASS");
+
+    const projectSettings = {
+      name: "Disposable project", description: "Project and workforce verification.", workspace: "development",
+      instructions: "Preserve the disposable file.", repositories: ["crossworld_backend"], status: "active",
+    };
+    const projectCreate = (user) => api("/projects", { method: "POST", body: projectSettings, user });
+    assert.equal((await projectCreate(other))[0], 403);
+    const [projectCreated, project] = await projectCreate(owner);
+    assert.equal(projectCreated, 201);
+    const projectPath = "/projects/" + project._id;
+    assert.equal((await api(projectPath))[1].instructions, projectSettings.instructions);
+    const linked = { ...objectiveRequest, projectId: project._id };
+    assert.equal((await api("/objectives", { method: "POST", body: { ...linked, projectId: randomUUID() } }))[0], 409);
+    const [linkedStatus, linkedObjective] = await api("/objectives", { method: "POST", body: linked });
+    assert.equal(linkedStatus, 201);
+    assert.deepEqual((await api("/objectives?projectId=" + project._id))[1].map((item) => item._id), [linkedObjective._id]);
+    const assignment = {
+      id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol", effort: "low",
+      prompt: "Ordinary assignment test", objectiveId: linkedObjective._id, employeeId: correctionEmployee._id,
+    };
+    const requestAssignment = (body, user) => api("/jobs", { method: "POST", body, user });
+    assert.equal((await requestAssignment(assignment, other))[0], 403);
+    assert.equal((await requestAssignment({ ...assignment, workspace: "workshop" }))[0], 409);
+    assert.equal((await requestAssignment(assignment))[0], 201);
+    assert.equal((await requestAssignment(assignment))[0], 200);
+    assert.equal((await requestAssignment({ ...assignment, prompt: "Different request" }))[0], 409);
+    const assigned = await settle(assignment.id);
+    assert.equal(assigned.status, "completed", assigned.error);
+    assert.equal(assigned.prompt, assignment.prompt);
+    assert.equal(assigned.projectId, project._id);
+    assert.ok(assigned.events.some((event) => /Assignment context observed/.test(event.text)));
+    const continuedAssignment = await submit("Assigned follow-up", "development", assignment.id);
+    assert.equal((await settle(continuedAssignment)).employeeId, correctionEmployee._id);
+    const assignmentsEndpoint = "/objectives/" + linkedObjective._id + "/assignments";
+    assert.deepEqual((await api(assignmentsEndpoint))[1].map((entry) => entry._id), [continuedAssignment, assignment.id]);
+    assert.equal((await createRun({ ...qa, id: randomUUID(), sourceId: assignment.id }))[0], 409);
+    await api("/dispatch", { method: "PATCH", body: { paused: true } });
+    const beforeProjectPause = launchCount;
+    const heldAssignment = { ...assignment, id: randomUUID() };
+    assert.equal((await requestAssignment(heldAssignment))[0], 201);
+    const pauseProject = (revision) => api(projectPath, {
+      method: "PUT", body: { ...projectSettings, status: "paused", revision },
+    });
+    assert.equal((await pauseProject(0))[0], 204);
+    assert.equal((await pauseProject(0))[0], 409);
+    await api("/dispatch", { method: "PATCH", body: { paused: false } });
+    assert.equal((await settle(heldAssignment.id)).status, "interrupted");
+    assert.equal(launchCount, beforeProjectPause);
+    assert.equal((await api("/objectives", { method: "POST", body: linked }))[0], 409);
+    const projectActivity = (await api("/activity?projectId=" + project._id))[1];
+    assert.ok(projectActivity.some((event) => event.sourceId === assignment.id && event.type === "turn-finished"));
+    assert.ok(projectActivity.every((event) => event.projectId === project._id));
+    console.log("Projects, scoped objectives, workload, project pause, and exact assignment replay PASS");
 
     const scheduledAt = Date.now() + 2600;
     const scheduled = {

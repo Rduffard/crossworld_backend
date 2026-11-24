@@ -5,28 +5,36 @@ const idPattern = /^[a-f\d-]{36}$/;
 const nonempty = (value, limit) =>
   typeof value === "string" && value.length <= limit && value.isWellFormed() && !!value.trim();
 
-function createObjectives({ records, owner }) {
+function createObjectives({ records, projects, jobs, jobView, owner }) {
   const router = express.Router();
 
-  router.get("/", async (_req, res) => {
-    const objectives = await records().find({ ownerId: owner() }, {
-      projection: { title: 1, priority: 1, status: 1 },
+  router.get("/", async (req, res) => {
+    const { projectId } = req.query;
+    if (projectId !== undefined && (typeof projectId !== "string" || !idPattern.test(projectId))) {
+      return res.status(400).json({ message: "Invalid project filter." });
+    }
+    const objectives = await records().find({ ownerId: owner(), ...(projectId ? { projectId } : {}) }, {
+      projection: { title: 1, priority: 1, status: 1, projectId: 1 },
     }).sort({ createdAt: -1, _id: 1 }).limit(50).toArray();
     res.json(objectives);
   });
 
   router.post("/", async (req, res) => {
-    const { title, instruction, criteria, priority = "normal" } = req.body || {};
-    if (!nonempty(title, 120) || !nonempty(instruction, 6000) ||
+    const { title, instruction, criteria, priority = "normal", projectId } = req.body || {};
+    if ((projectId !== undefined && (typeof projectId !== "string" || !idPattern.test(projectId))) || !nonempty(title, 120) || !nonempty(instruction, 6000) ||
         !["low", "normal", "high"].includes(priority) ||
         !Array.isArray(criteria) || !criteria.length || criteria.length > 12 ||
         !criteria.every((criterion) => nonempty(criterion, 400)) ||
         new Set(criteria.map((criterion) => criterion.trim())).size !== criteria.length) {
       return res.status(400).json({ message: "Provide a title, instruction and 1 to 12 distinct acceptance criteria." });
     }
+    if (projectId && !(await projects().findOne({ _id: projectId, ownerId: owner(), status: "active" }))) {
+      return res.status(409).json({ message: "Only active projects can receive new objectives." });
+    }
     const now = new Date();
     const record = {
       _id: randomUUID(), ownerId: owner(), title: title.trim(), instruction, priority, status: "active",
+      ...(projectId ? { projectId } : {}),
       criteria: criteria.map((criterion) => ({ id: randomUUID(), text: criterion.trim(), review: null })),
       createdAt: now, updatedAt: now, revision: 0,
     };
@@ -34,6 +42,13 @@ function createObjectives({ records, owner }) {
     return res.status(201).json({ _id: record._id });
   });
 
+  router.get("/:id/assignments", async (req, res) => {
+    const assignments = await jobs().find({
+      objectiveId: req.params.id, ownerId: owner(), assignedRole: { $in: ["worker", "lead"] },
+    }, { projection: { status: 1, leaseUntil: 1, assigneeName: 1, workspace: 1, title: 1, objectiveId: 1, createdAt: 1 } })
+      .sort({ createdAt: -1, _id: 1 }).limit(50).toArray();
+    return res.json(assignments.map(jobView));
+  });
   router.get("/:id", async (req, res) => {
     const objective = await records().findOne({ _id: req.params.id, ownerId: owner() }, { projection: { ownerId: 0 } });
     if (!objective) return res.status(404).json({ message: "Objective not found." });

@@ -59,7 +59,7 @@ async function responseMarker(job, batches, marker) {
   return await lastResponseLine(job, batches) === marker;
 }
 
-function createObjectiveRuns({ jobs, objectives, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes }) {
+function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes }) {
   const router = express.Router();
 
   router.get("/:objectiveId", async (req, res) => {
@@ -87,7 +87,7 @@ function createObjectiveRuns({ jobs, objectives, workforce, hosts, owner, worker
     if (existing) return replay(existing);
     const [objective, source, reviewer] = await Promise.all([
       objectives().findOne({ _id: objectiveId, ownerId, status: "active" }),
-      jobs().findOne({ _id: sourceId, ownerId, workerRole: plan.source, ...(["first-mate", "correction"].includes(role) ? { objectiveId } : {}) }, {
+      jobs().findOne({ _id: sourceId, ownerId, workerRole: plan.source, ...(["first-mate", "correction"].includes(role) ? { objectiveId } : { $or: [{ objectiveId }, { objectiveId: null }] }) }, {
         projection: { hostId: 1, workspace: 1, status: 1, leaseUntil: 1, effort: 1, model: 1 },
       }),
       workforce().findOne({ _id: employeeId, ownerId, kind: "employee", role: plan.employeeRole || role, status: "available" }),
@@ -95,6 +95,12 @@ function createObjectiveRuns({ jobs, objectives, workforce, hosts, owner, worker
     if (!objective || !source || !reviewer || source.workspace !== reviewer.workspace ||
         (role !== "air" && ["failed", "cancelled", "interrupted"].includes(jobView(source).status))) {
       return reject(res, 409, "Select an active objective, an eligible source turn and an available employee in its workspace.");
+    }
+    const project = objective.projectId && await projects().findOne({
+      _id: objective.projectId, ownerId, status: "active", workspace: source.workspace,
+    }, { projection: { _id: 1 } });
+    if (objective.projectId && !project) {
+      return reject(res, 409, "The objective project is inactive or uses a different workspace.");
     }
     const host = await hosts().findOne({ _id: source.hostId, ownerId, revokedAt: null });
     const profile = plan.edits ? source.workspace : "read-only";
@@ -117,6 +123,7 @@ function createObjectiveRuns({ jobs, objectives, workforce, hosts, owner, worker
     try {
       await jobs().insertOne({
         _id: id, ownerId, workerRole: role, objectiveId, reviewOf: sourceId, employeeId, requestDigest,
+        ...(project ? { projectId: project._id } : {}),
         hostId: source.hostId, workspace: source.workspace, profile, model: source.model,
         effort: source.effort, prompt, reviewerName: reviewer.name, sessionId: id, parentId: null,
         title: plan.title + " - " + objective.title, codexThreadId: null, status: "waiting", createdAt: new Date(),
