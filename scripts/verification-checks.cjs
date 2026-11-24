@@ -10,21 +10,26 @@ const engine = join(root, 'sanguine-engine');
 const backend = join(root, 'crossworld_backend');
 const frontend = join(root, 'archipelago');
 const readJSON = path => JSON.parse(readFileSync(path, 'utf8'));
-const { name, version } = readJSON(join(engine, 'package.json'));
-const archives = [backend, frontend].map(dir => {
+const { name } = readJSON(join(engine, 'package.json'));
+for (const dir of [backend, frontend]) {
   const spec = readJSON(join(dir, 'package.json')).dependencies[name];
   const lock = readJSON(join(dir, 'package-lock.json')).packages;
-  assert.equal(spec, 'file:vendor/crossworld-sanguine-engine-' + version + '.tgz');
-  const archive = readFileSync(join(dir, spec.slice(5)));
+  const entry = lock['node_modules/' + name];
+  const installed = readJSON(join(dir, 'node_modules', name, 'package.json'));
   assert.equal(lock[''].dependencies[name], spec);
-  assert.equal(lock['node_modules/' + name].resolved, spec);
-  assert.equal(lock['node_modules/' + name].version, version);
-  assert.equal(lock['node_modules/' + name].integrity,
-    'sha512-' + createHash('sha512').update(archive).digest('base64'));
-  assert.equal(readJSON(join(dir, 'node_modules', name, 'package.json')).version, version);
-  return archive;
-});
-assert.ok(archives[0].equals(archives[1]), 'Engine archives differ');
+  assert.equal(installed.version, entry.version);
+  assert.match(entry.integrity, /^sha512-/);
+  if (spec.startsWith('file:')) {
+    assert.equal(spec, 'file:vendor/crossworld-sanguine-engine-' + entry.version + '.tgz');
+    assert.equal(entry.resolved, spec);
+    const archive = readFileSync(join(dir, spec.slice(5)));
+    assert.equal(entry.integrity, 'sha512-' + createHash('sha512').update(archive).digest('base64'));
+  } else {
+    assert.match(spec, /^npm:@rduffard\/sanguine-engine@\^\d+\.\d+\.\d+$/);
+    assert.equal(installed.name, '@rduffard/sanguine-engine');
+    assert.equal(new URL(entry.resolved).origin, 'https://npm.pkg.github.com');
+  }
+}
 
 let checked = 0;
 for (const [dir, folders, sourceType] of [
@@ -50,5 +55,5 @@ for (const [dir, folders, sourceType] of [
     }
   }
 }
-console.log(checked + ' syntax checks; matching ' + name + '@' + version + ' archives and lockfile integrities');
+console.log(checked + ' syntax checks and independent engine lockfile integrity checks');
 

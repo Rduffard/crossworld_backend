@@ -6,6 +6,7 @@ const { errors } = require("celebrate");
 const { Server } = require("socket.io");
 
 const mainRouter = require("./routes/index");
+const operations = require("./modules/operations/routes");
 const errorHandler = require("./core/middleware/errorHandler");
 const { requestLogger, errorLogger } = require("./core/middleware/logger");
 const {
@@ -27,16 +28,13 @@ const io = new Server(server, {
 // DB
 connectDB();
 
-// logging
-app.use(requestLogger);
+const corsMiddleware = cors({ origin: true, credentials: true });
 
-// CORS – dev friendly, supports multiple local frontends
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
+// Operations carries private prompts and device credentials. Keep it outside
+// the shared request and error loggers.
+app.use("/operations", corsMiddleware, operations);
+app.use(requestLogger);
+app.use(corsMiddleware);
 
 // body parsing
 app.use(express.json());

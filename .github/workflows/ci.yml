@@ -1,36 +1,92 @@
-name: Crossworld Backend CI
+name: Crossworld Backend CI and Deploy
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
   pull_request:
-  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version: "22.17.1"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run lint
-        run: npm run lint
-
-      - name: Install MongoDB test executable
+          path: crossworld_backend
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Rduffard/archipelago
+          ref: refs/heads/main
+          path: archipelago
+          token: ${{ secrets.CROSSWORLD_REPO_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - name: Validate Actions workflows
+        working-directory: crossworld_backend
         run: |
-          curl -fsSL https://pgp.mongodb.com/server-8.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
-          sudo apt-get update
-          sudo apt-get install -y mongodb-org-server
-      - name: Run tests
-        run: npm test
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color -shellcheck=
+          for script in .github/scripts/*.sh; do bash -n "$script"; done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          registry-url: https://npm.pkg.github.com
+          scope: '@rduffard'
+      - run: |
+          npm ci
+          npm ls @crossworld/sanguine-engine
+        working-directory: crossworld_backend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CROSSWORLD_PACKAGE_READ_TOKEN || github.token }}
+      - run: |
+          npm ci
+          npm ls @crossworld/sanguine-engine
+        working-directory: archipelago
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CROSSWORLD_PACKAGE_READ_TOKEN || github.token }}
+      - run: npm run lint
+        working-directory: crossworld_backend
+      - name: Install the isolated test MongoDB executable
+        run: bash .github/scripts/install-test-mongo.sh
+        working-directory: crossworld_backend
+      - run: npm test
+        working-directory: crossworld_backend
+      - run: npm test
+        working-directory: archipelago
+      - name: Package the validated backend runtime
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: crossworld_backend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CROSSWORLD_PACKAGE_READ_TOKEN || github.token }}
+        run: |
+          npm prune --omit=dev --offline --ignore-scripts
+          npm ls --omit=dev --all >/dev/null
+          node --check src/app.js
+          # The VM receives portable JavaScript dependencies from the runner.
+          test -z "$(find node_modules -name '*.node' -print -quit)"
+          tar -czf "$RUNNER_TEMP/backend-runtime.tgz" src node_modules package.json package-lock.json
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: backend-runtime
+          path: ${{ runner.temp }}/backend-runtime.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    uses: ./.github/workflows/deploy.yml
+    secrets:
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+      VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}

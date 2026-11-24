@@ -1,0 +1,91 @@
+name: Prepare engine dependency update
+
+on:
+  schedule:
+    - cron: '27 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: engine-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          registry-url: https://npm.pkg.github.com
+          scope: '@rduffard'
+      - name: Resolve a compatible published engine and update the lockfile
+        id: engine
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CROSSWORLD_PACKAGE_READ_TOKEN || github.token }}
+        run: |
+          read -r current range < <(node -e '
+            const name = "@crossworld/sanguine-engine";
+            const spec = require("./package.json").dependencies[name];
+            const installed = require("./package-lock.json").packages["node_modules/" + name].version;
+            if (!/^\d+\.\d+\.\d+$/.test(installed) ||
+                !/^(file:vendor\/crossworld-sanguine-engine-|npm:@rduffard\/sanguine-engine@\^)\d+\.\d+\.\d+(\.tgz)?$/.test(spec)) {
+              throw new Error("Review this engine dependency declaration before updating it");
+            }
+            console.log(installed, spec.startsWith("file:") ? "^" + installed : spec.split("@").at(-1));
+          ')
+          npm view @rduffard/sanguine-engine versions --json > "$RUNNER_TEMP/engine-versions.json"
+          version=$(node -e '
+            const {readFileSync} = require("node:fs");
+            const [file, range, current] = process.argv.slice(1);
+            const [major, minor, patch] = range.slice(1).split(".").map(Number);
+            const compare = (a, b) => {
+              const right = b.split(".").map(Number);
+              return a.split(".").map(Number).map((n, i) => n - right[i]).find(Boolean) || 0;
+            };
+            const versions = [JSON.parse(readFileSync(file, "utf8"))].flat()
+              .filter(v => /^\d+\.\d+\.\d+$/.test(v) && compare(v, current) >= 0)
+              .filter(v => {
+                const [a, b, c] = v.split(".").map(Number);
+                return a === major && (major > 0 || b === minor) &&
+                  (major > 0 || minor > 0 || c === patch) && compare(v, range.slice(1)) >= 0;
+              }).sort(compare);
+            if (versions.length) console.log(versions.at(-1));
+          ' "$RUNNER_TEMP/engine-versions.json" "$range" "$current")
+          if [[ -z "$version" ]]; then
+            echo "No compatible engine release is available for $range."
+            exit 0
+          fi
+          spec=$(node -p 'require("./package.json").dependencies["@crossworld/sanguine-engine"]')
+          if [[ "$version" == "$current" && "$spec" == npm:* ]]; then exit 0; fi
+          npm install --package-lock-only --ignore-scripts --prefer-online \
+            "@crossworld/sanguine-engine@npm:@rduffard/sanguine-engine@^$version"
+          node -e '
+            const {version, integrity, resolved} = require("./package-lock.json").packages["node_modules/@crossworld/sanguine-engine"];
+            if (version !== process.argv[1] || !integrity?.startsWith("sha512-") ||
+                new URL(resolved).origin !== "https://npm.pkg.github.com") {
+              throw new Error("The lockfile did not resolve the selected registry release");
+            }
+          ' "$version"
+          # The supported local tarballs remain available until this migration PR is merged.
+          if [[ "$spec" == file:* ]]; then
+            rm -f -- vendor/crossworld-sanguine-engine-*.tgz
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Open dependency update pull request
+        if: steps.engine.outputs.version != ''
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.ENGINE_UPDATE_PR_TOKEN }}
+          branch: automation/sanguine-engine
+          title: Update Sanguine Engine to ${{ steps.engine.outputs.version }}
+          commit-message: Update Sanguine Engine dependency
+          body: Updates the locked engine package. The consumer CI and compatibility checks must pass before merging.

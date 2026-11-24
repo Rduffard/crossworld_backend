@@ -1,5 +1,7 @@
 # Crossworld Backend API
 
+For backend validation, VM deployment and engine dependency updates, see the [Crossworld deployment runbook](https://github.com/Rduffard/sanguine-engine/blob/main/DEPLOYMENT.md).
+
 A centralized, scalable **Node.js + Express + MongoDB backend** powering multiple projects under the **Crossworld Creative** umbrella.
 
 This API began as the backend for **WTWR (What to Wear)** and has since evolved into a shared service designed to support multiple applications, user domains, and feature sets from a single, well-structured codebase.
