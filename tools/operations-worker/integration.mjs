@@ -26,6 +26,7 @@ const other = "2".repeat(24);
 const jwtSecret = randomUUID() + randomUUID();
 process.env.JWT_SECRET = jwtSecret;
 process.env.OPERATIONS_OWNER_ID = owner;
+process.env.OPERATIONS_LOOPBACK_TEST = "1";
 const { createRouter } = await import("../../src/modules/operations/routes.js");
 if (process.platform === "win32") {
   const endpoint = `\\\\.\\pipe\\crossworld-operations-test-${randomUUID()}`;
@@ -193,6 +194,41 @@ try {
     const [, designObjective] = await api(`/objectives/${design.objectiveId}`, { user: foundationOwner });
     assert.equal(designObjective.projectId, design.projectId);
     assert.equal(designObjective.status, "active");
+    const { id: reviewHost, token: reviewToken } = (await api("/hosts", {
+      user: foundationOwner, method: "POST", body: { label: "Operations review relay" },
+    }))[1];
+    const reviewSend = backendClient(base, reviewToken);
+    const reviewInstance = randomUUID();
+    await reviewSend("/heartbeat", { instance: reviewInstance, efforts: ["low"], profiles: ["read-only"] });
+    const source = randomUUID();
+    const jobs = db.db.collection("operations_jobs");
+    await jobs.insertOne({
+      _id: source, ownerId: foundationOwner, hostId: reviewHost, activeHost: reviewHost,
+      instance: reviewInstance, status: "running", leaseUntil: new Date(Date.now() + 45000),
+      workerRole: "direct", studioTools: true, studioActor: { id: barnaby._id }, model: "fixture", effort: "low",
+    });
+    const reviewPath = "/jobs/" + source + "/delegate-operations-review";
+    const request = { instance: reviewInstance, callId: "review_fixture", employee: director.name };
+    await assert.rejects(reviewSend(reviewPath, { ...request, employee: barnaby.name }), { status: 409 });
+    const receipts = await Promise.all([reviewSend(reviewPath, request), reviewSend(reviewPath, request)]);
+    assert.deepEqual(receipts[0], receipts[1]);
+    const [receipt] = receipts;
+    assert.equal(receipt.state, "queued");
+    assert.equal(receipt.objectiveId, designObjective._id);
+    await assert.rejects(reviewSend(reviewPath, { ...request, callId: "another_review" }), { status: 409 });
+    assert.equal((await reviewSend("/claim", { instance: reviewInstance }))._id, source);
+    await jobs.updateOne({ _id: source }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+    const claimedReview = await reviewSend("/claim", { instance: reviewInstance });
+    assert.equal(claimedReview._id, receipt.assignmentId);
+    assert.equal(claimedReview.profile, "read-only");
+    assert.equal(claimedReview.workerRole, "assignment");
+    assert.equal(claimedReview.codexThreadId, null);
+    assert.equal(claimedReview.studioActions, undefined);
+    const [, reviews] = await api("/objectives/" + designObjective._id + "/assignments", { user: foundationOwner });
+    assert.equal(reviews[0].delegatedBy.sourceTurnId, source);
+    assert.equal(reviews[0].assigneeName, director.name);
+    await jobs.updateOne({ _id: claimedReview._id }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
+    console.log("First Mate Operations review authorization, concurrent replay, queue, independent claim and attribution PASS");
     const [, objective] = await api(`/objectives/${artProduction[0].objectiveId}`, { user: foundationOwner });
     assert.equal(objective.status, "paused");
     assert.ok(artProduction.every(({ status }) => status === "paused"));
@@ -284,7 +320,7 @@ try {
   assert.equal(host.digest.length, 64);
   assert.ok(!JSON.stringify(host).includes(device.token));
   assert.ok(!JSON.stringify(await api("/hosts")).includes(host.digest));
-  process.env.OPERATIONS_LOOPBACK_TEST = "1";
+
   await verifyMedia({ api, base, bearer: jwt.sign({ _id: owner }, jwtSecret), db: db.db, other });
   const send = backendClient(base, device.token);
   let offline = false;

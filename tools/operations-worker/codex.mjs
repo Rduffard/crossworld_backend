@@ -55,6 +55,15 @@ const studioBriefingTool = {
   description: "Read live studio headquarters data when asked about studio status or attention. Use the returned timestamps and links. Missing integrations are unavailable.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
+const delegationTool = {
+  type: "function",
+  name: "delegate_operations_review",
+  description: "Queue an independent read-only Crossworld Operations interface review. Use only when the owner explicitly requests delegation. Report the actual assignment receipt and queue state.",
+  inputSchema: {
+    type: "object", required: ["employee"], additionalProperties: false,
+    properties: { employee: { type: "string", maxLength: 100, description: "Exact name of the Operations Art Director" } },
+  },
+};
 const artifactTool = {
   type: "function",
   name: "operations_publish_artifact",
@@ -279,6 +288,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     };
     const dynamicTools = [
       ...(scope.proposeObjective ? [objectiveTool] : []),
+      ...(scope.delegateOperationsReview ? [delegationTool] : []),
       ...(scope.readStudioBriefing ? [studioBriefingTool] : []),
       ...(scope.artifactDir && scope.publishArtifact ? [artifactTool] : []),
     ];
@@ -307,6 +317,11 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
               const proposal = await scope.proposeObjective(params.callId, params.arguments);
               success = true;
               text = `The objective proposal is ${proposal.state} for ${proposal.project}. The owner can review it in this turn.`;
+            } else if (params.tool === delegationTool.name && scope.delegateOperationsReview) {
+              const receipt = await scope.delegateOperationsReview(params.callId, params.arguments?.employee);
+              text = JSON.stringify(receipt);
+              success = true;
+              record("activity", "Operations review delegated", receipt.assignmentId);
             } else if (params.tool === studioBriefingTool.name && scope.readStudioBriefing) {
               text = "Studio data only. Use the observed timestamp and linked evidence. " + JSON.stringify(await scope.readStudioBriefing());
               success = true;
@@ -327,7 +342,9 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
             ? "The proposal could not be saved. Check the exact active project name and distinct acceptance criteria."
             : params?.tool === artifactTool.name
               ? "The artifact could not be registered. Use a supported file saved directly in the assigned output directory."
-              : "The studio briefing is unavailable at the moment.";
+              : params?.tool === delegationTool.name
+                ? "The review could not be queued. Check that the employee is eligible and the relay is available."
+                : "The studio briefing is unavailable at the moment.";
         }
         server.write({ id, result: { success, contentItems: [{ type: "inputText", text }] } });
       });
@@ -335,7 +352,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
         const p = message.params;
         let result = decline;
         try {
-          if (!fullAccess && control && !signal.aborted && !finished && p?.threadId === threadId && (!turnId || p.turnId === turnId)) {
+          if (!fullAccess && !scope.strictReadOnly && control && !signal.aborted && !finished && p?.threadId === threadId && (!turnId || p.turnId === turnId)) {
             const elicitation = message.method === "mcpServer/elicitation/request";
             const confirm = elicitation && isMcpConfirmation(p, scope.reviewMcpConfirmation);
             const grant = message.method === "item/permissions/requestApproval"

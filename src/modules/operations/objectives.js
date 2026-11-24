@@ -53,7 +53,7 @@ function createObjectives({ records, projects, jobs, jobView, owner }) {
   router.get("/:id/assignments", async (req, res) => {
     const assignments = await jobs().find({
       objectiveId: req.params.id, ownerId: owner(), assignedRole: { $in: ["worker", "lead", "art-director"] },
-    }, { projection: { status: 1, leaseUntil: 1, assigneeName: 1, workspace: 1, title: 1, objectiveId: 1, createdAt: 1 } })
+    }, { projection: { status: 1, leaseUntil: 1, assigneeName: 1, delegatedBy: 1, workspace: 1, title: 1, objectiveId: 1, createdAt: 1 } })
       .sort({ createdAt: -1, _id: 1 }).limit(50).toArray();
     return res.json(assignments.map(jobView));
   });

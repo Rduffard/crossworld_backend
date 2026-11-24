@@ -310,7 +310,8 @@ async function startWorker() {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
       const correction = job.workerRole === "correction";
-      if ((correction && profile !== job.workspace) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
+      if ((job.workerRole === "assignment" && profile !== "read-only") ||
+          (correction && profile !== job.workspace) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
           (unrestricted ? !fullAccess : profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
           (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
@@ -345,6 +346,7 @@ async function startWorker() {
           supervised: !!root && !correction,
           fullAccess: unrestricted && fullAccess,
           autonomousNetwork: !correction && autonomousNetwork && profile === "development",
+          strictReadOnly: job.workerRole === "assignment",
           localMcp: !job.workerRole || job.workerRole === "direct",
           observeUsage,
           imagePaths: staged?.files,
@@ -356,6 +358,8 @@ async function startWorker() {
             instruction: redact(value.instruction, token), priority: value.priority,
             criteria: Array.isArray(value.criteria) ? value.criteria.map(item => redact(item, token)) : undefined,
           }) : undefined,
+          delegateOperationsReview: job.studioActions === true ? (callId, employee) =>
+            send(`/jobs/${job._id}/delegate-operations-review`, { instance, callId, employee: redact(employee, token) }) : undefined,
           readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
           remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
         });
