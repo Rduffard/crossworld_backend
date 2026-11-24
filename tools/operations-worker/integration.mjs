@@ -614,6 +614,68 @@ try {
     assert.ok(headquarters.recent.some((entry) => entry._id === scheduled.id && entry.status === "completed"));
     console.log("Durable schedule, offline catch-up, dispatch pause, rescheduling, cancellation, and replay PASS");
 
+    const recurring = {
+      id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol", effort: "low",
+      prompt: "Bounded recurring turn", scheduledAt: Date.now() + 1500, repeat: { days: 1, count: 2 },
+    };
+    const registerSeries = (body, user) => api("/recurrence", { method: "POST", body, user });
+    const inspectSeries = async (id) => (await api("/recurrence"))[1].find((entry) => entry._id === id);
+    assert.equal((await registerSeries(recurring, other))[0], 403);
+    assert.equal((await registerSeries({ ...recurring, repeat: { days: 1, count: 50 } }))[0], 400);
+    offline = true;
+    const beforeSeries = launchCount;
+    assert.equal((await registerSeries(recurring))[0], 201);
+    assert.equal((await registerSeries(recurring))[0], 200);
+    assert.equal((await registerSeries({ ...recurring, prompt: "Different series contents" }))[0], 409);
+    const first = await inspectSeries(recurring.id);
+    assert.equal(first.remaining, 2);
+    assert.equal((await api("/jobs/" + first.occurrenceId))[0], 404);
+    const stopped = { ...recurring, id: randomUUID(), scheduledAt: Date.now() + 1000 };
+    assert.equal((await registerSeries(stopped))[0], 201);
+    assert.equal((await api("/recurrence/" + stopped.id, { method: "DELETE", user: other }))[0], 403);
+    assert.equal((await api("/recurrence/" + stopped.id, { method: "DELETE" }))[0], 204);
+    const recurrenceRecords = db.db.collection("operations_recurrence");
+    const lateAt = recurring.scheduledAt - 3 * 86_400_000;
+    await recurrenceRecords.updateOne({ _id: recurring.id }, { $set: { nextAt: new Date(lateAt) } });
+    offline = false;
+    assert.equal((await settle(first.occurrenceId)).status, "completed");
+    const second = await until(async () => {
+      const entry = await inspectSeries(recurring.id);
+      return entry.remaining === 1 && entry;
+    });
+    assert.notEqual(second.occurrenceId, first.occurrenceId);
+    assert.ok(Date.parse(second.nextAt) > Date.now());
+    assert.equal((Date.parse(second.nextAt) - lateAt) % 86_400_000, 0);
+    assert.equal(launchCount, beforeSeries + 1);
+    await recurrenceRecords.updateOne({ _id: recurring.id }, { $set: { nextAt: new Date(Date.now() - 10) } });
+    assert.equal((await settle(second.occurrenceId)).status, "completed");
+    await until(async () => (await inspectSeries(recurring.id)).state === "completed");
+    const cancelledSeries = await inspectSeries(stopped.id);
+    assert.equal(cancelledSeries.state, "cancelled");
+    assert.equal((await api("/jobs/" + cancelledSeries.occurrenceId))[0], 404);
+    assert.equal(launchCount, beforeSeries + 2);
+    const recoverable = { ...recurring, id: randomUUID(), scheduledAt: Date.now() + 60_000 };
+    assert.equal((await registerSeries(recoverable))[0], 201);
+    const unclaimed = await inspectSeries(recoverable.id);
+    const occurrenceJobs = db.db.collection("operations_jobs");
+    await occurrenceJobs.insertOne({
+      _id: unclaimed.occurrenceId, seriesId: recoverable.id, ownerId: owner, hostId: device.id,
+      status: "scheduled", scheduledAt: new Date(recoverable.scheduledAt), createdAt: new Date(), prompt: "Unclaimed fixture",
+    });
+    await recurrenceRecords.updateOne({ _id: recoverable.id }, { $set: { state: "cancelled" } });
+    assert.equal((await api("/recurrence/" + recoverable.id, { method: "DELETE" }))[0], 204);
+    assert.equal((await detail(unclaimed.occurrenceId)).status, "cancelled");
+    const historical = Array.from({ length: 26 }, () => ({
+      _id: randomUUID(), ownerId: owner, hostId: device.id, state: "completed", createdAt: new Date(),
+    }));
+    const active = { ...recurring, id: randomUUID(), scheduledAt: Date.now() + 60_000 };
+    assert.equal((await registerSeries(active))[0], 201);
+    await recurrenceRecords.insertMany(historical);
+    assert.equal((await inspectSeries(active.id)).state, "active");
+    assert.equal((await api("/recurrence/" + active.id, { method: "DELETE" }))[0], 204);
+    await recurrenceRecords.deleteMany({ _id: { $in: historical.map((entry) => entry._id) } });
+    console.log("Durable repeat series, missed interval catch-up, cancellation, replay, and owner isolation PASS");
+
     const transcriptId = await submit("extended-transcript-probe:" + "🧪".repeat(52_000));
     const transcript = await settle(transcriptId);
     const pages = [];

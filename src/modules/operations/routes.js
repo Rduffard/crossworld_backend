@@ -10,6 +10,7 @@ const { createKnowledge } = require("./knowledge");
 const { createWorkforce } = require("./workforce");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
 const { rateLimitObservation, usageHoldUntil } = require("./usage");
+const { createRecurrence, validRepeat } = require("./recurrence");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -72,6 +73,8 @@ function createRouter({
   const objectives = () => db().collection("operations_objectives");
   const workforce = () => db().collection("operations_workforce");
   const knowledge = () => db().collection("operations_knowledge");
+  const series = () => db().collection("operations_recurrence");
+  const recurrence = createRecurrence({ records: series, jobs });
   const headquarters = createHeadquarters({ hosts, jobs, objectives, dispatch, online });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -84,6 +87,7 @@ function createRouter({
   function ensureIndexes() {
     indexes ||= Promise.all([
       eventBatches().createIndex({ jobId: 1, offset: 1 }, { unique: true }),
+      series().createIndex({ ownerId: 1, hostId: 1, state: 1, nextAt: 1 }),
       jobs().createIndex({ activeHost: 1 }, {
         unique: true, partialFilterExpression: { activeHost: { $type: "string" } },
       }),
@@ -206,13 +210,14 @@ function createRouter({
         });
       }
       if ((await dispatch().findOne({ _id: scope.ownerId }))?.paused) return res.json(null);
+      await recurrence.reconcile(req.operationsHost);
       try {
         job = await jobs().findOneAndUpdate({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
           ...(req.operationsHost.boundedCorrections === true ? {} : { workerRole: { $ne: "correction" } }),
-          ...(usageHoldUntil(req.operationsHost.usage) ? { reviewOf: { $exists: false } } : {}),
+          ...(usageHoldUntil(req.operationsHost.usage) ? { reviewOf: { $exists: false }, seriesId: { $exists: false } } : {}),
           $and: [
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
@@ -227,6 +232,16 @@ function createRouter({
       }
     }
     if (!job) return res.json(null);
+    if (job.seriesId && !job.runAuthorizedAt && job.status === "running") {
+      const key = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
+      if (!await recurrence.authorizes(job)) {
+        await jobs().updateOne(key, {
+          $set: { status: "cancelled", finishedAt: new Date() }, $unset: { activeHost: "" },
+        });
+        return res.json(null);
+      }
+      if (!(await jobs().updateOne(key, { $set: { runAuthorizedAt: new Date() } })).matchedCount) return res.json(null);
+    }
     if (job.reviewOf && !job.runAuthorizedAt && job.status === "running") {
       const [objective, employee] = await Promise.all([
         objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active" }, { projection: { _id: 1 } }),
@@ -357,7 +372,7 @@ function createRouter({
   const briefJson = express.json({ limit: "768kb" });
   const ownerJson = express.json({ limit: "64kb" });
   router.use((req, res, next) => {
-    const isBrief = req.method === "POST" && /^\/(?:schedule|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
+    const isBrief = req.method === "POST" && /^\/(?:schedule|recurrence|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
   router.use("/objectives", createObjectives({ records: objectives, owner }));
@@ -409,6 +424,9 @@ function createRouter({
   router.delete("/hosts/:id", async (req, res) => {
     const filter = { hostId: req.params.id, ownerId: owner() };
     await hosts().updateOne({ _id: filter.hostId, ownerId: filter.ownerId }, { $set: { revokedAt: new Date() } });
+    await series().updateMany({ ...filter, state: "active" }, {
+      $set: { state: "stopped", stopReason: "Device revoked.", stoppedAt: new Date() },
+    });
     await jobs().updateMany({ ...filter, status: { $in: ["waiting", "scheduled", "queued", "running", "cancelling"] } }, {
       $set: { status: "interrupted", finishedAt: new Date(), error: "Device revoked." },
       $unset: { activeHost: "" },
@@ -469,8 +487,15 @@ function createRouter({
       return { ...jobView(job), title: root?.title, archivedAt: root?.archivedAt };
     }));
   });
+  router.get("/recurrence", async (_req, res) => res.json(await recurrence.list(owner())));
+  router.delete("/recurrence/:id", async (req, res) => {
+    if (!uuid(req.params.id) || !(await recurrence.cancel(owner(), req.params.id))) {
+      return reject(res, 404, "Repeating schedule not found.");
+    }
+    return res.sendStatus(204);
+  });
   router.get("/schedule", async (_req, res) => {
-    const records = await jobs().find({ ownerId: owner(), status: "scheduled" }, {
+    const records = await jobs().find({ ownerId: owner(), status: "scheduled", seriesId: { $exists: false } }, {
       projection: { hostId: 1, scheduledAt: 1, status: 1, workspace: 1 },
     }).sort({ scheduledAt: 1, _id: 1 }).limit(50).toArray();
     res.json(records);
@@ -480,7 +505,9 @@ function createRouter({
     if (!uuid(req.params.id) || !future(scheduledAt, maxScheduleDelayMs) || scheduledAt <= Date.now()) {
       return reject(res, 400, "Select a future execution time within 366 days.");
     }
-    const updated = await jobs().updateOne({ _id: req.params.id, ownerId: owner(), status: "scheduled" }, {
+    const updated = await jobs().updateOne({
+      _id: req.params.id, ownerId: owner(), status: "scheduled", seriesId: { $exists: false },
+    }, {
       $set: { scheduledAt: new Date(scheduledAt) },
     });
     if (!updated.matchedCount) return reject(res, 409, "The schedule is no longer awaiting dispatch.");
@@ -584,20 +611,31 @@ function createRouter({
     if (!changed.matchedCount) return reject(res, 409, "The turn changed or an instruction is awaiting acknowledgement.");
     res.sendStatus(204);
   });
-  router.post(["/jobs", "/schedule"], async (req, res) => {
+  router.post(["/jobs", "/schedule", "/recurrence"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
-    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt } = req.body || {};
-    const scheduling = /^\/schedule\/?$/i.test(req.path);
+    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat } = req.body || {};
+    const repeating = /^\/recurrence\/?$/i.test(req.path);
+    const scheduling = repeating || /^\/schedule\/?$/i.test(req.path);
     if (!uuid(id) || !uuid(hostId) || !workspaces.includes(workspace) || model !== "gpt-6.2-sol" ||
         (parentId != null && !uuid(parentId)) || (queue !== false && (queue !== true || !parentId)) ||
         (profile !== "read-only" && profile !== "full-access" && profile !== workspace) ||
+        (repeating ? !validRepeat(repeat) : repeat !== undefined) ||
         (scheduling ? parentId || !future(scheduledAt, maxScheduleDelayMs) : scheduledAt !== undefined)) {
       return reject(res, 400, "Invalid job request.");
     }
     const invalid = promptError(prompt, "Prompt");
     if (invalid) return reject(res, 400, invalid);
+    const seriesRequest = repeat && {
+      id, ownerId: owner(), hostId, workspace, model, effort, profile, prompt, scheduledAt,
+      repeat: { days: repeat.days, count: repeat.count }, requiresExtendedPrompt: prompt.length > LEGACY_PROMPT_LIMIT,
+    };
+    if (seriesRequest) {
+      const replay = await recurrence.existing(seriesRequest);
+      if (replay === "replay") return res.json({ _id: id, recurring: true });
+      if (replay) return reject(res, 409, "Repeating schedule identifier already in use.");
+    }
     const existing = await jobs().findOne({ _id: id, ownerId: owner() });
-    if (existing) return res.json({ _id: id });
+    if (existing) return seriesRequest ? reject(res, 409, "Identifier already belongs to a single turn.") : res.json({ _id: id });
     if (scheduledAt !== undefined && scheduledAt <= Date.now()) {
       return reject(res, 400, "Select a future execution time.");
     }
@@ -609,6 +647,11 @@ function createRouter({
         : "Select a registered host with that execution profile and reasoning effort.");
     }
     if (prompt.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
+    if (seriesRequest) {
+      const registered = await recurrence.register(seriesRequest);
+      if (registered === "conflict") return reject(res, 409, "Repeating schedule identifier already in use.");
+      return res.status(registered === "created" ? 201 : 200).json({ _id: id, recurring: true });
+    }
     const parent = parentId && await jobs().findOne({
       _id: parentId, ownerId: owner(), hostId, workspace,
       status: { $in: queue ? ["queued", "running", "completed"] : terminal },
