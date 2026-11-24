@@ -11,7 +11,8 @@ const bounded = (value, max) => typeof value === "string" && value.isWellFormed(
 
 function relativeRef(value) {
   const candidate = bounded(value, 500).replaceAll("\\", "/");
-  const valid = candidate.split("/").every((part) => !!part && ![".", ".."].includes(part) && !/[<>:"|?*\x00-\x1f]/.test(part) && !/[. ]$/.test(part));
+  if (Array.from(candidate).some((character) => character.charCodeAt(0) < 32)) return "";
+  const valid = candidate.split("/").every((part) => !!part && !/[<>:"|?*]/.test(part) && !/[. ]$/.test(part));
   return valid ? candidate : "";
 }
 
