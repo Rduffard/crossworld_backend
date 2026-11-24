@@ -49,7 +49,9 @@ unset operations_owner
 
 Keep the existing `DB_URI` and `PORT` settings. The current deployment expects port 3001 and retains the VM's `.env`. Keep `JWT_SECRET` in the existing secret store. If PM2 injects either `JWT_SECRET` or `OPERATIONS_OWNER_ID` directly, update the existing PM2 environment source as well because it takes precedence over dotenv. Rotating the shared JWT secret requires existing Crossworld users to sign in again. Never copy the JWT secret or a device credential into GitHub Actions or the frontend configuration.
 
-The frontend uses the repository's tracked `.env.production`, which already sets `VITE_API_BASE_URL=https://api.crossworldcreative.com`. The launcher sets `OPERATIONS_BACKEND_URL` to the same origin. The Windows user profile provides the existing Codex subscription sign-in and a DPAPI-encrypted device credential. No new GitHub Actions secrets are needed for Operations. Keep the current deployment and package access settings required by each existing workflow.
+The deployment preserves the VM's `.env` and checks its owner ID before switching runtimes. The workflow reads the VM connection secrets from GitHub Actions. Set the owner in the VM's `.env` using the steps above.
+
+The frontend uses the repository's tracked `.env.production`, which already sets `VITE_API_BASE_URL=https://api.crossworldcreative.com`. The launcher sets `OPERATIONS_BACKEND_URL` to the same origin. The Windows user profile provides the existing Codex subscription sign-in and a DPAPI-encrypted device credential.
 
 ## 3. Deploy the backend, then the frontend
 

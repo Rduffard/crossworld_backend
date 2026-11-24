@@ -41,6 +41,16 @@ case "$action" in
     pm2 describe crossworld_backend >/dev/null
     tar -xzf "$stage/backend-runtime.tgz" -C "$stage"
     node --check "$stage/src/app.js"
+    node - "$stage" <<'NODE'
+const fs = require("node:fs");
+const dotenv = require(require.resolve("dotenv", { paths: [process.argv[2]] }));
+const { OPERATIONS_OWNER_ID } = dotenv.parse(fs.readFileSync(".env"));
+
+if (!/^[a-f0-9]{24}$/.test(OPERATIONS_OWNER_ID || "")) {
+  console.error("Production .env requires a lowercase 24-character OPERATIONS_OWNER_ID.");
+  process.exit(1);
+}
+NODE
     node -e 'require.resolve("express", { paths: [process.argv[1]] })' "$stage"
     mkdir "$stage/previous"
     trap 'status=$?; if [[ "$status" != 0 ]]; then restore; fi; exit "$status"' EXIT
