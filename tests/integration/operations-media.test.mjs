@@ -104,6 +104,6 @@ test("bounds writes and replays and stages only verified ready images", async ()
   const joined = path.join(temporary, "link");
   await symlink(destination, joined, "junction");
   await assert.rejects(localMediaStorage(path.join(joined, "outside")), /redirected/);
-  await rmdir(joined);
+  await unlink(joined);
   await assert.rejects(localMediaStorage(path.join(fixture, "inside"), { workspaceRoots: [fixture] }), /separate/);
 });
