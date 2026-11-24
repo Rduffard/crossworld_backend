@@ -8,7 +8,7 @@ const pick = (value, keys) => Object.fromEntries(keys.map(key => [
 ]));
 const sections = {
   workflows: ["/actions/runs?per_page=5", value => value.workflow_runs.slice(0, 5).map(run =>
-    pick(run, ["id", "name", "status", "conclusion", "created_at", "head_branch"]))],
+    pick(run, ["id", "name", "status", "conclusion", "created_at", "updated_at", "head_branch"]))],
   commits: ["/commits?per_page=12", value => value.slice(0, 12).map(item => ({
     ...pick(item, ["sha"]), author: pick(item.author, ["login"]).login,
     date: pick(item.commit?.author, ["date"]).date,

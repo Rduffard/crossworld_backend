@@ -102,8 +102,20 @@ try {
   assert.equal(financeStatus, 200);
   assert.deepEqual(ledger.totals.USD, { expenses: 1250, annualCommitments: 2400, budget: 4000 });
   assert.deepEqual(ledger.totals.EUR, { expenses: 190, annualCommitments: null, budget: null });
+  assert.deepEqual(ledger.byCategory, { USD: { Cloud: 1250 }, EUR: { Cloud: 190 } });
   assert.equal(ledger.renewals[0].date, "2026-11-07");
   assert.equal(ledger.billing.status, "unavailable");
+  const financePath = "/finance/" + financeEntry.id;
+  const edited = { ...financeEntry, amount: 1300, notes: "Fixture receipt" };
+  assert.equal((await api(financePath, { method: "PATCH", body: edited, user: other }))[0], 403);
+  assert.equal((await api(financePath, { method: "PATCH", body: { ...edited, amount: -1 } }))[0], 400);
+  assert.equal((await api(financePath, { method: "PATCH", body: edited }))[0], 200);
+  const [, updatedLedger] = await api("/finance?month=2026-11");
+  assert.equal(updatedLedger.totals.USD.expenses, 1300);
+  assert.equal(updatedLedger.entries.find(entry => entry._id.endsWith(financeEntry.id)).notes, "Fixture receipt");
+  assert.equal((await api(financePath, { method: "DELETE", user: other }))[0], 403);
+  assert.equal((await api(financePath, { method: "DELETE" }))[0], 204);
+  assert.equal((await api(financePath, { method: "DELETE" }))[0], 404);
   console.log("Finance owner boundary, replay, validation, and currency-specific totals PASS");
 
   const referenceAssetId = randomUUID();
@@ -558,6 +570,11 @@ try {
 
   await verifyMedia({ api, base, bearer: jwt.sign({ _id: owner }, jwtSecret), db: db.db, other });
   const send = backendClient(base, device.token);
+  const registeredHosts = db.db.collection("operations_hosts");
+  const readinessBefore = await registeredHosts.findOne({ _id: device.id || device.token.split(".")[0] });
+  assert.deepEqual(await send("/readiness"), { authenticated: true });
+  assert.deepEqual(await registeredHosts.findOne({ _id: readinessBefore._id }), readinessBefore);
+  await assert.rejects(backendClient(base, randomUUID() + "." + "a".repeat(64))("/readiness"), { status: 403 });
   let offline = false;
   let launchCount = 0;
   let usageObservation = {
@@ -848,6 +865,26 @@ try {
     assert.equal(directory.departments[0]._id, department._id);
     assert.equal(directory.employees[0].status, "retired");
     assert.equal(directory.employees[0].revision, 1);
+    const policyPath = "/workforce/execution-policy";
+    assert.equal((await api(policyPath, { user: other }))[0], 403);
+    const [, initialPolicy] = await api(policyPath);
+    assert.equal(initialPolicy.authority, "locked");
+    const configuration = {
+      ...initialPolicy, maxExecutions: 15,
+      departments: { [department._id]: { effort: "low" } },
+      employees: { [employee._id]: { effort: "high", model: "future-model" } },
+    };
+    assert.equal((await api(policyPath, { method: "PUT", body: configuration, user: other }))[0], 403);
+    assert.equal((await api(policyPath, { method: "PUT", body: { ...configuration, maxExecutions: 0 } }))[0], 400);
+    assert.equal((await api(policyPath, { method: "PUT", body: { ...configuration, authority: "bounded-discretion" } }))[0], 400);
+    const [policyStatus, policy] = await api(policyPath, { method: "PUT", body: configuration });
+    assert.equal(policyStatus, 200);
+    assert.equal(policy.revision, 1);
+    assert.equal(policy.maxExecutions, 15);
+    assert.equal(policy.enforcement, "pending");
+    assert.equal((await api(policyPath, { method: "PUT", body: configuration }))[0], 409);
+    const [, preview] = await api(policyPath + "/preview?employeeId=" + employee._id);
+    assert.deepEqual(preview.configuration, { model: "future-model", effort: "high", profile: "read-only" });
     console.log("Workforce hierarchy, owner isolation, and revision checks PASS");
 
     const registryPath = "/workshop-registry";
@@ -1030,6 +1067,13 @@ try {
       primary: { usedPercent: 100, windowDurationMins: null, resetsAt: heldUntil }, observedAt: Date.now(),
     };
     await until(async () => (await api("/headquarters"))[1].workforce[0].usageResumesAt === heldUntil * 1000);
+    const usagePath = "/hosts/" + device.id + "/usage";
+    assert.equal((await api(usagePath, { user: other }))[0], 403);
+    const [, usageHistory] = await api(usagePath);
+    assert.equal(usageHistory.observations[0].primary.usedPercent, 100);
+    const [, hostsWithUsage] = await api("/hosts");
+    assert.equal(hostsWithUsage.find(host => host._id === device.id).usage.primary.usedPercent, 100);
+    assert.ok(Number.isInteger(hostsWithUsage.find(host => host._id === device.id).relaySlots));
     const beforeHold = launchCount;
     assert.equal((await createRun(quotaHold))[0], 201);
     await until(async () => (await detail(quotaHold.id)).status === "queued");
@@ -1243,6 +1287,15 @@ try {
     assert.deepEqual(pages.filter(({ view }) => view === "execution").map(({ text }) => Number(text)),
       Array.from({ length: 415 }, (_, index) => index));
     assert.ok(pages.some(({ text }) => text === "Activity after verbose execution"));
+    const batches = db.db.collection("operations_event_batches");
+    const removed = await batches.findOneAndDelete({ jobId: transcriptId, offset: 0 });
+    assert.ok(removed);
+    try {
+      assert.equal((await api(`/jobs/${transcriptId}?offset=0&compact=true`))[0], 503);
+    } finally {
+      await batches.insertOne(removed);
+    }
+    assert.deepEqual((await api(`/jobs/${transcriptId}?offset=0&compact=true`))[1].events, pages.slice(0, 40));
     assert.equal(pages.filter(({ view }) => view === "response").map(({ text }) => text).join(""),
       "x".repeat(2999) + "🧪 searchable-transcript-marker");
     assert.ok((await api("/jobs?search=searchable-transcript-marker&compact=true"))[1]

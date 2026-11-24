@@ -1,8 +1,9 @@
 const express = require("express");
 
-const categories = ["Cloud", "Software", "Domains", "Hosting", "Equipment", "Other"];
+const categories = ["Cloud", "Software", "Subscription", "Domains", "Hosting", "Equipment", "Other"];
 const currencies = ["USD", "CAD", "EUR", "GBP"];
 const kinds = ["expense", "monthly", "annual", "budget"];
+const recordId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const validDate = (value) => typeof value === "string" && datePattern.test(value) &&
   Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -36,6 +37,7 @@ function createFinance({ records, projects, owner, now = () => new Date() }) {
     }, { projection: { ownerId: 0 } }).sort({ date: -1, _id: 1 }).limit(1001).toArray();
     if (matching.length > 1000) return res.status(409).json({ message: "The reporting period exceeds the record limit." });
     const totals = {};
+    const byCategory = {};
     const scopedExpenses = new Map();
     const currentBudgets = new Map();
     const scopeKey = ({ projectId, currency }) => JSON.stringify([projectId || null, currency]);
@@ -45,6 +47,10 @@ function createFinance({ records, projects, owner, now = () => new Date() }) {
       if (entry.kind === "expense") {
         tally.expenses = (tally.expenses ?? 0) + entry.amount;
         scopedExpenses.set(scope, (scopedExpenses.get(scope) ?? 0) + entry.amount);
+        if (categories.includes(entry.category)) {
+          const breakdown = byCategory[entry.currency] ??= {};
+          breakdown[entry.category] = (breakdown[entry.category] || 0) + entry.amount;
+        }
       }
       if (entry.kind === "budget") {
         const previous = currentBudgets.get(scope);
@@ -70,16 +76,19 @@ function createFinance({ records, projects, owner, now = () => new Date() }) {
     }).sort((a, b) => a.date.localeCompare(b.date));
     const entries = matching.map(entry => entry.kind === "budget"
       ? { ...entry, budgetSuperseded: currentBudgets.get(scopeKey(entry))._id !== entry._id } : entry);
-    return res.json({ month, entries, totals, projectBudgets, renewals, billing: { status: "unavailable" } });
+    return res.json({ month, entries, totals, byCategory, projectBudgets, renewals, billing: { status: "unavailable" } });
   });
 
-  router.post("/", async (req, res) => {
-    const { id, kind, amount, currency, date, category, projectId } = req.body ?? {};
+  async function save(req, res) {
+    const { kind, amount, currency, date, category, projectId } = req.body ?? {};
+    const id = req.params.id ?? req.body?.id;
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-    if (typeof id !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id) ||
+    const notes = req.body?.notes ?? "";
+    if (typeof id !== "string" || !recordId.test(id) ||
         !kinds.includes(kind) || !currencies.includes(currency) || !categories.includes(category) ||
         !Number.isSafeInteger(amount) || amount <= 0 || amount > 1000000000 || !validDate(date) ||
         !name || name.length > 160 || !name.isWellFormed() ||
+        typeof notes !== "string" || notes.length > 2000 || !notes.isWellFormed() ||
         (projectId != null && (typeof projectId !== "string" || projectId.length > 80))) {
       return res.status(400).json({ message: "Provide a valid expense, commitment, or budget." });
     }
@@ -90,15 +99,31 @@ function createFinance({ records, projects, owner, now = () => new Date() }) {
     if (projectId && !await projects().findOne({ _id: projectId, ownerId })) {
       return res.status(404).json({ message: "Project unavailable." });
     }
-    const fields = { kind, amount, currency, date, category, name, projectId: projectId || null };
+    const fields = { kind, amount, currency, date, category, name, notes: notes.trim(), projectId: projectId || null };
     const _id = ownerId + ":" + id;
+    if (req.method === "PATCH") {
+      const result = await records().updateOne({ _id, ownerId, source: "manual" }, {
+        $set: { ...fields, month: date.slice(0, 7), updatedAt: now() },
+      });
+      if (!result.matchedCount) return res.status(404).json({ message: "Manual record unavailable." });
+      return res.json({ _id });
+    }
     const saved = await records().findOneAndUpdate({ _id, ownerId }, {
       $setOnInsert: { ...fields, month: date.slice(0, 7), source: "manual", createdAt: new Date() },
     }, { upsert: true, returnDocument: "after", includeResultMetadata: true });
-    if (Object.entries(fields).some(([key, value]) => saved.value[key] !== value)) {
+    if (Object.entries(fields).some(([key, value]) => (key === "notes" ? saved.value.notes ?? "" : saved.value[key]) !== value)) {
       return res.status(409).json({ message: "This submission ID already refers to another record." });
     }
     return res.status(saved.lastErrorObject.updatedExisting ? 200 : 201).json({ _id });
+  }
+  router.post("/", save);
+  router.patch("/:id", save);
+  router.delete("/:id", async (req, res) => {
+    if (!recordId.test(req.params.id)) return res.status(400).json({ message: "Invalid record ID." });
+    const ownerId = owner();
+    const result = await records().deleteOne({ _id: ownerId + ":" + req.params.id, ownerId, source: "manual" });
+    if (!result.deletedCount) return res.status(404).json({ message: "Manual record unavailable." });
+    return res.sendStatus(204);
   });
   return router;
 }

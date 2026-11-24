@@ -12,13 +12,14 @@ const { createWorkshopRegistry } = require("./workshop-registry");
 const { createReports } = require("./reports");
 const { createWorkflow } = require("./workflow");
 const { createWorkforce } = require("./workforce");
+const { createExecutionPolicy } = require("./execution-policy");
 const { createOrganization } = require("./organization");
 const { createReferences } = require("./references");
 const { resolveAssignment, assignmentFields } = require("./assignments");
 const { employeeContext } = require("./employee-context");
 const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
-const { rateLimitObservation, usageHoldUntil } = require("./usage");
+const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
 const { createMedia, mediaObservation } = require("./media");
 const { createFinance } = require("./finance");
@@ -35,7 +36,6 @@ const terminal = ["completed", "failed", "cancelled", "interrupted"];
 const leaseMs = 45_000;
 const syncEventLimit = 12;
 const eventPageSize = 40;
-const legacyEventLimit = 401;
 const maxScheduleDelayMs = 366 * 24 * 60 * 60 * 1000;
 const deviceHash = (token) => createHash("sha256").update(token).digest("hex");
 const uuid = (value) => typeof value === "string" && /^[a-f\d-]{36}$/.test(value);
@@ -156,11 +156,15 @@ function createRouter({
     req.operationsHost = host;
     next();
   });
+  // Authenticated device probe without a heartbeat, dispatch, or lease mutation.
+  worker.post("/readiness", (_req, res) => res.json({ authenticated: true }));
   worker.use(express.json({ limit: "640kb" }));
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
   worker.post("/heartbeat", async (req, res) => {
     const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false } = req.body || {};
+    const relayVersion = typeof req.body?.relayVersion === "string" && /^[a-f\d]{12}$/.test(req.body.relayVersion)
+      ? req.body.relayVersion : null;
     if (typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry))) {
@@ -175,6 +179,7 @@ function createRouter({
       media: req.body?.media === true, mediaVideoFrames: req.body?.media === true && req.body?.mediaVideoFrames === true,
       mediaOutput: req.body?.media === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       mediaUsage: req.body?.media === true ? mediaObservation(req.body?.mediaUsage, +now) : null,
+      relayVersion, supervised: relayVersion !== null && req.body?.supervised === true,
       resources, lastSeen: now } }, { returnDocument: "after" });
     if (!host) return reject(res, 409, "Another worker instance holds this device lease.");
     const usage = rateLimitObservation(req.body?.usage, +now);
@@ -182,7 +187,12 @@ function createRouter({
       await hosts().updateOne({
         _id: host._id, instance, revokedAt: null,
         $or: [{ usage: { $exists: false } }, { "usage.observedAt": { $lt: usage.observedAt } }],
-      }, { $set: { usage } });
+      }, {
+        $set: { usage },
+        ...(shouldSampleUsage(host.usageHistory?.at(-1), usage)
+          ? { $push: { usageHistory: { $each: [usage], $slice: -96 } } }
+          : {}),
+      });
     }
     await jobs().updateMany({
       ownerId: owner(), activeHost: { $in: [host._id, host._id + ":review"] }, leaseUntil: { $lte: now },
@@ -387,7 +397,8 @@ function createRouter({
         !Number.isSafeInteger(offset + events.length) || !Number.isSafeInteger(offset) || offset < 0 ||
         events.some((event) => !event || !["activity", "execution", "response"].includes(event.view) ||
           typeof event.label !== "string" || event.label.length > 120 ||
-          typeof event.text !== "string" || event.text.length > 8000) ||
+          typeof event.text !== "string" || event.text.length > 8000 ||
+          (event.messageId != null && !uuid(event.messageId))) ||
         (result && (!terminal.includes(result.status) || typeof result.error !== "string" ||
           result.error.length > 2000 || (result.threadId != null && !uuid(result.threadId)))) ||
         (turn && (!uuid(turn.threadId) || !text(turn.turnId, 128) || !turn.turnId)) ||
@@ -421,11 +432,12 @@ function createRouter({
     }
     if (steering?.id && steering.id === current.instruction?.id) update.$set["instruction.state"] = steering.state;
     if (events.length && offset === current.eventCount) {
-      const payload = events.map(({ view, label, text }) => ({
-        view, label, text, at: new Date(),
+      const payload = events.map(({ view, label, text, messageId }) => ({
+        view, label, text, at: new Date(), ...(messageId ? { messageId } : {}),
       }));
       const key = { jobId: current._id, offset };
-      const digest = deviceHash(JSON.stringify(payload.map(({ view, label, text }) => [view, label, text])));
+      const digest = deviceHash(JSON.stringify(payload.map(({ view, label, text, messageId }) =>
+        messageId ? [view, label, text, messageId] : [view, label, text])));
       // Stage the immutable batch first. The job's eventCount commits it for readers.
       // A lost acknowledgement or concurrent retry can reuse the same batch.
       try {
@@ -503,12 +515,14 @@ function createRouter({
   router.use(studioActions.browser);
   router.get("/infrastructure", async (_req, res) => {
     const devices = await hosts().find({ ownerId: owner(), revokedAt: null }, {
-      projection: { label: 1, lastSeen: 1, media: 1, resources: 1 },
+      projection: { label: 1, lastSeen: 1, media: 1, resources: 1, relayVersion: 1, supervised: 1, profiles: 1, backgroundReviews: 1 },
     }).sort({ lastSeen: -1 }).limit(25).toArray();
     const observedAt = Date.now();
     return res.json({ observedAt, cloud: "unavailable", devices: devices.map(device => ({
       _id: device._id, name: device.label, lastSeen: device.lastSeen, online: online(device, observedAt),
       media: device.media === true, resources: resourceObservation(device.resources, observedAt),
+      relayVersion: device.relayVersion || null, supervised: device.relayVersion ? device.supervised === true : null,
+      profiles: device.profiles, reviewSlot: device.backgroundReviews === true,
     })) });
   });
   router.use("/engineering", createEngineering({ repositories: () => {
@@ -518,6 +532,9 @@ function createRouter({
   router.use("/workshop-registry", createWorkshopRegistry({ records: () => db().collection("operations_workshop_registry"), owner }));
   router.use("/reports", createReports({ jobs, objectives, projects, workforce, eventBatches, owner }));
   router.use("/workflow", createWorkflow({ jobs, projects, objectives, workforce, owner, jobView }));
+  router.use("/workforce/execution-policy", createExecutionPolicy({
+    records: () => db().collection("operations_execution_policy"), directory: workforce, owner,
+  }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, objectives, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
@@ -561,9 +578,29 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, employeeConversations: 1, backgroundReviews: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, employeeConversations: 1, backgroundReviews: 1, usage: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
-    res.json(records.map((host) => ({ ...host, online: online(host), promptLimit: hostLimit(host) })));
+    const now = new Date();
+    const slots = records.filter(host => !host.revokedAt).flatMap(host => [host._id, host._id + ":review"]);
+    const active = slots.length ? await jobs().find({
+      ownerId: owner(), activeHost: { $in: slots }, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: now },
+    }, { projection: { activeHost: 1 } }).toArray() : [];
+    const occupied = new Set(active.map(job => job.activeHost));
+    res.json(records.map(host => {
+      const connected = online(host, now);
+      const activeSlots = Number(occupied.has(host._id)) + Number(occupied.has(host._id + ":review"));
+      const relaySlots = connected ? 1 + Number(host.backgroundReviews === true) : 0;
+      return { ...host, usage: rateLimitObservation(host.usage, +now), online: connected, promptLimit: hostLimit(host),
+        activeSlots, relaySlots };
+    }));
+  });
+  router.get("/hosts/:id/usage", async (req, res) => {
+    if (!uuid(req.params.id)) return reject(res, 400, "Invalid relay ID.");
+    const host = await hosts().findOne({ _id: req.params.id, ownerId: owner(), revokedAt: null }, {
+      projection: { usageHistory: 1 },
+    });
+    if (!host) return reject(res, 404, "Relay unavailable.");
+    return res.json({ observations: (host.usageHistory || []).map(snapshot => rateLimitObservation(snapshot)).filter(Boolean).reverse() });
   });
   router.post("/hosts", async (req, res) => {
     const label = req.body?.label?.trim?.();
@@ -732,20 +769,25 @@ function createRouter({
       return reject(res, 400, "Invalid event offset.");
     }
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() }, {
-      projection: { events: { $slice: [Math.min(offset, legacyEventLimit), eventPageSize] }, instance: 0, activeHost: 0, assignmentDigest: 0,
+      projection: { events: { $slice: [Math.min(offset, 2_147_483_647), eventPageSize] }, instance: 0, activeHost: 0, assignmentDigest: 0,
         ...(req.query.compact === "true" ? { prompt: 0, assignmentContext: 0, "instruction.text": 0 } : {}) },
     });
     if (!job) return reject(res, 404, "Job not found.");
     job.events ||= [];
-    const cursor = offset + job.events.length;
+    const end = Math.min(job.eventCount, offset + eventPageSize);
+    job.events = job.events.slice(0, Math.max(0, end - offset));
+    let cursor = offset + job.events.length;
     if (cursor < job.eventCount && job.events.length < eventPageSize) {
-      const end = Math.min(job.eventCount, offset + eventPageSize);
       const batches = await eventBatches().find({
         jobId: job._id, offset: { $gte: Math.max(0, cursor - syncEventLimit + 1), $lt: end },
       }).sort({ offset: 1 }).toArray();
       for (const batch of batches) {
-        job.events.push(...batch.events.slice(Math.max(0, cursor - batch.offset), end - batch.offset));
+        if (batch.offset > cursor) break;
+        const page = batch.events.slice(cursor - batch.offset, end - batch.offset);
+        job.events.push(...page);
+        cursor += page.length;
       }
+      if (cursor < end) return reject(res, 503, "A committed event page is temporarily unavailable.");
     }
     const [root, mediaOutputs, delegatedReview] = await Promise.all([
       jobs().findOne({ _id: job.sessionId || job._id, ownerId: owner() }, { projection: { title: 1, archivedAt: 1 } }),

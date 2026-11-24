@@ -15,7 +15,9 @@ function createWorkforce({ records, jobs, objectives, owner, jobView }) {
     const [directory, observedRuns] = await Promise.all([
       records().find({ ownerId }, { projection: { ownerId: 0 } }).sort({ name: 1, _id: 1 }).toArray(),
       jobs().find({ ownerId, employeeId: { $type: "string" } }, {
-        projection: { employeeId: 1, title: 1, status: 1, leaseUntil: 1, createdAt: 1 },
+        projection: { employeeId: 1, title: 1, status: 1, leaseUntil: 1, createdAt: 1, startedAt: 1,
+          finishedAt: 1, model: 1, effort: 1, profile: 1, parentId: 1, objectiveId: 1,
+          "delegatedBy.sourceTurnId": 1, "delegatedBy.employeeId": 1 },
       }).sort({ createdAt: -1, _id: 1 }).limit(100).toArray(),
     ]);
     const projectAssignments = directory.filter((entry) => entry.kind === "project-assignment");

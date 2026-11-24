@@ -26,4 +26,10 @@ function usageHoldUntil(snapshot, now = Date.now()) {
   }, 0);
 }
 
-module.exports = { rateLimitObservation, usageHoldUntil };
+function shouldSampleUsage(previous, current) {
+  if (!previous || current.observedAt - previous.observedAt >= 900_000) return true;
+  return ["primary", "secondary"].some(key => previous[key]?.resetsAt !== current[key]?.resetsAt ||
+    previous[key]?.windowDurationMins !== current[key]?.windowDurationMins);
+}
+
+module.exports = { rateLimitObservation, usageHoldUntil, shouldSampleUsage };
