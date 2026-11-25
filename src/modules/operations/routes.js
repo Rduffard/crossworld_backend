@@ -930,6 +930,7 @@ function createRouter({
     res.sendStatus(204);
   });
   async function queueReason(job) {
+    if (job?.status === "waiting") return job.reviewOf ? "Waiting for the assignment under review" : "Waiting for the previous turn";
     if (job?.status !== "queued") return undefined;
     const ownerId = owner();
     const [settings, host] = await Promise.all([
@@ -946,7 +947,21 @@ function createRouter({
     if (job.isolatedReview && (host._id !== isolatedReviewHostId() || !reviewOnlyHost(host))) {
       return "Waiting for the isolated read-only review relay";
     }
-    if ((job.delegatedBy || job.reviewOf || job.seriesId) && usageHoldUntil(host.usage)) return "Waiting for subscription capacity";
+    if ((job.delegatedBy || job.reviewOf || job.seriesId || job.blueprintRunId || job.resumedFrom) && usageHoldUntil(host.usage)) {
+      return "Waiting for subscription capacity";
+    }
+    if ((job.profile && !host.profiles?.includes(job.profile) && job.profile !== "read-only") ||
+        (job.effort && !host.efforts?.includes(job.effort))) {
+      return "Waiting for a relay with the requested permissions and reasoning";
+    }
+    const usingReviewLane = host.backgroundReviews === true && !!job.delegatedBy;
+    const lane = host._id + (usingReviewLane ? ":review" : "");
+    const occupied = await jobs().findOne({
+      ownerId, hostId: host._id, activeHost: lane, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
+    }, { projection: { _id: 1 } });
+    if (occupied && !(host.backgroundReviews === true && job.blueprintTyped && job.workerRole === "qa")) {
+      return usingReviewLane ? "Waiting for the review slot" : "Waiting for the primary execution slot";
+    }
     if (host.backgroundReviews === true) {
       const other = await jobs().findOne({
         ownerId, hostId: job.hostId, activeHost: job.delegatedBy ? job.hostId : job.hostId + ":review",
