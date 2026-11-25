@@ -35,7 +35,7 @@ const { createEngineering } = require("./engineering");
 const { failureDiagnostic } = require("./diagnostics");
 const { resourceObservation } = require("./resources");
 const { createReleaseStaging } = require("./release-staging");
-const { matchingScope, scopeCatalog, validId: validScopeId } = require("./assignment-scopes");
+const { matchingScope, resourceQueueReason, rootsOverlap, scopeCatalog, validId: validScopeId } = require("./assignment-scopes");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -102,9 +102,15 @@ function createRouter({
   const jobs = () => db().collection("operations_jobs");
   const eventBatches = () => db().collection("operations_event_batches");
   const dispatch = () => db().collection("operations_dispatch");
+  const executionPolicy = () => db().collection("operations_execution_policy");
+  async function scopedPolicy(slots) {
+    const policy = slots && await executionPolicy().findOne({ _id: owner() }, { projection: { maxExecutions: 1, resourceLimits: 1 } });
+    return { capacity: Math.min(slots, policy?.maxExecutions || 1), resourceLimits: policy?.resourceLimits || null };
+  }
   const maintenanceActive = (settings) => +settings?.maintenanceUntil > Date.now();
   const inMaintenance = async () => maintenanceActive(await dispatch().findOne({ _id: owner() }));
   let admittingClaims = 0;
+  const claimingHosts = new Set();
   const objectives = () => db().collection("operations_objectives");
   const projects = () => db().collection("operations_projects");
   const workforce = () => db().collection("operations_workforce");
@@ -252,11 +258,13 @@ function createRouter({
     const scopedRevision = typeof req.body?.scopedRevision === "string" && /^[a-f\d]{64}$/.test(req.body.scopedRevision)
       ? req.body.scopedRevision : null;
     const assignmentScopes = scopeCatalog(req.body?.assignmentScopes ?? []);
+    const scopedSlots = req.body?.scopedSlots ?? 0;
     if (typeof isolatedReviewSnapshot !== "boolean" || typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry)) ||
         (supported.includes("scoped") && !scopedRevision) ||
-        !assignmentScopes || (assignmentScopes.size && (!supported.includes("scoped") || isolatedReviewSnapshot))) {
+        !assignmentScopes || (assignmentScopes.size && (!supported.includes("scoped") || isolatedReviewSnapshot)) ||
+        !Number.isSafeInteger(scopedSlots) || scopedSlots < 0 || scopedSlots > Math.min(8, assignmentScopes.size)) {
       return reject(res, 400, "Invalid worker capabilities.");
     }
     if ((isolatedReviewSnapshot || req.operationsHost._id === isolatedReviewHostId()) &&
@@ -275,7 +283,7 @@ function createRouter({
       artifactImport: req.body?.artifactImport === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       mediaUsage: req.body?.media === true ? mediaObservation(req.body?.mediaUsage, +now) : null,
       relayVersion, supervised: relayVersion !== null && req.body?.supervised === true,
-      assignmentScopes: [...assignmentScopes.values()], resources, lastSeen: now } }, { returnDocument: "after" });
+      assignmentScopes: [...assignmentScopes.values()], scopedSlots, resources, lastSeen: now } }, { returnDocument: "after" });
     if (!host) return reject(res, 409, "Another worker instance holds this device lease.");
     const usage = rateLimitObservation(req.body?.usage, +now);
     if (usage && usage.observedAt > (host.usage?.observedAt || 0)) {
@@ -290,31 +298,43 @@ function createRouter({
       });
     }
     await jobs().updateMany({
-      ownerId: owner(), activeHost: { $in: [host._id, host._id + ":review"] }, leaseUntil: { $lte: now },
+      ownerId: owner(), hostId: host._id, activeHost: { $type: "string" }, leaseUntil: { $lte: now },
     }, {
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
     });
-    res.json({ ok: true, backgroundReviews });
+    const scoped = await scopedPolicy(scopedSlots);
+    res.json({ ok: true, backgroundReviews, scopedSlots, scopedCapacity: scoped.capacity, scopedResourceLimits: scoped.resourceLimits });
   });
 
   worker.post("/claim", async (req, res) => {
+    const hostId = req.operationsHost._id;
+    if (claimingHosts.has(hostId)) return res.json(null);
+    claimingHosts.add(hostId);
+    try { return await handleClaim(req, res); }
+    finally { claimingHosts.delete(hostId); }
+  });
+
+  async function handleClaim(req, res) {
     if (!workerEnabled) return res.json(null);
     const { instance, lane = "primary" } = req.body || {};
     if (!uuid(instance) || req.operationsHost.instance !== instance || !online(req.operationsHost)) {
       return reject(res, 409, "Worker heartbeat required.");
     }
     const background = lane === "review";
-    if (lane !== "primary" && (!background || req.operationsHost.backgroundReviews !== true)) {
-      return reject(res, 409, "This relay has no background review slot.");
+    const catalog = scopeCatalog(req.operationsHost.assignmentScopes || []) || new Map();
+    const scopedLane = typeof lane === "string" && lane.startsWith("scope:") && catalog.get(lane.slice(6));
+    const scopedSlots = req.operationsHost.scopedSlots || 0;
+    if (lane !== "primary" && !(background && req.operationsHost.backgroundReviews === true) && !(scopedLane && scopedSlots)) {
+      return reject(res, 409, "This relay has no matching execution slot.");
     }
     await ensureIndexes();
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
-    const activeHost = background ? scope.hostId + ":review" : scope.hostId;
+    const activeHost = lane === "primary" ? scope.hostId : scope.hostId + ":" + lane;
     let job = await jobs().findOne({ ...scope, activeHost, instance });
     const isolated = scope.hostId === isolatedReviewHostId();
     if (!job && isolated && (!background || !reviewOnlyHost(req.operationsHost))) return res.json(null);
-    if (!job && !background) {
+    if (!job && lane === "primary") {
       await jobs().updateMany({ ...scope, status: { $in: ["scheduled", "queued", "waiting"] }, dispatchBefore: { $lte: new Date() } }, {
         $set: { status: "interrupted", error: missedDeadline, finishedAt: new Date() },
         $unset: { successorOf: "" },
@@ -371,7 +391,7 @@ function createRouter({
       const settings = await dispatch().findOne({ _id: scope.ownerId });
       if (settings?.paused || maintenanceActive(settings)) return res.json(null);
       const continuationEnabled = settings?.parentContinuation === true;
-      if (!background) {
+      if (lane === "primary") {
         await recurrence.reconcile(req.operationsHost);
         if (!usageHoldUntil(req.operationsHost.usage)) await blueprints.reconcile(scope);
         if (continuationEnabled && !usageHoldUntil(req.operationsHost.usage) &&
@@ -379,6 +399,17 @@ function createRouter({
           await reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope });
         }
       }
+      const activeClaims = await jobs().find({
+        ...scope, activeHost: { $type: "string" }, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
+      }, { projection: { activeHost: 1, assignmentScopeId: 1, assignmentScopeRevision: 1 } }).toArray();
+      if (scopedLane) {
+        const policy = await scopedPolicy(scopedSlots);
+        if (resourceQueueReason(policy.resourceLimits, req.operationsHost.resources) ||
+            activeClaims.length >= policy.capacity || activeClaims.some(peer => {
+          const peerScope = matchingScope(peer, catalog);
+          return !peerScope || !peer.activeHost.startsWith(scope.hostId + ":scope:") || rootsOverlap(peerScope.roots, scopedLane.roots);
+        })) return res.json(null);
+      } else if (activeClaims.some(peer => peer.activeHost.startsWith(scope.hostId + ":scope:"))) return res.json(null);
       const allocated = req.operationsHost.backgroundReviews === true;
       const other = allocated && await jobs().findOne({
         ...scope, activeHost: background ? scope.hostId : scope.hostId + ":review", instance,
@@ -394,6 +425,8 @@ function createRouter({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
+          ...(scopedLane ? { workerRole: "scoped-assignment", assignmentScopeId: scopedLane.id, assignmentScopeRevision: scopedLane.revision }
+            : scopedSlots ? { assignmentScopeId: { $exists: false } } : {}),
           ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
           ...(req.operationsHost.blueprintBranches === true ? {} : { blueprintTyped: { $ne: true } }),
           ...(req.operationsHost.media === true ? {} : { mediaInputs: { $exists: false } }),
@@ -535,7 +568,7 @@ function createRouter({
       ...(delegatedOutcomes.length ? { delegatedOutcomes } : {}),
       ...(job.mediaInputs ? { mediaInputs: job.mediaInputs } : {}), ...(job.outputMedia === true ? { outputMedia: true } : {}),
       ...(job.artifactImport ? { artifactImport: job.artifactImport } : {}) });
-  });
+  }
 
   worker.post("/jobs/:id/sync", async (req, res) => {
     const { instance, offset, events, result, control = {} } = req.body || {};
@@ -669,7 +702,7 @@ function createRouter({
     const ownerId = owner();
     const devices = await hosts().find({ ownerId, revokedAt: null }, {
       projection: { label: 1, lastSeen: 1, media: 1, resources: 1, relayVersion: 1, supervised: 1,
-        profiles: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, employeeConversations: 1, mediaOutput: 1, artifactImport: 1 },
+        profiles: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, employeeConversations: 1, mediaOutput: 1, artifactImport: 1, scopedSlots: 1 },
     }).sort({ lastSeen: -1 }).limit(25).toArray();
     const observedAt = Date.now();
     const active = await jobs().find({
@@ -680,9 +713,10 @@ function createRouter({
       const connected = online(device, observedAt);
       const assignments = active.filter(job => job.hostId === device._id).map(job => ({
         _id: job._id, title: job.title, status: job.status,
-        slot: job.activeHost === device._id + ":review" ? "background review" : "primary",
+        slot: job.activeHost.startsWith(device._id + ":scope:") ? job.activeHost.slice(device._id.length + 7)
+          : job.activeHost === device._id + ":review" ? "background review" : "primary",
       }));
-      const slots = device.backgroundReviews === true && device._id !== isolatedReviewHostId() ? 2 : 1;
+      const slots = Math.max(device.scopedSlots || 0, device.backgroundReviews === true && device._id !== isolatedReviewHostId() ? 2 : 1);
       return {
         _id: device._id, name: device.label, lastSeen: device.lastSeen, online: connected,
         media: device.media === true, resources: resourceObservation(device.resources, observedAt),
@@ -702,7 +736,7 @@ function createRouter({
   router.use("/reports", createReports({ jobs, objectives, projects, workforce, eventBatches, owner }));
   router.use("/workflow", createWorkflow({ jobs, projects, objectives, workforce, owner, jobView }));
   router.use("/workforce/execution-policy", createExecutionPolicy({
-    records: () => db().collection("operations_execution_policy"), directory: workforce, owner,
+    records: executionPolicy, directory: workforce, owner,
   }));
   router.use("/workforce", createReporting({ records: workforce, jobs, owner, startSession: () => db().client.startSession() }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, objectives, owner, jobView }));
@@ -778,18 +812,17 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, usage: 1, assignmentScopes: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, usage: 1, assignmentScopes: 1, scopedSlots: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
     const now = new Date();
-    const slots = records.filter(host => !host.revokedAt).flatMap(host => [host._id, host._id + ":review"]);
-    const active = slots.length ? await jobs().find({
-      ownerId: owner(), activeHost: { $in: slots }, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: now },
-    }, { projection: { activeHost: 1 } }).toArray() : [];
-    const occupied = new Set(active.map(job => job.activeHost));
+    const hostIds = records.filter(host => !host.revokedAt).map(host => host._id);
+    const active = hostIds.length ? await jobs().find({
+      ownerId: owner(), hostId: { $in: hostIds }, activeHost: { $type: "string" }, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: now },
+    }, { projection: { hostId: 1 } }).toArray() : [];
     res.json(records.map(host => {
       const connected = online(host, now);
-      const activeSlots = Number(occupied.has(host._id)) + Number(occupied.has(host._id + ":review"));
-      const relaySlots = connected ? 1 + Number(host.backgroundReviews === true && host._id !== isolatedReviewHostId()) : 0;
+      const activeSlots = active.filter(job => job.hostId === host._id).length;
+      const relaySlots = connected ? Math.max(host.scopedSlots || 0, 1 + Number(host.backgroundReviews === true && host._id !== isolatedReviewHostId())) : 0;
       return { ...host, usage: rateLimitObservation(host.usage, +now), online: connected, promptLimit: hostLimit(host),
         activeSlots, relaySlots };
     }));
@@ -954,8 +987,32 @@ function createRouter({
     if (job.profile === "scoped" && (host.scopedRevision !== job.scopedRevision || !host.profiles?.includes("scoped"))) {
       return "Waiting for the original scoped permissions";
     }
-    if (job.assignmentScopeId && !matchingScope(job, scopeCatalog(host.assignmentScopes || []) || new Map())) {
+    const catalog = scopeCatalog(host.assignmentScopes || []) || new Map();
+    const requestedScope = matchingScope(job, catalog);
+    if (job.assignmentScopeId && !requestedScope) {
       return "Waiting for the original assignment write scope";
+    }
+    if (host.scopedSlots) {
+      const active = await jobs().find({
+        ownerId, hostId: host._id, activeHost: { $type: "string" }, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
+      }, { projection: { activeHost: 1, assignmentScopeId: 1, assignmentScopeRevision: 1 } }).toArray();
+      if (requestedScope && active.some(peer => !peer.activeHost.startsWith(host._id + ":scope:"))) {
+        return "Waiting for the exclusive execution to finish";
+      }
+      if (requestedScope && active.some(peer => {
+        const peerScope = matchingScope(peer, catalog);
+        return !peerScope || rootsOverlap(peerScope.roots, requestedScope.roots);
+      })) return "Waiting for an overlapping write scope to clear";
+      const policy = await scopedPolicy(host.scopedSlots);
+      if (requestedScope) {
+        const wait = resourceQueueReason(policy.resourceLimits, host.resources);
+        if (wait) return wait;
+      }
+      if (requestedScope && active.length >= policy.capacity) return "Waiting for scoped execution capacity";
+      if (!requestedScope && active.some(peer => peer.activeHost.startsWith(host._id + ":scope:"))) {
+        return "Waiting for scoped executions to finish";
+      }
+      if (requestedScope) return "Queued for the verified write scope";
     }
     if (job.isolatedReview && (host._id !== isolatedReviewHostId() || !reviewOnlyHost(host))) {
       return "Waiting for the isolated read-only review relay";
@@ -1110,8 +1167,9 @@ function createRouter({
             typeof assignmentScopeRevision !== "string" || !/^[a-f\d]{64}$/.test(assignmentScopeRevision))) ||
         (typeof studioTools !== "boolean" || (studioTools && (assigning || (scheduling && (profile !== "read-only" || dispatchBefore === undefined))))) ||
         (typeof includeProjectReferences !== "boolean" || (includeProjectReferences && !assigning)) ||
-        (typeof outputMedia !== "boolean" || (outputMedia && (scheduling || parentId || workspace !== "workshop" || profile !== "workshop"))) ||
-        (artifactImport !== undefined && (!outputMedia || studioTools || !validArtifactImport(artifactImport))) ||
+        (typeof outputMedia !== "boolean" || (outputMedia && (scheduling || parentId || workspace !== "workshop" ||
+          (profile !== "workshop" && !assignmentScopeId)))) ||
+        (artifactImport !== undefined && (!outputMedia || assignmentScopeId || studioTools || !validArtifactImport(artifactImport))) ||
         (!Array.isArray(attachmentIds) || attachmentIds.length > 4 || (scheduling && attachmentIds.length)) ||
         (repeating ? !validRepeat(repeat) : repeat !== undefined) ||
         (dispatchBefore !== undefined && (!scheduling || repeating || !future(dispatchBefore, maxScheduleDelayMs) || dispatchBefore <= scheduledAt)) ||

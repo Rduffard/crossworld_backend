@@ -46,6 +46,7 @@ export const { redact } = diagnostics;
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
   mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
   relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision, verifiedAssignmentScopes = [],
+  maxScopedExecutions = 0,
   draining = () => false, reportHeartbeat, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
@@ -55,7 +56,10 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
   }).finally(() => { mediaDrained = true; });
   let advertisedProfiles = profiles;
   const active = new Map();
+  const localScopes = new Map(verifiedAssignmentScopes.map(scope => [scope.id, scope]));
   let reviewSupported = false;
+  let scopedSlots = 0;
+  let scopedResourceLimits = null;
   let lastContact = Date.now();
   let heartbeat = 0;
   let disconnected = false;
@@ -80,6 +84,14 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     const previous = active.get(lane);
     if (previous) return sync(lane, previous);
     if (draining()) return;
+    const scopeLane = lane.startsWith("scope:") && localScopes.get(lane.slice(6));
+    if (scopeLane) {
+      if (!scopedSlots || assignmentScopes.resourceQueueReason(scopedResourceLimits, getResources?.()) ||
+          active.size >= scopedSlots || [...active].some(([peerLane, state]) => {
+        const peer = assignmentScopes.matchingScope(state.job, localScopes);
+        return !peerLane.startsWith("scope:") || !peer || assignmentScopes.rootsOverlap(scopeLane.roots, peer.roots);
+      })) return;
+    } else if ([...active.keys()].some(key => key.startsWith("scope:"))) return;
     const job = await send("/claim", { instance, extendedPrompts: true, artifactImport, lane });
     if (!job || signal.aborted) return;
     const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
@@ -87,6 +99,11 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     active.set(lane, state);
     if (job.status === "cancelling") {
       state.result = { status: "cancelled", error: "" };
+      return;
+    }
+    if (scopeLane && (job.workerRole !== "scoped-assignment" || job.assignmentScopeId !== scopeLane.id ||
+        job.assignmentScopeRevision !== scopeLane.revision)) {
+      state.result = { status: "failed", error: "Claimed assignment does not match the verified writable slot." };
       return;
     }
     if (job.dispatchBefore && Date.parse(job.dispatchBefore) <= Date.now()) {
@@ -136,6 +153,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             relayVersion, supervised, isolatedReviewSnapshot, blueprintBranches,
             ...(advertisedProfiles?.includes("scoped") ? { scopedRevision } : {}),
             ...(advertisedProfiles?.includes("scoped") && verifiedAssignmentScopes.length ? { assignmentScopes: verifiedAssignmentScopes } : {}),
+            ...(advertisedProfiles?.includes("scoped") && verifiedAssignmentScopes.length ? { scopedSlots: maxScopedExecutions } : {}),
           });
           let capabilities;
           for (;;) {
@@ -148,11 +166,19 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             }
           }
           reviewSupported = backgroundReviews && capabilities?.backgroundReviews === true;
+          scopedSlots = capabilities?.scopedSlots === maxScopedExecutions &&
+            Number.isSafeInteger(capabilities.scopedCapacity) && capabilities.scopedCapacity >= 0
+            ? Math.min(maxScopedExecutions, capabilities.scopedCapacity) : 0;
+          scopedResourceLimits = capabilities?.scopedResourceLimits || null;
           heartbeat = Date.now();
           reportHeartbeat?.({ profiles: advertisedProfiles, backgroundReviews: reviewSupported, active: active.size, relayVersion, blueprintBranches });
         }
         await step("primary");
         if (reviewSupported || active.has("review")) await step("review");
+        for (const id of localScopes.keys()) {
+          const lane = "scope:" + id;
+          if (scopedSlots || active.has(lane)) await step(lane);
+        }
         lastContact = Date.now();
         if (disconnected) log("Operations connection restored.");
         else if (!connected) log("Connected to Crossworld Operations. Device authentication verified.");
@@ -336,6 +362,7 @@ async function startWorker(draining = () => false) {
   }
   const verifiedAssignmentScopes = [];
   const localAssignmentRoots = new Map();
+  let maxScopedExecutions = 0;
   const configuredScopes = !isolatedRoot && process.env.OPERATIONS_ASSIGNMENT_SCOPES;
   if (configuredScopes) {
     try {
@@ -346,7 +373,7 @@ async function startWorker(draining = () => false) {
       if (declared.some(scope => !scope || !scope.roots.every(root => allowed.has(root))) ||
           !assignmentScopes.scopeCatalog(declared)) throw new Error("Assignment scopes must use verified scoped roots.");
       for (const scope of declared) {
-        const roots = scope.roots.map(key => allowed.get(key));
+        const roots = scope.roots.map(key => verifyEditTree(allowed.get(key)));
         const forbidden = [...new Set([...exclusions(roots), ...[...allowed.entries()]
           .filter(([key]) => !assignmentScopes.rootsOverlap([key], scope.roots)).map(([, directory]) => directory)])];
         for (const root of roots) {
@@ -359,9 +386,13 @@ async function startWorker(draining = () => false) {
         verifiedAssignmentScopes.push(scope);
         localAssignmentRoots.set(scope.id, roots);
       }
+      maxScopedExecutions = Number(process.env.OPERATIONS_MAX_SCOPED_EXECUTIONS || 1);
+      if (!Number.isSafeInteger(maxScopedExecutions) || maxScopedExecutions < 1 ||
+          maxScopedExecutions > Math.min(8, verifiedAssignmentScopes.length)) throw new Error("Invalid scoped execution capacity.");
     } catch {
       verifiedAssignmentScopes.length = 0;
       localAssignmentRoots.clear();
+      maxScopedExecutions = 0;
       console.error("Assignment write scopes failed Windows sandbox attestation.");
       if (process.argv.includes("--check")) process.exitCode = 1;
     }
@@ -421,6 +452,7 @@ async function startWorker(draining = () => false) {
     blueprintBranches: !isolatedRoot,
     scopedRevision,
     verifiedAssignmentScopes,
+    maxScopedExecutions,
     execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
@@ -445,7 +477,8 @@ async function startWorker(draining = () => false) {
       if (job.status === "cancelling" || job.eventCount > 0) {
         return { status: "interrupted", error: "Previous assignment cannot be safely replayed." };
       }
-      if (job.outputMedia && (!mediaOutput || job.codexThreadId || profile !== "workshop" || correction)) {
+      if (job.outputMedia && (!mediaOutput || job.codexThreadId || job.workspace !== "workshop" ||
+          (profile !== "workshop" && !scopedAssignment) || correction || (scopedAssignment && job.artifactImport))) {
         return { status: "failed", error: "Job-scoped media export is unavailable on this host." };
       }
       const notifyArtifact = (phase, metadata) => send(`/media/jobs/${job._id}/artifacts`, { instance, phase, ...metadata });
@@ -461,7 +494,9 @@ async function startWorker(draining = () => false) {
         return { status: "completed", error: "" };
       }
       const roots = profile === "read-only" || unrestricted ? [] :
-        (scopedAssignment ? localAssignmentRoots.get(assignmentScope.id) : editRoots[profile]).map(verifyDirectory);
+        (scopedAssignment ? localAssignmentRoots.get(assignmentScope.id).map(verifyEditTree) : editRoots[profile].map(verifyDirectory));
+      const foreignRoots = scopedAssignment ? [...new Set([...localAssignmentRoots.values()].flat())]
+        .filter(directory => !assignmentScopes.rootsOverlap([assignmentScopes.pathKey(directory)], assignmentScope.roots)) : [];
       const root = scoped && job.workspace === "workshop" ? roots.at(-1) : roots[0];
       const cwd = root || workspaces[job.workspace];
       let staged;
@@ -482,7 +517,7 @@ async function startWorker(draining = () => false) {
           roots,
           gitRoots: profile === "development" && !correction ? roots : [],
           protectedDirectories: unrestricted ? undefined : isolatedRoot ? [workspaces.development] :
-            [...exclusions(roots), ...(mediaStorage?.protectedPaths || [])],
+            [...exclusions(roots), ...foreignRoots, ...(mediaStorage?.protectedPaths || [])],
           supervised: !!root && !correction,
           fullAccess: unrestricted && fullAccess,
           autonomousNetwork: !correction && autonomousNetwork && profile === "development",

@@ -568,8 +568,52 @@ try {
     assert.equal(scopedClaim.assignmentScopeRevision, engineeringScope.revision);
     assert.equal(scopedClaim.roots, undefined);
     await finishStep(scopedClaim, "Verified scoped assignment completed.");
+    const artScope = scopeRules.assignmentScope("art", ["C:\\Stage\\Art", "D:\\Stage\\Art"]);
+    const conflictingScope = scopeRules.assignmentScope("conflicting", ["D:\\Stage\\Engineering\\Subfolder"]);
+    const parallelCatalog = { ...scopedHeartbeat, assignmentScopes: [engineeringScope, artScope, conflictingScope], scopedSlots: 2 };
+    const policyEndpoint = "/workforce/execution-policy";
+    const savedScopePolicy = (await blueprintApi(policyEndpoint, "GET"))[1];
+    assert.equal((await blueprintApi(policyEndpoint, "PUT", { ...savedScopePolicy, maxExecutions: 2,
+      resourceLimits: { maxCpuPercent: 80, minAvailableRamMiB: 1024 } }))[0], 200);
+    const telemetry = resources => reviewSend("/heartbeat", {
+      ...parallelCatalog, resources: { observedAt: Date.now(), cpu: 20, memory: { total: 4096 * 1024 ** 2, free: 2048 * 1024 ** 2 }, ...resources },
+    });
+    assert.equal((await telemetry({ cpu: 90 })).scopedCapacity, 2);
+    const startScoped = async scope => {
+      const body = { ...assigned, id: randomUUID(), assignmentScopeId: scope.id, assignmentScopeRevision: scope.revision };
+      assert.equal((await blueprintApi("/jobs", "POST", body))[0], 201);
+      return body.id;
+    };
+    const engineering = await startScoped(engineeringScope);
+    const art = await startScoped(artScope);
+    const conflicting = await startScoped(conflictingScope);
+    const claimScoped = scope => reviewSend("/claim", { instance: reviewInstance, lane: "scope:" + scope.id });
+    assert.equal(await claimParent(), null);
+    assert.equal(await claimScoped(engineeringScope), null);
+    assert.equal((await blueprintApi("/jobs/" + engineering, "GET"))[1].queueReason, "Waiting for CPU utilization to fall");
+    await telemetry();
+    const editing = await claimScoped(engineeringScope);
+    assert.equal(editing._id, engineering);
+    assert.equal(await claimScoped(conflictingScope), null);
+    assert.equal((await blueprintApi("/jobs/" + conflicting, "GET"))[1].queueReason, "Waiting for an overlapping write scope to clear");
+    const creativeClaim = await claimScoped(artScope);
+    assert.equal(creativeClaim._id, art);
+    const parallelDevice = (await blueprintApi("/infrastructure", "GET"))[1].devices.find(device => device._id === reviewHost);
+    assert.equal(parallelDevice.claimedSlots, 2);
+    assert.deepEqual(new Set(parallelDevice.assignments.map(item => item.slot)), new Set(["art", "engineering"]));
+    const legacyId = randomUUID();
+    assert.equal((await blueprintApi("/jobs", "POST", { ...directFixture, id: legacyId }))[0], 201);
+    assert.equal(await claimParent(), null);
+    await finishStep(editing, "Engineering fixture complete.");
+    const waitingEdit = await claimScoped(conflictingScope);
+    assert.equal(waitingEdit._id, conflicting);
+    await finishStep(waitingEdit, "Formerly conflicting fixture complete.");
+    await finishStep(creativeClaim, "Creative fixture complete.");
+    const legacy = await claimParent();
+    assert.equal(legacy._id, legacyId);
+    await finishStep(legacy, "Legacy fixture complete.");
     await reviewSend("/heartbeat", scopedHeartbeat);
-    console.log("Assignment write scope binds explicit authorization and refuses stale or broadened roots PASS");
+    console.log("Assignment scopes bind authorization, admit disjoint windows and queue overlapping or exclusive work PASS");
     const conversation = {
       id: randomUUID(), recipientId: director._id, hostId: reviewHost,
       model: "gpt-6.2-sol", effort: "low", prompt: "What are your current responsibilities?",

@@ -127,7 +127,9 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled, inMai
       const ownerId = owner();
       const job = await jobs().findOne({
         _id: jobId, ownerId, hostId: host._id, activeHost: host._id, instance, outputMedia: true, workspace: "workshop",
-        profile: "workshop", status: "running", leaseUntil: { $gt: new Date() },
+        $or: [{ profile: "workshop" }, { profile: "scoped", workerRole: "scoped-assignment", workspace: "workshop",
+          assignmentScopeId: { $type: "string" } }],
+        status: "running", leaseUntil: { $gt: new Date() },
       }, { projection: { _id: 1, projectId: 1, artifactImport: 1 } });
       if (!job) return fail(res, 403, "Artifact publication is not authorized for this turn.");
       if (job.artifactImport && !job.artifactImport.some((file) => file.name === name && file.size === size && file.sha256 === sha256)) {

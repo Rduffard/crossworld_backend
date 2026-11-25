@@ -71,7 +71,8 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
         return {
           _id: job._id, title: job.title, workspace: job.workspace, status: job.status, state,
           employee: job.assigneeName || job.reviewerName || job.conversationActor?.name || job.studioActor?.name,
-          slot: job.activeHost === host._id + ":review" ? "background review" : "primary",
+          slot: job.activeHost.startsWith(host._id + ":scope:") ? job.activeHost.slice(host._id.length + 7)
+            : job.activeHost === host._id + ":review" ? "background review" : "primary",
         };
       });
       const usageResumesAt = usageHoldUntil(host.usage, +now) || null;

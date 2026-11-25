@@ -43,4 +43,14 @@ function matchingScope(job, scopes) {
   return scope?.revision === job?.assignmentScopeRevision ? scope : undefined;
 }
 
-module.exports = { assignmentScope, matchingScope, pathKey, rootsOverlap, scopeCatalog, validId };
+function resourceQueueReason(limits, observation, now = Date.now()) {
+  if (!limits || (!limits.maxCpuPercent && !limits.minAvailableRamMiB)) return null;
+  if (!observation || observation.observedAt < now - 120000 || observation.observedAt > now + 30000 ||
+      (limits.maxCpuPercent && !Number.isFinite(observation.cpu)) ||
+      (limits.minAvailableRamMiB && !Number.isFinite(observation.memory?.free))) return "Waiting for fresh host resource measurements";
+  if (limits.maxCpuPercent && observation.cpu > limits.maxCpuPercent) return "Waiting for CPU utilization to fall";
+  if (limits.minAvailableRamMiB && observation.memory.free < limits.minAvailableRamMiB * 1024 ** 2) return "Waiting for available memory";
+  return null;
+}
+
+module.exports = { assignmentScope, matchingScope, pathKey, resourceQueueReason, rootsOverlap, scopeCatalog, validId };

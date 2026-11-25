@@ -10,7 +10,7 @@ const validators = {
 };
 const defaultPolicy = {
   revision: 0, defaults: { model: "gpt-6.2-sol", effort: "medium", profile: "read-only" },
-  maxExecutions: 1, authority: "locked", departments: {}, employees: {},
+  maxExecutions: 1, resourceLimits: { maxCpuPercent: 0, minAvailableRamMiB: 0 }, authority: "locked", departments: {}, employees: {},
   bounds: { models: [], efforts: [], profiles: [] },
 };
 const isRecord = value => value && typeof value === "object" && !Array.isArray(value);
@@ -40,7 +40,7 @@ function createExecutionPolicy({ records, directory, owner }) {
   const router = express.Router();
   async function view() {
     const policy = await records().findOne({ _id: owner() }, { projection: { _id: 0 } }) || defaultPolicy;
-    return { ...policy, enforcement: "pending" };
+    return { ...defaultPolicy, ...policy, enforcement: "pending", scopedAdmission: true };
   }
   router.get("/", async (_req, res) => res.json(await view()));
   router.get("/preview", async (req, res) => {
@@ -57,9 +57,12 @@ function createExecutionPolicy({ records, directory, owner }) {
     });
   });
   router.put("/", async (req, res) => {
-    const { revision, defaults, maxExecutions, authority, departments, employees, bounds } = req.body || {};
+    const { revision, defaults, maxExecutions, authority, departments, employees, bounds, resourceLimits } = req.body || {};
     if (!Number.isSafeInteger(revision) || revision < 0 ||
         !Number.isSafeInteger(maxExecutions) || maxExecutions < 1 ||
+        (resourceLimits !== undefined && (!isRecord(resourceLimits) ||
+          !Number.isSafeInteger(resourceLimits.maxCpuPercent) || resourceLimits.maxCpuPercent < 0 || resourceLimits.maxCpuPercent > 100 ||
+          !Number.isSafeInteger(resourceLimits.minAvailableRamMiB) || resourceLimits.minAvailableRamMiB < 0 || resourceLimits.minAvailableRamMiB > 1024 ** 2)) ||
         !["locked", "approval-required", "bounded-discretion"].includes(authority) ||
         !configuration(defaults, false) || !overrides(departments) || !overrides(employees) ||
         !choices(bounds?.models, validModel, 16) || !choices(bounds?.efforts, validators.effort, efforts.length) ||
@@ -80,6 +83,7 @@ function createExecutionPolicy({ records, directory, owner }) {
     try {
       const result = await records().updateOne({ _id: ownerId, revision }, { $set: {
         defaults, maxExecutions, authority, departments, employees,
+        ...(resourceLimits ? { resourceLimits: { maxCpuPercent: resourceLimits.maxCpuPercent, minAvailableRamMiB: resourceLimits.minAvailableRamMiB } } : {}),
         bounds: { models: bounds.models, efforts: bounds.efforts, profiles: bounds.profiles },
         revision: revision + 1,
       } }, { upsert: revision === 0 });
