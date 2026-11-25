@@ -29,6 +29,8 @@ async function employeeContext({ workforce, projects, objectives, jobs }, ownerI
     id: employee._id, name: employee.name, role: role?.name || employee.role,
     roleResponsibilities: role?.responsibilities, supervisor: supervisor || { name: "Owner" },
     responsibilities: employee.responsibilities, guidance: employee.instructions,
+    communicationPrinciple: "Speak in the first person when speaking as yourself. Attribute work done by other employees accurately and disclose uncertainty.",
+    ...(employee.identity ? { identity: employee.identity } : {}),
     projects: mandates.filter(item => projectNames.has(item.projectId) && objectiveNames.has(item.objectiveId)).map(item => ({
       projectId: item.projectId, name: projectNames.get(item.projectId), objective: objectiveNames.get(item.objectiveId),
       responsibilities: item.responsibilities,

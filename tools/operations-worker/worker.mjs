@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { acquireWorkerLock, loadCredential } from "./windows.mjs";
 import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -43,7 +43,8 @@ export function backendClient(base, token) {
 export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
-  mediaOutput = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false, log = console.log }) {
+  mediaOutput = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
+  relayVersion, supervised = false, draining = () => false, reportHeartbeat, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
   const mediaTask = mediaStorage && pollMedia({ send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage });
@@ -73,6 +74,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
   async function step(lane) {
     const previous = active.get(lane);
     if (previous) return sync(lane, previous);
+    if (draining()) return;
     const job = await send("/claim", { instance, extendedPrompts: true, lane });
     if (!job || signal.aborted) return;
     const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
@@ -84,11 +86,14 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     }
     const record = (view, label, value) => {
       const clean = redact(value, token).toWellFormed();
+      const messageId = view === "activity" && ["Agent commentary", "Agent message"].includes(label)
+        ? randomUUID() : undefined;
       let index = 0;
       while (index < clean.length) {
         let end = Math.min(index + 3000, clean.length);
         if (clean.charCodeAt(end - 1) >= 0xd800 && clean.charCodeAt(end - 1) <= 0xdbff) end--;
-        state.events.push({ view, label: redact(label, token).slice(0, 120), text: clean.slice(index, end) });
+        state.events.push({ view, label: redact(label, token).slice(0, 120), text: clean.slice(index, end),
+          ...(messageId ? { messageId } : {}) });
         index = end;
       }
     };
@@ -111,6 +116,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             mediaOutput,
             mediaUsage: mediaStorage?.latestUsage(),
             resources: getResources?.(),
+            relayVersion, supervised,
           });
           let capabilities;
           try { capabilities = await announce(); }
@@ -122,6 +128,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
           }
           reviewSupported = backgroundReviews && capabilities?.backgroundReviews === true;
           heartbeat = Date.now();
+          reportHeartbeat?.({ profiles: advertisedProfiles, backgroundReviews: reviewSupported, active: active.size });
         }
         await step("primary");
         if (reviewSupported || active.has("review")) await step("review");
@@ -130,6 +137,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
         else if (!connected) log("Connected to Crossworld Operations. Device authentication verified.");
         connected = true;
         disconnected = false;
+        if (draining() && active.size === 0) return;
       } catch (error) {
         if (error.status === 401 || error.status === 403) {
           throw new Error("Device registration is invalid or revoked. Open Register Crossworld Operations.cmd.", { cause: error });
@@ -212,7 +220,13 @@ export async function verifyMediaOutbox(exe, storage, workshopRoots) {
   }
 }
 
-async function startWorker() {
+async function startWorker(draining = () => false) {
+  const startup = phase => {
+    if (process.connected && process.argv.includes("--supervised")) {
+      process.send({ type: "startup", phase }, () => {});
+    }
+  };
+  startup("codex-discovery");
   const { exe, version } = discoverCodex();
   const workspaces = resolvedWorkspaces();
   const autonomousNetwork = process.env.OPERATIONS_AUTONOMOUS_NETWORK === "development";
@@ -248,6 +262,7 @@ async function startWorker() {
     finally { server.close(); }
   }
   try {
+    startup("subscription-check");
     await probe.initialize();
     efforts = await probe.capabilities();
     if (!efforts.length) throw new Error("No supported reasoning efforts were reported.");
@@ -271,6 +286,7 @@ async function startWorker() {
   } finally {
     probe.close();
   }
+  startup("workspace-checks");
   for (const [profile, directories] of Object.entries(candidates)) {
     let profileProbe;
     try {
@@ -287,7 +303,17 @@ async function startWorker() {
     }
   }
   if (process.argv.includes("--check")) return;
+  if (process.argv.includes("--check-device")) {
+    const send = backendClient(process.env.OPERATIONS_BACKEND_URL, loadCredential({ onboard: false, register: false }));
+    const result = await send("/readiness");
+    if (result.authenticated !== true) throw new Error("The backend did not confirm device authentication.");
+    console.log("Persisted device authentication verified without acquiring a relay lease.");
+    return;
+  }
+  if (draining()) return;
+  startup("device-credential");
   const token = loadCredential({ onboard: process.argv.includes("--onboard"), register: process.argv.includes("--register") });
+  startup("media-storage");
   const mediaRoot = process.env.OPERATIONS_MEDIA_ROOT || "D:\\Crossworld Operations\\Media";
   const mediaOptions = {
     workspaceRoots: Object.values(workspaces),
@@ -305,9 +331,16 @@ async function startWorker() {
   const controller = new AbortController();
   process.on("SIGINT", () => controller.abort());
   process.on("SIGTERM", () => controller.abort());
+  startup("relay-connect");
   await runWorker({
     send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])],
     signal: controller.signal, mediaStorage, mediaOutput,
+    relayVersion: createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex").slice(0, 12),
+    supervised: process.connected === true && process.argv.includes("--supervised"),
+    draining,
+    reportHeartbeat: report => {
+      if (process.connected) process.send({ type: "heartbeat", ...report }, () => {});
+    },
     getResources: process.env.OPERATIONS_RESOURCE_TELEMETRY === "1" ? resourceSampler() : undefined,
     getUsage: () => {
       if (usageHoldUntil(usage) && Date.now() - lastUsageAttempt >= 120_000) void refreshHeldUsage();
@@ -392,10 +425,21 @@ async function main() {
   if (process.platform !== "win32" || Number(process.versions.node.split(".")[0]) < 22) {
     throw new Error("The worker requires Windows and Node.js 22 or later.");
   }
-  if (process.argv.includes("--check")) return startWorker();
-  const releaseLock = await acquireWorkerLock();
-  try { await startWorker(); }
-  finally { await releaseLock(); }
+  if (process.argv.some(argument => argument === "--check" || argument === "--check-device")) return startWorker();
+  let drainRequested = false;
+  if (process.connected) {
+    process.on("message", message => { if (message?.type === "drain") drainRequested = true; });
+    process.once("disconnect", () => { drainRequested = true; });
+  }
+  let releaseLock;
+  try {
+    releaseLock = await acquireWorkerLock();
+    await startWorker(() => drainRequested);
+  }
+  finally {
+    await releaseLock?.();
+    if (process.connected) process.disconnect();
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

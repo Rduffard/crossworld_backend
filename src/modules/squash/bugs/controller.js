@@ -21,7 +21,7 @@ const getBugs = async (req, res, next) => {
       const ok = await userHasProjectAccess(userId, projectId);
       if (!ok) throw new ForbiddenError("No access to that project");
 
-      const bugs = await Bug.find({ projectId }).sort({ updatedAt: -1 }).lean();
+      const bugs = await Bug.find({ projectId }).select("-quality.history").sort({ updatedAt: -1 }).lean();
       return res.send(bugs);
     }
 
@@ -35,6 +35,7 @@ const getBugs = async (req, res, next) => {
     const projectIds = projects.map((p) => p._id);
 
     const bugs = await Bug.find({ projectId: { $in: projectIds } })
+      .select("-quality.history")
       .sort({ updatedAt: -1 })
       .lean();
 

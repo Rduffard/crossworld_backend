@@ -26,6 +26,17 @@ const bugSchema = new mongoose.Schema(
       default: "medium",
     },
 
+    quality: {
+      type: new mongoose.Schema({
+        state: { type: String },
+        severity: { type: String, enum: ["minor", "moderate", "major", "critical"] },
+        revision: { type: Number, min: 1 },
+        history: [{ _id: false, actor: mongoose.Schema.Types.ObjectId, from: String, to: String,
+          severity: String, priority: String, reason: String, at: Date }],
+      }, { _id: false }),
+      default: undefined,
+    },
+
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "squash_project",

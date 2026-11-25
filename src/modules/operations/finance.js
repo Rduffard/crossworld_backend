@@ -21,6 +21,29 @@ function renewalInMonth(entry, month) {
 
 function createFinance({ records, projects, owner, now = () => new Date() }) {
   const router = express.Router();
+  router.get("/trends", async (req, res) => {
+    const today = now().toISOString().slice(0, 10);
+    const month = req.query.month ?? today.slice(0, 7);
+    if (typeof month !== "string" || !validDate(month + "-01")) {
+      return res.status(400).json({ message: "Choose a valid reporting month." });
+    }
+
+    const months = [];
+    const cursor = new Date(month + "-01T00:00:00.000Z");
+    while (months.length < 6 && cursor.getUTCFullYear() >= 0) {
+      months.unshift({ month: cursor.toISOString().slice(0, 7), expenses: {} });
+      cursor.setUTCMonth(cursor.getUTCMonth() - 1);
+    }
+    const totals = await records().aggregate([
+      { $match: { ownerId: owner(), kind: "expense", date: { $lte: today },
+        month: { $gte: months[0].month, $lte: month }, currency: { $in: currencies } } },
+      { $group: { _id: { month: "$month", currency: "$currency" }, total: { $sum: "$amount" } } },
+    ]).toArray();
+    const byMonth = new Map(months.map(entry => [entry.month, entry.expenses]));
+    for (const { _id, total } of totals) byMonth.get(_id.month)[_id.currency] = total;
+    return res.json({ months });
+  });
+
   router.get("/", async (req, res) => {
     const today = now().toISOString().slice(0, 10);
     const month = req.query.month ?? today.slice(0, 7);

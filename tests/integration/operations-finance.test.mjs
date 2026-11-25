@@ -61,3 +61,49 @@ test("Finance separates scoped budgets, retains prior versions and excludes futu
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test("Expense trends return six chronological months with owner-scoped actuals and separate currencies", async () => {
+  const ownerId = "owner-fixture";
+  const now = () => new Date("2025-05-20T12:00:00Z");
+  let pipeline;
+  const app = express();
+  app.use(finance.createFinance({
+    owner: () => ownerId,
+    now,
+    records: () => ({
+      aggregate(stages) {
+        pipeline = stages;
+        return { async toArray() {
+          return [
+            { _id: { month: "2024-12", currency: "USD" }, total: 150 },
+            { _id: { month: "2025-05", currency: "USD" }, total: 500 },
+            { _id: { month: "2025-05", currency: "EUR" }, total: 320 },
+          ];
+        } };
+      },
+    }),
+  }));
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const endpoint = `http://127.0.0.1:${server.address().port}/trends`;
+    const response = await fetch(endpoint);
+    assert.equal(response.status, 200);
+    const { months } = await response.json();
+    assert.deepEqual(months, [
+      { month: "2024-12", expenses: { USD: 150 } },
+      { month: "2025-01", expenses: {} },
+      { month: "2025-02", expenses: {} },
+      { month: "2025-03", expenses: {} },
+      { month: "2025-04", expenses: {} },
+      { month: "2025-05", expenses: { USD: 500, EUR: 320 } },
+    ]);
+    assert.deepEqual(pipeline[0].$match.ownerId, ownerId);
+    assert.deepEqual(pipeline[0].$match.kind, "expense");
+    assert.deepEqual(pipeline[0].$match.date, { $lte: "2025-05-20" });
+    assert.deepEqual(pipeline[0].$match.month, { $gte: "2024-12", $lte: "2025-05" });
+    assert.equal((await fetch(endpoint + "?month=2025-13")).status, 400);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

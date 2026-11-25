@@ -19,6 +19,8 @@ if /I "%~1"=="--register" (
   node.exe "%~dp0worker.mjs" --register
 ) else if /I "%~1"=="--check" (
   node.exe "%~dp0worker.mjs" --check
+) else if /I "%~1"=="--check-device" (
+  node.exe "%~dp0worker.mjs" --check-device
 ) else (
   node.exe "%~dp0worker.mjs" --onboard
 )

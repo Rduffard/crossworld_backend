@@ -334,6 +334,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     scope.remember?.(threadId);
     signal.throwIfAborted();
     record("activity", "Codex session ready", `${job.model} · ${job.effort} · ${cwd}`);
+    record("execution", "Confirmed model", thread.model);
 
     const done = new Promise((resolve) => {
       server.once("closed", (error) => resolve({ status: "failed", error: { message: error.message } }));
@@ -455,7 +456,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
           }
           flushOutput(item.id);
           if (item.type === "agentMessage") {
-            if (item.phase === "commentary") record("activity", "Agent message", item.text);
+            if (item.phase === "commentary") record("activity", "Agent commentary", item.text);
             else {
               if (finalResponse) record("activity", "Agent message", finalResponse);
               finalResponse = item.text;

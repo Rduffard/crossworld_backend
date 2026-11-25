@@ -4,6 +4,7 @@ const express = require("express");
 const roles = ["worker", "lead", "first-mate", "art-director", "qa", "air"];
 const availability = ["available", "paused", "retired"];
 const workspaces = ["development", "workshop"];
+const identityFields = { background: 1200, temperament: 300, communication: 600, standards: 1200, terminology: 400 };
 const text = (value, limit) => typeof value === "string" && value.isWellFormed() && value.length <= limit
   ? value.trim() : null;
 
@@ -28,6 +29,7 @@ function createWorkforce({ records, jobs, objectives, owner, jobView }) {
     }, { projection: { status: 1 } }).toArray() : [];
     const state = new Map(activated.map(({ _id, status }) => [_id, status === "active" ? "assigned" : "completed"]));
     return res.json({
+      capabilities: { employeeIdentity: true, reportingChanges: true },
       observedRuns: observedRuns.map(jobView),
       departments: directory.filter((entry) => entry.kind === "department"),
       employees: directory.filter((entry) => entry.kind === "employee"),
@@ -51,6 +53,17 @@ function createWorkforce({ records, jobs, objectives, owner, jobView }) {
     const name = text(req.body?.name, 100);
     const responsibilities = text(req.body?.responsibilities, 2000);
     const instructions = text(req.body?.instructions ?? "", 6000);
+    const suppliedIdentity = req.body?.identity;
+    let identity;
+    if (suppliedIdentity !== undefined) {
+      if (!suppliedIdentity || typeof suppliedIdentity !== "object" || Array.isArray(suppliedIdentity) ||
+          Object.keys(suppliedIdentity).some(key => !Object.hasOwn(identityFields, key))) {
+        return res.status(400).json({ message: "Provide supported employee identity fields." });
+      }
+      identity = Object.fromEntries(Object.entries(identityFields).map(([key, length]) =>
+        [key, text(suppliedIdentity[key] ?? "", length)]));
+      if (Object.values(identity).includes(null)) return res.status(400).json({ message: "An employee identity field is invalid." });
+    }
     if (!name || !responsibilities || instructions === null || !roles.includes(role) || !availability.includes(status) ||
         !workspaces.includes(workspace) || typeof departmentId !== "string" ||
         ((role === "air" || role === "first-mate") && departmentId) || (req.params.id && !Number.isSafeInteger(revision))) {
@@ -61,6 +74,7 @@ function createWorkforce({ records, jobs, objectives, owner, jobView }) {
       return res.status(400).json({ message: "Department not found." });
     }
     const details = { name, role, departmentId: departmentId || null, status, workspace, responsibilities, instructions, updatedAt: new Date() };
+    if (identity !== undefined) details.identity = identity;
     if (req.params.id) {
       const updated = await records().updateOne({ _id: req.params.id, ownerId, kind: "employee", revision }, {
         $set: details, $inc: { revision: 1 },

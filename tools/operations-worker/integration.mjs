@@ -103,6 +103,14 @@ try {
   assert.deepEqual(ledger.totals.USD, { expenses: 1250, annualCommitments: 2400, budget: 4000 });
   assert.deepEqual(ledger.totals.EUR, { expenses: 190, annualCommitments: null, budget: null });
   assert.deepEqual(ledger.byCategory, { USD: { Cloud: 1250 }, EUR: { Cloud: 190 } });
+  const trendsPath = "/finance/trends?month=2026-11";
+  assert.equal((await api(trendsPath, { user: other }))[0], 403);
+  assert.equal((await api("/finance/trends?month=2026-13"))[0], 400);
+  const [trendsStatus, trends] = await api(trendsPath);
+  assert.equal(trendsStatus, 200);
+  assert.deepEqual(trends.months.map(entry => entry.month), ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"]);
+  assert.deepEqual(trends.months[0].expenses, {});
+  assert.deepEqual(trends.months.at(-1).expenses, { USD: 1250, EUR: 190 });
   assert.equal(ledger.renewals[0].date, "2026-11-07");
   assert.equal(ledger.billing.status, "unavailable");
   const financePath = "/finance/" + financeEntry.id;

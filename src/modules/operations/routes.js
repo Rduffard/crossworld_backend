@@ -12,6 +12,8 @@ const { createWorkshopRegistry } = require("./workshop-registry");
 const { createReports } = require("./reports");
 const { createWorkflow } = require("./workflow");
 const { createWorkforce } = require("./workforce");
+const { createReporting } = require("./reporting");
+const { createOwnerPreferences } = require("./owner-preferences");
 const { createExecutionPolicy } = require("./execution-policy");
 const { createOrganization } = require("./organization");
 const { createReferences } = require("./references");
@@ -23,6 +25,7 @@ const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./u
 const { createRecurrence, validRepeat } = require("./recurrence");
 const { createMedia, mediaObservation } = require("./media");
 const { createFinance } = require("./finance");
+const { createCommunications } = require("./communications");
 const { createCreative } = require("./creative");
 const { createEngineering } = require("./engineering");
 const { failureDiagnostic } = require("./diagnostics");
@@ -91,6 +94,7 @@ function createRouter({
   const knowledge = () => db().collection("operations_knowledge");
   const references = () => db().collection("operations_references");
   const finance = () => db().collection("operations_finance");
+  const correspondence = () => db().collection("operations_correspondence");
   const series = () => db().collection("operations_recurrence");
   const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled });
   const recurrence = createRecurrence({ records: series, jobs });
@@ -114,6 +118,7 @@ function createRouter({
       references().createIndex({ ownerId: 1, createdAt: -1, _id: -1 }),
       knowledge().createIndex({ ownerId: 1, projectId: 1, createdAt: -1 }),
       finance().createIndex({ ownerId: 1, month: 1 }),
+      correspondence().createIndex({ ownerId: 1, state: 1, createdAt: -1, _id: -1 }),
       db().collection("operations_creative").createIndex({ ownerId: 1, updatedAt: -1, _id: -1 }),
       attentionReceipts().createIndex({ ownerId: 1, key: 1 }),
       jobs().createIndex({ ownerId: 1, "delegatedBy.sessionId": 1, finishedAt: -1 }, {
@@ -498,12 +503,14 @@ function createRouter({
     const isBrief = req.method === "POST" && /^\/(?:schedule|recurrence|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
+  router.use("/owner-preferences", createOwnerPreferences({ records: () => db().collection("operations_owner_preferences"), owner }));
   router.use("/organization", createOrganization({ workforce, projects, objectives, owner }));
   router.use("/projects", createProjects({ records: projects, owner }));
   router.use("/media", media.browser);
   router.use("/objectives", createObjectives({ records: objectives, projects, jobs, jobView, owner }));
   router.use("/knowledge", createKnowledge({ records: knowledge, projects, owner }));
   router.use("/finance", createFinance({ records: finance, projects, owner }));
+  router.use("/communications", createCommunications({ records: correspondence, workforce, owner }));
   router.use("/creative", createCreative({
     records: () => db().collection("operations_creative"), references: () => db().collection("operations_references"),
     projects, objectives, jobs, eventBatches, owner,
@@ -535,6 +542,7 @@ function createRouter({
   router.use("/workforce/execution-policy", createExecutionPolicy({
     records: () => db().collection("operations_execution_policy"), directory: workforce, owner,
   }));
+  router.use("/workforce", createReporting({ records: workforce, jobs, owner, startSession: () => db().client.startSession() }));
   router.use("/workforce", createWorkforce({ records: workforce, jobs, objectives, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({

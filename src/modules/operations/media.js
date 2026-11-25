@@ -12,14 +12,18 @@ const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/;
 const isId = (value) => typeof value === "string" && uuid.test(value);
 const types = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/quicktime", "video/webm"]);
 const videoTypes = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const reviewStates = new Set(["pending", "approved", "changes-requested", "rejected", "archived", "superseded"]);
+const maxReviewRevisions = 200;
 const maxImages = 4;
 const maxImageSize = 12 * 1024 * 1024;
 const fail = (res, status, message) => res.status(status).json({ message });
 const stableId = (value) => digest(Buffer.from(value)).slice(0, 32).replace(/^(........)(....)(....)(....)(............)$/, "$1-$2-$3-$4-$5");
 
-function view(record) {
-  const { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom } = record;
-  return { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom };
+function view(record, includeHistory = false) {
+  const { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId, review } = record;
+  const { state: reviewState = "pending", revision = 0, history = [] } = review || {};
+  return { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId,
+    ...(state === "ready" ? { review: { state: reviewState, revision, ...(includeHistory === true ? { history } : {}) } } : {}) };
 }
 
 function parseRange(header, length) {
@@ -165,10 +169,10 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
         { $or: [{ state: "ready" }, { state: "uploading", createdAt: { $gt: new Date(Date.now() - TTL) } }] },
         ...(before ? [{ $or: [{ createdAt: { $lt: before } }, { createdAt: before, _id: { $lt: cursor[1] } }] }] : []),
       ],
-      }).sort({ createdAt: -1, _id: -1 }).limit(51).toArray(),
+      }, { projection: { "review.history": 0 } }).sort({ createdAt: -1, _id: -1 }).limit(51).toArray(),
       hosts().find({ ownerId: owner(), revokedAt: null, media: true }).limit(25).toArray(),
     ]);
-    return res.json({ items: items.slice(0, 50).map(view),
+    return res.json({ items: items.slice(0, 50).map(item => view(item)),
       nextBefore: items.length > 50 ? `${items[49].createdAt.toISOString()}~${items[49]._id}` : null,
       maxSize: MAX_SIZE, chunkSize: CHUNK, hosts: devices.map((host) => ({
         _id: host._id, label: host.label, online: online(host), videoFrames: host.mediaVideoFrames === true,
@@ -205,7 +209,25 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
     if (!req.media || req.media.state === "deleted") return fail(res, 404, "Media record unavailable.");
     next();
   });
-  browser.get("/:id", (req, res) => res.json(view(req.media)));
+  browser.get("/:id", (req, res) => res.json(view(req.media, true)));
+  browser.patch("/:id/review", async (req, res) => {
+    const { state, revision, feedback = "" } = req.body || {};
+    if (!reviewStates.has(state) || !Number.isSafeInteger(revision) || revision < 0 ||
+        typeof feedback !== "string" || !feedback.isWellFormed() || feedback.length > 2000) {
+      return fail(res, 400, "Provide a valid decision, revision and feedback.");
+    }
+    if (req.media.state !== "ready") return fail(res, 409, "Only ready artifacts can be reviewed.");
+    if (revision >= maxReviewRevisions) return fail(res, 409, "The artifact has reached its review history limit.");
+    const entry = { state, revision: revision + 1, feedback: feedback.trim(), at: new Date(), actor: "owner" };
+    const filter = { _id: req.media._id, ownerId: owner(), state: "ready", ...(revision === 0 ?
+      { "review.revision": { $exists: false } } : { "review.revision": revision }) };
+    const result = await records().findOneAndUpdate(filter, {
+      $set: { "review.state": state, "review.revision": entry.revision },
+      $push: { "review.history": entry },
+    }, { returnDocument: "after" });
+    if (!result) return fail(res, 409, "Review changed. Refresh before recording another decision.");
+    return res.json(view(result, true));
+  });
 
   const mutate = (handler) => async (req, res) => {
     const id = req.media._id;
