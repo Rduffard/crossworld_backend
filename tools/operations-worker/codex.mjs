@@ -55,6 +55,21 @@ const studioBriefingTool = {
   description: "Read live studio headquarters data when asked about studio status or attention. Use the returned timestamps and links. Missing integrations are unavailable.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
+const studioMissionTool = {
+  type: "function",
+  name: "coordinate_studio_mission",
+  description: "Register an existing owner-authorized mission grant by ID, inspect the current mission, or revise its pending work when the owner enabled delegated planning.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["register", "inspect", "revise"] },
+      grantId: { type: "string", description: "Identifier of the owner-authorized mission grant." },
+      revision: { type: "integer", minimum: 0 },
+      steps: { type: "array", items: { type: "object" }, maxItems: 20 },
+    },
+    required: ["action"], additionalProperties: false,
+  },
+};
 const studioRecordsTool = {
   type: "function",
   name: "read_studio_records",
@@ -76,10 +91,16 @@ const studioRecordsTool = {
 const delegationTool = {
   type: "function",
   name: "delegate_operations_review",
-  description: "Queue an independent read-only Crossworld Operations interface review. Use only when the owner explicitly requests delegation. Report the actual assignment receipt and queue state.",
+  description: "Queue an independent read-only Crossworld Operations review, optionally for an exact commit. Use only with owner authorization. Report the actual assignment receipt and queue state.",
   inputSchema: {
     type: "object", required: ["employee"], additionalProperties: false,
-    properties: { employee: { type: "string", maxLength: 100, description: "Exact name of the Operations Art Director" } },
+    properties: {
+      employee: { type: "string", maxLength: 100, description: "Exact name of the Operations Art Director" },
+      candidate: { type: "object", required: ["repository", "commit"], additionalProperties: false, properties: {
+        repository: { type: "string", enum: ["crossworld_backend", "crossworld_creative"] },
+        commit: { type: "string", pattern: "^[a-f0-9]{40}$" },
+      } },
+    },
   },
 };
 const artifactTool = {
@@ -318,6 +339,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     const dynamicTools = [
       ...(scope.proposeObjective ? [objectiveTool] : []),
       ...(scope.readStudioRecords ? [studioRecordsTool] : []),
+      ...(scope.coordinateStudioMission ? [studioMissionTool] : []),
       ...(scope.delegateOperationsReview ? [delegationTool] : []),
       ...(scope.readStudioBriefing ? [studioBriefingTool] : []),
       ...(scope.artifactDir && scope.publishArtifact ? [artifactTool] : []),
@@ -351,8 +373,11 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
             } else if (params.tool === studioRecordsTool.name && scope.readStudioRecords) {
               text = JSON.stringify(await scope.readStudioRecords(params.arguments));
               success = true;
+            } else if (params.tool === studioMissionTool.name && scope.coordinateStudioMission) {
+              text = JSON.stringify(await scope.coordinateStudioMission(params.arguments));
+              success = true;
             } else if (params.tool === delegationTool.name && scope.delegateOperationsReview) {
-              const receipt = await scope.delegateOperationsReview(params.callId, params.arguments?.employee);
+              const receipt = await scope.delegateOperationsReview(params.callId, params.arguments?.employee, params.arguments?.candidate);
               text = JSON.stringify(receipt);
               success = true;
               record("activity", "Operations review delegated", receipt.assignmentId);
@@ -376,7 +401,9 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
             record("activity", "Artifact registration failed", Number.isInteger(error.status)
               ? `Relay HTTP ${error.status}` : "The worker could not validate or store the artifact.");
           }
-          text = params?.tool === objectiveTool.name
+          text = params?.tool === studioMissionTool.name
+            ? error.status >= 400 && error.status < 500 ? error.message : "Mission coordination is unavailable."
+            : params?.tool === objectiveTool.name
             ? "The proposal could not be saved. Check the exact active project name and distinct acceptance criteria."
             : params?.tool === artifactTool.name
               ? "The artifact could not be registered. Use a supported file saved directly in the assigned output directory."

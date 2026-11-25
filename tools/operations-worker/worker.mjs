@@ -593,10 +593,12 @@ async function startWorker(draining = () => false) {
             instruction: redact(value.instruction, token), priority: value.priority,
             criteria: Array.isArray(value.criteria) ? value.criteria.map(item => redact(item, token)) : undefined,
           }) : undefined,
-          delegateOperationsReview: job.studioActions === true ? (callId, employee) =>
-            send(`/jobs/${job._id}/delegate-operations-review`, { instance, callId, employee: redact(employee, token) }) : undefined,
+          delegateOperationsReview: job.studioActions === true ? (callId, employee, candidate) =>
+            send(`/jobs/${job._id}/delegate-operations-review`, { instance, callId, employee: redact(employee, token), candidate }) : undefined,
           readStudioRecords: job.studioActions === true ? (query) =>
             send(`/jobs/${job._id}/studio-records`, { ...query, instance }) : undefined,
+          coordinateStudioMission: job.studioActions === true ? (query) =>
+            send(`/jobs/${job._id}/studio-mission`, { ...query, instance }) : undefined,
           readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
           remember: (threadId) => sessions.remember(threadId, job.workspace, profile, job.scopedRevision),
         });

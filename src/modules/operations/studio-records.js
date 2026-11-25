@@ -45,12 +45,21 @@ async function studioRecords({ sources, ownerId, input, jobView, eventBatches })
     if (!definition.fields.includes("status") || (definition.allowedStatuses && !definition.allowedStatuses.includes(status))) return null;
     filter.status = status;
   }
+  if (kind === "assignments" && id && !employeeId && !projectId && !objectiveId) {
+    filter.$or = [{ employeeId: filter.employeeId }, { missionId: { $type: "string" } }];
+    delete filter.employeeId;
+  }
   const records = await sources[definition.source]().find(filter, {
     projection: { ...Object.fromEntries(definition.fields.map(field => [field, 1])),
-      ...(kind === "knowledge" && id ? { body: 1 } : {}), ...(kind === "assignments" && id ? { events: 1 } : {}) },
+      ...(kind === "knowledge" && id ? { body: 1 } : {}),
+      ...(kind === "assignments" && id ? { events: 1, missionId: 1, permissionDiagnostics: 1, reviewCandidate: 1 } : {}) },
   }).sort(kind === "assignments" ? { createdAt: -1, _id: 1 } : { _id: 1 }).skip(offset).limit(limit + 1).toArray();
   const items = records.slice(0, limit).map(record => {
     const item = kind === "assignments" ? jobView(record) : record;
+    if (kind === "assignments" && id && record.missionId && record.permissionDiagnostics) {
+      item.permissionDiagnostics = record.permissionDiagnostics;
+    }
+    if (kind === "assignments" && id && record.reviewCandidate) item.reviewCandidate = record.reviewCandidate;
     if (definition.workspace) {
       const query = new URLSearchParams({ workspace: definition.workspace });
       if (definition.record) {

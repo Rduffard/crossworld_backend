@@ -263,7 +263,7 @@ try {
         const sync = data => send("/jobs/" + job._id + "/sync", { instance, offset: 0, ...data });
         let text = verdict;
         let result = { status: "completed", threadId: randomUUID(), error: "" };
-        if (liveMission && /\nStep: (?:baseline|review|correction|retest)\n/.test(job.prompt)) {
+        if (liveMission && job.missionId === id && /\nStep: (?:baseline|review|correction|retest)\n/.test(job.prompt)) {
           let response = "";
           const lease = setInterval(() => { void beat().then(() => sync({ events: [] })).catch(() => {}); }, 3500);
           try {
@@ -299,6 +299,9 @@ try {
       assert.equal(independent.employeeContext.name, director.name);
       assert.equal((await claim())._id, independent._id);
       await finish(independent, "MISSION_RESULT: CORRECT; NEXT: correction");
+      const afterReview = await item();
+      assert.equal(afterReview.results.review.result, "correct");
+      assert.equal(afterReview.current.step, "correction");
       const correction = await claim();
       assert.match(correction.prompt, /Step: correction/);
       await finish(correction, "MISSION_RESULT: PASS");
@@ -377,25 +380,57 @@ try {
       const sourceConversationId = randomUUID();
       const inheritedId = randomUUID();
       await jobs.insertOne({ _id: sourceConversationId, ownerId: foundationOwner, hostId,
-        workspace: body.workspace, profile: "full-access", workerRole: "direct", status: "completed",
-        studioActor: { role: "first-mate" }, createdAt: new Date() });
+        workspace: body.workspace, profile: "full-access", workerRole: "direct", status: "queued",
+        studioTools: true, studioActor: { role: "first-mate", id: barnaby._id }, sessionId: sourceConversationId,
+        effort: "low", model: "fixture", prompt: "Coordinate the authorized fixture.", events: [], eventCount: 0,
+        createdAt: new Date() });
       const inherited = { ...body, id: inheritedId, sourceConversationId,
         steps: [authorized.steps[0], { ...reviewStep, profile: "read-only", allowProfileFallback: true,
           requires: browserCapabilities.filter(value => value !== "isolated-review") }] };
       assert.equal((await missionApi("/capability-plans", "POST", {
         ...inherited, steps: [inherited.steps[0], { ...inherited.steps[1], allowProfileFallback: false }],
       }))[0], 400);
-      const [inheritedStatus, inheritedMission] = await missionApi("/capability-plans", "POST", inherited);
+      const [inheritedStatus, inheritedMission] = await missionApi("/grants", "POST", {
+        ...inherited, delegatePlanning: true, completionStep: "close", steps: [...inherited.steps,
+          step("close", dep("browser-review"), { requires: ["read"] })],
+      });
       assert.equal(inheritedStatus, 201);
       assert.equal(inheritedMission.sourceConversationId, sourceConversationId);
+      assert.equal(inheritedMission.status, "authorized");
       const inheritedBeat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only", "full-access"],
         missionPreflights: [report("read-only", ["read"]), report("full-access", inherited.steps[1].requires,
           { environment: "windows-account", sandbox: "danger-full-access" })] });
       await inheritedBeat();
+      const coordinator = await scopedClaim();
+      assert.equal(coordinator._id, sourceConversationId);
+      const registration = () => send("/jobs/" + coordinator._id + "/studio-mission", {
+        instance, action: "register", grantId: inheritedId,
+      });
+      const receipts = await Promise.all([registration(), registration()]);
+      assert(receipts.every(receipt => receipt.status === "active" && receipt.registration.actorId === barnaby._id));
+      await finish(coordinator, "Registered the authorized fixture.");
       const inheritedBaseline = await scopedClaim();
       assert.equal(inheritedBaseline.profile, "read-only");
+      assert.equal(inheritedBaseline.missionId, inheritedId);
+      const coordinate = (job, input) => send("/jobs/" + job._id + "/studio-mission", { ...input, instance });
+      const snapshot = await coordinate(inheritedBaseline, { action: "inspect" });
+      const [first, review, close] = snapshot.steps;
+      const exactCandidate = { repository: "crossworld_backend", commit: "6921f22dd1bbc993feb7faea7a460d2526f97197" };
+      const evidence = step("evidence", dep("baseline"), { requires: ["read"], reviewer: director._id, candidate: exactCandidate });
+      const revision = { action: "revise", revision: snapshot.revision, steps: [first, evidence,
+        { ...review, after: [...review.after, ...dep("evidence")] }, close] };
+      await assert.rejects(coordinate(inheritedBaseline, { ...revision,
+        steps: [first, { ...evidence, profile: "full-access" }, ...revision.steps.slice(2)] }), { status: 403 });
+      await coordinate(inheritedBaseline, revision);
+      await assert.rejects(coordinate(inheritedBaseline, revision), { status: 409 });
       await finish(inheritedBaseline, "MISSION_RESULT: PASS");
+      const evidenceJob = await scopedClaim();
+      assert.match(evidenceJob.prompt, /Step: evidence/);
+      assert(evidenceJob.prompt.includes(exactCandidate.commit));
+      assert.equal(evidenceJob.employeeContext.name, director.name);
+      await finish(evidenceJob, "MISSION_RESULT: PASS");
       const inheritedReview = await scopedClaim();
+      await assert.rejects(coordinate(inheritedReview, { action: "inspect" }), { status: 403 });
       assert.equal(inheritedReview.profile, "full-access");
       assert.equal(inheritedReview.permissionDiagnostics.requestedProfile, "read-only");
       assert.equal(inheritedReview.employeeContext.name, director.name);
@@ -407,6 +442,11 @@ try {
       assert.notEqual(retry._id, inheritedReview._id);
       assert.equal(retry.profile, "full-access");
       await finish(retry, "MISSION_RESULT: PASS");
+      const closure = await scopedClaim();
+      assert.match(closure.prompt, /Step: close/);
+      await finish(closure, "MISSION_RESULT: PASS");
+      const closedBeforeClaim = (await missionApi(""))[1].find(record => record._id === inheritedId);
+      assert.equal(closedBeforeClaim.status, "completed");
       assert.equal(await scopedClaim(), null);
       const completedInherited = (await missionApi(""))[1].find(record => record._id === inheritedId);
       assert.equal(completedInherited.status, "completed");
@@ -454,12 +494,15 @@ try {
     assert.equal(profile.items[0].ownerId, undefined);
     await assert.rejects(reviewSend(recordsPath, { instance: reviewInstance, kind: "assignments", limit: 500 }), { status: 400 });
     const reviewPath = "/jobs/" + source + "/delegate-operations-review";
-    const request = { instance: reviewInstance, callId: "review_fixture", employee: director.name };
+    const candidate = { repository: "crossworld_backend", commit: "6921f22dd1bbc993feb7faea7a460d2526f97197" };
+    const request = { instance: reviewInstance, callId: "review_fixture", employee: director.name, candidate };
     await assert.rejects(reviewSend(reviewPath, { ...request, employee: barnaby.name }), { status: 409 });
     const receipts = await Promise.all([reviewSend(reviewPath, request), reviewSend(reviewPath, request)]);
     assert.deepEqual(receipts[0], receipts[1]);
     const [receipt] = receipts;
     assert.equal(receipt.state, "queued");
+    assert.deepEqual(receipt.candidate, candidate);
+    await assert.rejects(reviewSend(reviewPath, { ...request, candidate: { ...candidate, commit: "a".repeat(40) } }), { status: 409 });
     assert.equal(receipt.objectiveId, designObjective._id);
     const queued = await reviewSend(recordsPath, {
       instance: reviewInstance, kind: "assignments", employeeId: director._id, id: receipt.assignmentId,
@@ -473,6 +516,7 @@ try {
     const claimedReview = await reviewSend("/claim", { instance: reviewInstance });
     assert.equal(claimedReview._id, receipt.assignmentId);
     assert.equal(claimedReview.profile, "read-only");
+    assert(claimedReview.prompt.includes(candidate.commit));
     assert.equal(claimedReview.workerRole, "assignment");
     assert.equal(claimedReview.codexThreadId, null);
     assert.equal(claimedReview.studioActions, undefined);

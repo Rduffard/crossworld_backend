@@ -133,6 +133,7 @@ function createRouter({
   const studioActions = createStudioActions({
     proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
+    reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -542,6 +543,7 @@ function createRouter({
       ...(job.blueprintTyped ? { blueprintTyped: true } : {}),
       ...(job.isolatedReview ? { isolatedReview: true } : {}),
       ...(job.studioTools === true ? { studioActions: true } : {}),
+      ...(job.studioTools === true && job.missionId ? { missionId: job.missionId } : {}),
       ...(identity ? { employeeContext: identity } : {}),
       ...(decisions.length ? { approvedDecisions: decisions } : {}),
       ...(delegatedOutcomes.length ? { delegatedOutcomes } : {}),
@@ -570,7 +572,7 @@ function createRouter({
     }
     const query = { _id: req.params.id, ownerId: owner(), hostId: req.operationsHost._id, instance };
     const current = await jobs().findOne(query, {
-      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1 },
+      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1, missionId: 1 },
     });
     if (!current) return reject(res, 404, "Job assignment not found.");
     if (terminal.includes(current.status)) return res.json(current);
@@ -624,6 +626,17 @@ function createRouter({
       leaseUntil: { $gt: new Date() },
     }, update, { projection: { status: 1, eventCount: 1 }, returnDocument: "after" });
     if (!saved) return reject(res, 409, "Job lease or status changed. Retry sync.");
+    if (result && current.missionId && workerEnabled) {
+      try {
+        const settings = await dispatch().findOne({ _id: query.ownerId });
+        if (!settings?.paused && !maintenanceActive(settings)) {
+          await missions.reconcile({ ...req.operationsHost, ownerId: query.ownerId }, current.missionId);
+        }
+      } catch (error) {
+        // The terminal job is durable. The next primary claim retries reconciliation.
+        reportError(failureDiagnostic(error, "mission continuation"));
+      }
+    }
     const decision = current.decision?.id === approval?.id && approval?.state === "pending"
       ? current.decision : undefined;
     const instruction = current.instruction?.state === "pending" && current.instruction.id !== steering?.id
