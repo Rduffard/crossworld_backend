@@ -24,6 +24,12 @@ node crossworld_backend/tools/operations-worker/open-pull-request.mjs 'C:\Users\
 
 The owner-only API, per-device authentication, single-use command approvals, and normal filesystem scopes are technical controls. Owner direction for in-sandbox Git actions, publishing prohibitions for arbitrary commands, and care with credentials are instructions. The shared Windows account and unelevated sandbox are not credential-read isolation. Production art lives outside the normal writable roots. Its promotion requires a separate human decision for a command with the exact production target. One-time sandbox escape approvals can reach anything this Windows account can access. The optional typed broker, local integration-branch adapter, and version-switch supervisor remain available for testing and are not prerequisites for ordinary editing or Git.
 
+## Operation FOUNDRY release authorization
+
+On November 25, 2026, the owner authorized direct pushes to `main` for independently validated, routine Crossworld Operations improvements within Operation FOUNDRY. This covers the SHOWTIME frontend batches and routine compatible application improvements during FOUNDRY. Coordinate concurrent changes, validate the exact candidate independently before publication, use the established Push → Test → Deploy workflow, then verify the hosted application and health. Correct or safely revert failed releases.
+
+Existing approvals still apply to production art promotion, supervisor replacement, sensitive infrastructure changes, destructive operations, security policy changes, and financial commitments. The authorization is scoped to FOUNDRY. Commit and publication authority outside FOUNDRY follows the normal owner instruction policy.
+
 ## Blender, Unity, and Aseprite
 
 Operations uses the existing local tools with a named allowlist for MCP inspection. Blender scene and addon status, Unity object inspection and test status, and Aseprite sprite inspection are exposed when their configured servers are available. Blender Python execution, Unity C# or menu dispatch, and Aseprite Lua are not exposed through those desktop MCP servers because they run with native process privileges. Use the installed application's background or batch commands in the relevant writable workspace for modeling, rendering, authorized test runs, and pixel edits. A batch command outside the sandbox needs the same one-time approval as any other command.

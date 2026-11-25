@@ -360,8 +360,13 @@ try {
       revision: 0, name: "Review sequence", steps: [{ ...steps[0], dependencies: [secondStep] }, steps[1]],
     }))[0], 400);
     assert.equal((await blueprintApi(blueprintPath, "PUT", { revision: 0, name: "Review sequence", steps }, other))[0], 403);
-    const [blueprintStatus, blueprint] = await blueprintApi(blueprintPath, "PUT", { revision: 0, name: "Review sequence", steps });
+    const layout = { [firstStep]: { x: 40, y: 75 } };
+    assert.equal((await blueprintApi(blueprintPath, "PUT", {
+      revision: 0, name: "Review sequence", steps, layout: { [randomUUID()]: { x: 40, y: 75 } },
+    }))[0], 400);
+    const [blueprintStatus, blueprint] = await blueprintApi(blueprintPath, "PUT", { revision: 0, name: "Review sequence", steps, layout });
     assert.equal(blueprintStatus, 200);
+    assert.deepEqual((await blueprintApi("/blueprints", "GET"))[1].blueprints.find(item => item._id === blueprintId).layout, layout);
     const run = { runId: randomUUID(), revision: blueprint.revision, objectiveId: designObjective._id, hostId: reviewHost, workspace: "development" };
     assert.equal((await blueprintApi(blueprintPath + "/runs", "POST", run))[0], 201);
     assert.equal((await blueprintApi(blueprintPath + "/runs", "POST", run))[0], 200);
