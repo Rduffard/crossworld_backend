@@ -28,7 +28,7 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
         projection: { ...jobFields, finishedAt: 1 },
       }).sort({ finishedAt: -1, _id: 1 }).limit(12).toArray(),
       jobs().find({ ...scope, activeHost: { $type: "string" }, status: { $in: live } }, {
-        projection: { ...jobFields, activeHost: 1, leaseUntil: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },
+        projection: { ...jobFields, activeHost: 1, leaseUntil: 1, startedAt: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },
       }).toArray(),
       jobs().find({ ...scope, status: "scheduled" }, {
         projection: { ...jobFields, scheduledAt: 1 },
@@ -63,7 +63,7 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
         if (state === "running" && job.approval?.state === "pending" &&
             job.approval.expiresAt > +now && job.decision?.id !== job.approval.id) state = "approval required";
         return {
-          _id: job._id, title: job.title, workspace: job.workspace, status: job.status, state,
+          _id: job._id, title: job.title, workspace: job.workspace, status: job.status, state, startedAt: job.startedAt,
           employee: job.assigneeName || job.reviewerName || job.conversationActor?.name || job.studioActor?.name,
           slot: job.activeHost === host._id + ":review" ? "background review" : "primary",
         };

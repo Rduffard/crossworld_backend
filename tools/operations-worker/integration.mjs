@@ -1652,6 +1652,24 @@ try {
     assert.equal((await api(steerRoute, { method: "POST", body: steerBody }))[0], 204);
     assert.equal((await api(steerRoute, { method: "POST", body: steerBody }))[0], 204);
     await until(async () => (await detail(interactive)).instruction?.state === "accepted");
+    const threadRoute = "/jobs/" + interactive + "?conversation=true";
+    const [, thread] = await api(threadRoute);
+    assert.equal(thread.steeringHistory.length, 1);
+    assert.equal(thread.steeringHistory[0].id, steerBody.id);
+    assert.equal(thread.steeringHistory[0].text, steerBody.input);
+    assert.ok(Number.isSafeInteger(thread.steeringHistory[0].eventOffset));
+    assert.ok(thread.steeringHistory[0].eventOffset <= thread.eventCount);
+    assert.equal((await api(threadRoute + "&compact=true"))[1].steeringHistory, undefined);
+    assert.equal((await api(threadRoute, { user: other }))[0], 403);
+    const persistedJobs = db.db.collection("operations_jobs");
+    const savedSteeringBytes = (await persistedJobs.findOne({ _id: interactive })).steeringHistoryBytes;
+    await persistedJobs.updateOne({ _id: interactive }, { $set: { steeringHistoryBytes: 8 * 1024 * 1024 } });
+    const [fullSteeringStatus, fullSteering] = await api(steerRoute, {
+      method: "POST", body: { ...steerBody, id: randomUUID() },
+    });
+    assert.equal(fullSteeringStatus, 409);
+    assert.match(fullSteering.message, /Send a follow-up/);
+    await persistedJobs.updateOne({ _id: interactive }, { $set: { steeringHistoryBytes: savedSteeringBytes } });
     const choice = liveInteractive ? "approve" : "deny";
     const approvalRoute = `/jobs/${interactive}/approval`;
     const decide = (id, choice, user = owner) => api(approvalRoute, { user, method: "POST", body: { id, choice } });

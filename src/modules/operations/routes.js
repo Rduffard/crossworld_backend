@@ -43,6 +43,7 @@ const spansWorkspaces = ["full-access", "scoped"];
 const terminal = ["completed", "failed", "cancelled", "interrupted"];
 const leaseMs = 45_000;
 const syncEventLimit = 12;
+const steeringHistoryBudget = 8 * 1024 * 1024;
 const eventPageSize = 40;
 const maxScheduleDelayMs = 366 * 24 * 60 * 60 * 1000;
 const deviceHash = (token) => createHash("sha256").update(token).digest("hex");
@@ -846,7 +847,8 @@ function createRouter({
         { $set: { prompt: { $substrCP: ["$prompt", 0, 55] } } },
         { $unset: "instruction.text" },
       ] : []),
-      { $unset: ["events", "instance", "activeHost", "approvalHistory", "assignmentContext", "assignmentDigest"] },
+      { $unset: ["events", "instance", "activeHost", "approvalHistory", "assignmentContext", "assignmentDigest",
+        "steeringHistory", "steeringHistoryBytes"] },
     ]).toArray();
     const roots = await jobs().find({
       ownerId: owner(), _id: { $in: [...new Set(records.map((job) => job.sessionId || job._id))] },
@@ -942,8 +944,10 @@ function createRouter({
       return reject(res, 400, "Invalid event offset.");
     }
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() }, {
-      projection: { events: { $slice: [Math.min(offset, 2_147_483_647), eventPageSize] }, instance: 0, activeHost: 0, assignmentDigest: 0,
-        ...(req.query.compact === "true" ? { prompt: 0, assignmentContext: 0, "instruction.text": 0 } : {}) },
+      projection: { events: { $slice: [Math.min(offset, 2_147_483_647), eventPageSize] },
+        instance: 0, activeHost: 0, assignmentDigest: 0, steeringHistoryBytes: 0,
+        ...(req.query.compact === "true" ? { prompt: 0, assignmentContext: 0, "instruction.text": 0 } : {}),
+        ...(req.query.conversation === "true" && req.query.compact !== "true" ? {} : { steeringHistory: 0 }) },
     });
     if (!job) return reject(res, 404, "Job not found.");
     job.events ||= [];
@@ -1012,19 +1016,41 @@ function createRouter({
     }
     const invalid = promptError(input, "Steering instruction");
     if (invalid) return reject(res, 400, invalid);
-    const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() });
-    if (job?.instruction?.id === id) return res.sendStatus(204);
+    const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() }, { projection: {
+      hostId: 1, instance: 1, blueprintTyped: 1, "instruction.id": 1, steeringHistory: { $elemMatch: { id } },
+    } });
+    if (job?.instruction?.id === id || job?.steeringHistory?.length) return res.sendStatus(204);
     if (job?.blueprintTyped) return reject(res, 409, "Typed Blueprint steps use the recorded instructions for their run.");
     const host = job && await hosts().findOne({ _id: job.hostId, ownerId: owner(), instance: job.instance });
     if (!host || !online(host)) return reject(res, 409, "The assigned worker is disconnected.");
     if (input.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
+    const at = new Date();
+    // Leave room for BSON metadata and terminal execution state in the job record.
+    const entryBytes = Buffer.byteLength(input, "utf8") + 160;
     const changed = await jobs().updateOne({
       _id: job._id, ownerId: owner(), instance: host.instance, status: "running", leaseUntil: { $gt: new Date() },
-      "activeTurn.turnId": turnId,
+      "activeTurn.turnId": turnId, "steeringHistory.id": { $ne: id },
+      $expr: { $lte: [{ $ifNull: ["$steeringHistoryBytes", 0] }, steeringHistoryBudget - entryBytes] },
       $or: [{ instruction: { $exists: false } }, { "instruction.state": { $in: ["accepted", "rejected", "uncertain"] } },
         { "instruction.expiresAt": { $lte: Date.now() } }],
-    }, { $set: { instruction: { id, turnId, text: input, expiresAt: Date.now() + 20_000, state: "pending" } } });
-    if (!changed.matchedCount) return reject(res, 409, "The turn changed or an instruction is awaiting acknowledgement.");
+    }, [{ $set: {
+      instruction: { $literal: { id, turnId, text: input, expiresAt: +at + 20_000, state: "pending" } },
+      // The worker offset remains private to its append-only event stream.
+      steeringHistory: { $concatArrays: [
+        { $ifNull: ["$steeringHistory", []] },
+        [{ id: { $literal: id }, text: { $literal: input }, at: { $literal: at }, eventOffset: "$eventCount" }],
+      ] },
+      steeringHistoryBytes: { $add: [{ $ifNull: ["$steeringHistoryBytes", 0] }, entryBytes] },
+    } }]);
+    if (!changed.matchedCount) {
+      const committed = await jobs().findOne({ _id: job._id, ownerId: owner() }, {
+        projection: { steeringHistory: { $elemMatch: { id } }, steeringHistoryBytes: 1 },
+      });
+      if (committed?.steeringHistory?.length) return res.sendStatus(204);
+      if (committed?.steeringHistoryBytes + entryBytes > steeringHistoryBudget)
+        return reject(res, 409, "This execution’s steering history is full. Send a follow-up to continue.");
+      return reject(res, 409, "The turn changed or an instruction is awaiting acknowledgement.");
+    }
     res.sendStatus(204);
   });
   router.post(["/jobs", "/schedule", "/recurrence"], async (req, res) => {
