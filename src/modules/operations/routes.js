@@ -49,6 +49,8 @@ const deviceHash = (token) => createHash("sha256").update(token).digest("hex");
 const uuid = (value) => typeof value === "string" && /^[a-f\d-]{36}$/.test(value);
 const text = (value, max) => typeof value === "string" && value.length <= max;
 const future = (value, max) => Number.isSafeInteger(value) && value <= Date.now() + max;
+const unexpired = (now = new Date()) => ({ $or: [{ dispatchBefore: { $exists: false } }, { dispatchBefore: { $gt: now } }] });
+const missedDeadline = "The dispatch deadline passed before the worker could start.";
 const ownerAllowed = (owner, user) =>
   /^[a-f\d]{24}$/.test(owner || "") && owner === user?._id;
 const online = (host, now = Date.now()) => !host.revokedAt && Number(now) - Number(host.lastSeen) < 15_000;
@@ -63,6 +65,9 @@ const hostLimit = (host) => host?.extendedPrompts === true ? PROMPT_LIMIT : LEGA
 const upgradeMessage = "This worker supports up to 12,000 characters. Update and restart it to send longer prompts.";
 
 function jobView(job) {
+  if (job.dispatchBefore && +job.dispatchBefore <= Date.now() && ["scheduled", "queued", "waiting"].includes(job.status)) {
+    job = { ...job, status: "interrupted", error: missedDeadline };
+  }
   if (job.leaseUntil <= new Date() && ["running", "cancelling"].includes(job.status)) {
     job = { ...job, status: "interrupted", error: "Worker lease expired." };
   }
@@ -301,6 +306,10 @@ function createRouter({
     const isolated = scope.hostId === isolatedReviewHostId();
     if (!job && isolated && (!background || !reviewOnlyHost(req.operationsHost))) return res.json(null);
     if (!job && !background) {
+      await jobs().updateMany({ ...scope, status: { $in: ["scheduled", "queued", "waiting"] }, dispatchBefore: { $lte: new Date() } }, {
+        $set: { status: "interrupted", error: missedDeadline, finishedAt: new Date() },
+        $unset: { successorOf: "" },
+      });
       const blocked = await jobs().aggregate([
         { $match: { ...scope, status: "waiting" } },
         { $set: { dependencyId: { $ifNull: ["$reviewOf", "$parentId"] } } },
@@ -398,6 +407,7 @@ function createRouter({
               $or: [{ workspace: { $ne: other.workspace }, profile: { $nin: spansWorkspaces } }, { profile: { $in: [null, "read-only"] } }],
             }] : []),
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
+            unexpired(),
             { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
           ],
         }, { $set: {
@@ -491,7 +501,15 @@ function createRouter({
     const projectIds = job.projectId ? [job.projectId] : (identity?.projects || []).map(project => project.projectId);
     const decisions = identity ? await approvedDecisions(knowledge, scope.ownerId, projectIds) : [];
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
+    if (job.dispatchBefore && +job.dispatchBefore <= Date.now() && job.status === "running") {
+      await jobs().updateOne({ _id, ...scope, instance, status: "running" }, {
+        $set: { status: "interrupted", error: missedDeadline, finishedAt: new Date() },
+        $unset: { successorOf: "", activeHost: "" },
+      });
+      return res.json(null);
+    }
     res.json({ _id, prompt: job.assignmentContext ? prompt + job.assignmentContext : prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole,
+      ...(job.dispatchBefore ? { dispatchBefore: job.dispatchBefore } : {}),
       ...(job.scopedRevision ? { scopedRevision: job.scopedRevision } : {}),
       ...(job.blueprintTyped ? { blueprintTyped: true } : {}),
       ...(job.isolatedReview ? { isolatedReview: true } : {}),
@@ -678,7 +696,7 @@ function createRouter({
   router.use("/blueprints", blueprints.router);
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
-    res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
+    res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null, dispatchDeadlines: true });
   });
   router.get("/dispatch/parent-continuation", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() }, { projection: { parentContinuation: 1 } });
@@ -865,8 +883,8 @@ function createRouter({
     return res.sendStatus(204);
   });
   router.get("/schedule", async (_req, res) => {
-    const records = await jobs().find({ ownerId: owner(), status: "scheduled", seriesId: { $exists: false } }, {
-      projection: { hostId: 1, scheduledAt: 1, status: 1, workspace: 1 },
+    const records = await jobs().find({ ownerId: owner(), status: "scheduled", seriesId: { $exists: false }, ...unexpired() }, {
+      projection: { hostId: 1, scheduledAt: 1, dispatchBefore: 1, status: 1, workspace: 1 },
     }).sort({ scheduledAt: 1, _id: 1 }).limit(50).toArray();
     res.json(records);
   });
@@ -876,11 +894,11 @@ function createRouter({
       return reject(res, 400, "Select a future execution time within 366 days.");
     }
     const updated = await jobs().updateOne({
-      _id: req.params.id, ownerId: owner(), status: "scheduled", seriesId: { $exists: false },
+      _id: req.params.id, ownerId: owner(), status: "scheduled", seriesId: { $exists: false }, ...unexpired(new Date(scheduledAt)),
     }, {
       $set: { scheduledAt: new Date(scheduledAt) },
     });
-    if (!updated.matchedCount) return reject(res, 409, "The schedule is no longer awaiting dispatch.");
+    if (!updated.matchedCount) return reject(res, 409, "The schedule is no longer awaiting dispatch or the new time is past its deadline.");
     res.sendStatus(204);
   });
   router.delete("/schedule/:id", async (req, res) => {
@@ -1031,7 +1049,7 @@ function createRouter({
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
     if (await inMaintenance()) return reject(res, 423, "New executions are paused for production maintenance.");
     const { id, hostId, workspace: requestedWorkspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId,
-      attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId, artifactImport } = req.body || {};
+      attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId, artifactImport, dispatchBefore } = req.body || {};
     const repeating = /^\/recurrence\/?$/i.test(req.path);
     const scheduling = repeating || /^\/schedule\/?$/i.test(req.path);
     const assigning = objectiveId !== undefined || employeeId !== undefined;
@@ -1051,12 +1069,13 @@ function createRouter({
         (profile === "scoped" && scheduling) ||
         (recipientId !== undefined && (!uuid(recipientId) || parentId || assigning || scheduling || studioTools || profile !== "read-only")) ||
         (assigning && (scheduling || parentId || !uuid(objectiveId) || !uuid(employeeId))) ||
-        (typeof studioTools !== "boolean" || (studioTools && (scheduling || assigning))) ||
+        (typeof studioTools !== "boolean" || (studioTools && (assigning || (scheduling && (profile !== "read-only" || dispatchBefore === undefined))))) ||
         (typeof includeProjectReferences !== "boolean" || (includeProjectReferences && !assigning)) ||
         (typeof outputMedia !== "boolean" || (outputMedia && (scheduling || parentId || workspace !== "workshop" || profile !== "workshop"))) ||
         (artifactImport !== undefined && (!outputMedia || studioTools || !validArtifactImport(artifactImport))) ||
         (!Array.isArray(attachmentIds) || attachmentIds.length > 4 || (scheduling && attachmentIds.length)) ||
         (repeating ? !validRepeat(repeat) : repeat !== undefined) ||
+        (dispatchBefore !== undefined && (!scheduling || repeating || !future(dispatchBefore, maxScheduleDelayMs) || dispatchBefore <= scheduledAt)) ||
         (scheduling ? parentId || !future(scheduledAt, maxScheduleDelayMs) : scheduledAt !== undefined)) {
       return reject(res, 400, "Invalid job request.");
     }
@@ -1076,10 +1095,11 @@ function createRouter({
       .update(JSON.stringify([objectiveId, employeeId, hostId, workspace, profile, model, effort, prompt,
         ...(includeProjectReferences ? [true] : [])])).digest("hex") : undefined;
     const existingJob = () => jobs().findOne({ _id: id, ownerId: owner() }, {
-      projection: { assignmentDigest: 1, mediaInputs: 1, submittedAttachmentIds: 1, outputMedia: 1, studioTools: 1, requestedRecipientId: 1, artifactImport: 1 },
+      projection: { assignmentDigest: 1, mediaInputs: 1, submittedAttachmentIds: 1, outputMedia: 1, studioTools: 1, requestedRecipientId: 1, artifactImport: 1, dispatchBefore: 1 },
     });
     const replayJob = (record) => seriesRequest || record.assignmentDigest !== assignmentDigest || (record.outputMedia === true) !== outputMedia ||
         (record.studioTools === true) !== studioTools || record.requestedRecipientId !== recipientId ||
+        (+record.dispatchBefore || undefined) !== (dispatchBefore ?? (parent?.dispatchBefore ? +parent.dispatchBefore : undefined)) ||
         JSON.stringify(record.artifactImport) !== JSON.stringify(manifest) ||
         JSON.stringify(record.submittedAttachmentIds || record.mediaInputs?.map((entry) => entry.id) || []) !== JSON.stringify(attachmentIds)
       ? reject(res, 409, "Identifier already belongs to a different turn.") : res.json({ _id: id });
@@ -1088,6 +1108,7 @@ function createRouter({
     if (scheduledAt !== undefined && scheduledAt <= Date.now()) {
       return reject(res, 400, "Select a future execution time.");
     }
+    if (parent?.dispatchBefore && +parent.dispatchBefore <= Date.now()) return reject(res, 409, "This conversation reached its dispatch deadline.");
     const host = await hosts().findOne({ _id: hostId, ownerId: owner(), revokedAt: null });
     if (hostId === isolatedReviewHostId()) return reject(res, 409, "This device is reserved for isolated delegated reviews.");
     if (!host || (!queue && scheduledAt === undefined && !online(host)) || !host.efforts?.includes(effort) ||
@@ -1205,6 +1226,7 @@ function createRouter({
         codexThreadId: queue ? null : parent?.codexThreadId || null,
         status: scheduledAt !== undefined ? "scheduled" : queue ? "waiting" : "queued",
         ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt) } : {}),
+        ...(dispatchBefore ? { dispatchBefore: new Date(dispatchBefore) } : parent?.dispatchBefore ? { dispatchBefore: parent.dispatchBefore } : {}),
         createdAt: new Date(), events: [], eventCount: 0,
       });
     } catch (error) {

@@ -1538,6 +1538,24 @@ try {
     assert.ok(headquarters.recent.some((entry) => entry._id === scheduled.id && entry.status === "completed"));
     console.log("Durable schedule, offline catch-up, dispatch pause, rescheduling, cancellation, and replay PASS");
 
+    const cutoff = Date.now() + 120_000;
+    const bounded = { ...scheduled, id: randomUUID(), scheduledAt: cutoff - 60_000, dispatchBefore: cutoff, studioTools: true };
+    assert.equal((await api("/schedule", { method: "POST", body: { ...bounded, dispatchBefore: bounded.scheduledAt } }))[0], 400);
+    assert.equal((await api("/schedule", { method: "POST", body: { ...bounded, profile: "development" } }))[0], 400);
+    assert.equal((await api("/schedule", { method: "POST", body: bounded }))[0], 201);
+    assert.equal((await api("/schedule", { method: "POST", body: { ...bounded, dispatchBefore: cutoff + 1 } }))[0], 409);
+    assert.equal((await api(`/schedule/${bounded.id}`, { method: "PATCH", body: { scheduledAt: cutoff } }))[0], 409);
+    assert.equal((await api("/schedule"))[1][0].dispatchBefore, new Date(cutoff).toISOString());
+    const preDeadlineLaunches = launchCount;
+    await jobs.updateOne({ _id: bounded.id }, { $set: {
+      scheduledAt: new Date(Date.now() - 60_000), dispatchBefore: new Date(Date.now() - 1000),
+    } });
+    assert.equal((await detail(bounded.id)).status, "interrupted");
+    assert.deepEqual((await api("/schedule"))[1], []);
+    await until(async () => (await jobs.findOne({ _id: bounded.id })).status === "interrupted");
+    assert.equal(launchCount, preDeadlineLaunches);
+    console.log("Bounded schedules reject cutoff changes, expire overdue work and never launch it PASS");
+
     const recurring = {
       id: randomUUID(), hostId: device.id, workspace: "development", model: "gpt-6.2-sol", effort: "low",
       prompt: "Bounded recurring turn", scheduledAt: Date.now() + 1500, repeat: { days: 1, count: 2 },

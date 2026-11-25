@@ -14,7 +14,11 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
       jobs().aggregate([
         { $match: scope },
         { $group: { _id: { $cond: [
-          { $and: [{ $in: ["$status", live] }, { $lte: ["$leaseUntil", now] }] },
+          { $or: [
+            { $and: [{ $in: ["$status", live] }, { $lte: ["$leaseUntil", now] }] },
+            { $and: [{ $in: ["$status", ["scheduled", "queued", "waiting"]] },
+              { $eq: [{ $type: "$dispatchBefore" }, "date"] }, { $lte: ["$dispatchBefore", now] }] },
+          ] },
           "interrupted", "$status",
         ] }, count: { $sum: 1 } } },
       ]).toArray(),
@@ -30,7 +34,9 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
       jobs().find({ ...scope, activeHost: { $type: "string" }, status: { $in: live } }, {
         projection: { ...jobFields, activeHost: 1, leaseUntil: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },
       }).toArray(),
-      jobs().find({ ...scope, status: "scheduled" }, {
+      jobs().find({ ...scope, status: "scheduled",
+        $or: [{ dispatchBefore: { $exists: false } }, { dispatchBefore: { $gt: now } }],
+      }, {
         projection: { ...jobFields, scheduledAt: 1 },
       }).sort({ scheduledAt: 1, _id: 1 }).limit(8).toArray(),
       objectives().aggregate([

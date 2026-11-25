@@ -88,6 +88,10 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       state.result = { status: "cancelled", error: "" };
       return;
     }
+    if (job.dispatchBefore && Date.parse(job.dispatchBefore) <= Date.now()) {
+      state.result = { status: "interrupted", error: "The dispatch deadline passed before local execution started." };
+      return;
+    }
     const peer = active.get(lane === "primary" ? "review" : "primary")?.job;
     const primary = lane === "primary" ? job : peer;
     const review = lane === "review" ? job : peer;

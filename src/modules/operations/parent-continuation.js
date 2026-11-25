@@ -22,6 +22,10 @@ async function reconcileParentContinuations({ jobs, eventBatches, ownerId, hostI
       await finish(existing._id);
       continue;
     }
+    if (source.dispatchBefore && +source.dispatchBefore <= Date.now()) {
+      await finish("dispatch-deadline");
+      continue;
+    }
     let parent = source;
     for (;;) {
       const successor = await jobs.findOne({ ownerId, hostId, sessionId, successorOf: parent._id });
@@ -52,6 +56,7 @@ async function reconcileParentContinuations({ jobs, eventBatches, ownerId, hostI
         _id: id, ownerId, hostId, sessionId, parentId: parent._id, successorOf: parent._id, resumedFrom: child._id,
         workspace: source.workspace, profile: source.profile || "read-only", model: source.model, effort: source.effort,
         ...(source.scopedRevision ? { scopedRevision: source.scopedRevision } : {}),
+        ...(source.dispatchBefore ? { dispatchBefore: source.dispatchBefore } : {}),
         studioTools: true, studioActor: source.studioActor, codexThreadId: source.codexThreadId,
         workerRole: "direct", status: "queued", prompt, requiresExtendedPrompt: true,
         createdAt: new Date(), events: [], eventCount: 0,

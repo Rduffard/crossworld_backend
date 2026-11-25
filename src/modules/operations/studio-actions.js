@@ -26,7 +26,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, dispatchBefore: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
@@ -91,6 +91,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const replay = job => job.delegatedBy.callId === callId && job.assigneeName.toLowerCase() === employee.trim().toLowerCase()
       ? res.json(receipt(job)) : fail(res, 409, "This turn already delegated an Operations review.");
     if (existing) return replay(existing);
+    if (source.dispatchBefore && +source.dispatchBefore <= Date.now()) return fail(res, 409, "This initiative reached its dispatch deadline.");
     if (await inMaintenance()) return fail(res, 423, "New executions are paused for production maintenance.");
 
     const host = req.operationsHost;
@@ -141,6 +142,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       ...(isolated ? { isolatedReview: true } : {}),
       resumeParent: { id: source._id, hostId: host._id },
       workerRole: "assignment", sessionId: id, parentId: null, codexThreadId: null, status: "queued",
+      ...(source.dispatchBefore ? { dispatchBefore: source.dispatchBefore } : {}),
       ...(source.mediaInputs?.length ? { mediaInputs: source.mediaInputs } : {}),
       delegatedBy: {
         sourceTurnId: source._id, sessionId: source.sessionId || source._id, employeeId: actor._id,
