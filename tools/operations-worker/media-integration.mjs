@@ -14,7 +14,7 @@ import media from "../../src/modules/operations/media.js";
 const { CHUNK } = media;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-async function verifyOutput({ api, send, device, instance, storage, pixel, outputJobs, files, fetchMedia, root }) {
+async function verifyOutput({ api, send, device, instance, storage, pixel, outputJobs, files, fetchMedia, root, db }) {
   const name = "test-card.png";
   const metadata = { name, size: pixel.length, mime: "image/png", sha256: hash(pixel) };
   const submit = (body) => api("/jobs", { method: "POST", body });
@@ -91,6 +91,19 @@ async function verifyOutput({ api, send, device, instance, storage, pixel, outpu
   assert.equal(downloaded.headers.get("content-type"), "model/gltf-binary");
   assert.match(downloaded.headers.get("content-disposition"), /^attachment;/);
   assert.equal(hash(Buffer.from(await downloaded.arrayBuffer())), hash(model));
+  const jobs = db.collection("operations_jobs");
+  const scopedOutput = { profile: "scoped", workerRole: "scoped-assignment", assignmentScopeId: "creative" };
+  await jobs.updateOne({ _id: job._id }, { $set: { ...scopedOutput, activeHost: device.id + ":scope:other" } });
+  const scopedName = "scoped-card.png";
+  const scopedMetadata = { ...metadata, name: scopedName };
+  await assert.rejects(notify(job._id, "reserve", scopedMetadata), { status: 403 });
+  await jobs.updateOne({ _id: job._id }, { $set: { activeHost: device.id + ":scope:creative" } });
+  await writeFile(path.join(outbox.directory, scopedName), pixel);
+  const scopedPublished = await publication(scopedName);
+  files.push(scopedPublished.id);
+  const scopedDownload = await fetchMedia(`/${scopedPublished.id}/content`);
+  assert.equal(scopedDownload.status, 200);
+  assert.equal(hash(Buffer.from(await scopedDownload.arrayBuffer())), hash(pixel));
   await assert.rejects(notify(job._id, "reserve", { ...metadata, sha256: "0".repeat(64) }), { status: 409 });
   await send(`/jobs/${job._id}/sync`, { instance, events: [], offset: 0, result: { status: "completed", error: "" } });
   await assert.rejects(notify(job._id, "reserve"), { status: 403 });
@@ -229,7 +242,7 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
     assert.equal((await api(`/jobs/${accepted._id}?compact=true`))[1].mediaInputs[0].id, id);
     await send(`/jobs/${claimed._id}/sync`, { instance, offset: 0, events: [],
       result: { status: "completed", threadId: randomUUID(), error: "" } });
-    await verifyOutput({ api, send, device, instance, storage, pixel: prefix, outputJobs, files, fetchMedia, root });
+    await verifyOutput({ api, send, device, instance, storage, pixel: prefix, outputJobs, files, fetchMedia, root, db });
     await heartbeat();
 
     if (process.argv.includes("--media-image-live")) {
