@@ -19,4 +19,6 @@ function redact(value, deviceToken) {
     .replace(/((?:[\w-]*(?:token|secret|password|api[_-]?key)|authorization|cookie)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, "$1[redacted]");
 }
 
-module.exports = { failureDiagnostic, redact };
+const preflightChanged = "The local mission preflight changed after relay admission.";
+
+module.exports = { failureDiagnostic, preflightChanged, redact };

@@ -2,6 +2,14 @@
 
 The hosted worker runs under the existing Windows account. Start it with **Start Crossworld Operations.cmd**. It verifies the local Codex subscription and write profiles, reuses the registered device credential, takes its single-instance lock, and reconnects after relay outages. The backend issues assignments by default. The existing launcher and any local startup entry that calls it use the same path. A lost worker lease can interrupt a turn and requires explicit continuation before more work runs.
 
+## Operation HORIZON
+
+The owner’s November 25, 2026 HORIZON mandate governs Crossworld Operations product development. Cite the workspace’s `docs/horizon/vision.md` and `docs/horizon/requirements.md` in future development plans. Retain the earlier initiative records and their validated results.
+
+HORIZON has explicit Full Access authorization for implementation, delegated assignments, independent review, corrective work and continuation where necessary. Owner-imposed ceilings and executive approvals remain binding. First Mate may revise a self-selected assignment profile within the approved mission ceiling. The owner may lock a step to its required profile. A genuine hosted demonstration through the home relay gates broader HORIZON implementation. The existing Windows account is authorized and Full Access runs with its ordinary operating-system permissions. A separate Windows account is optional.
+
+The owner extended routine, independently validated incremental application release authorization from FOUNDRY to HORIZON, including commit and push through the established deployment workflow. The owner also authorized this bootstrap's controlled Home PC worker handover. Preserve the independent supervisor and known-good worker release. Major releases, significant scope changes, final artwork and sensitive infrastructure operations retain their executive approval requirements.
+
 ## Workspace and Git permissions
 
 | Selection | Normal command sandbox |

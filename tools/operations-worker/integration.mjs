@@ -374,6 +374,45 @@ try {
       await finish(scopedReview, "MISSION_RESULT: PASS");
       assert.equal(await scopedClaim(), null);
       assert.equal((await missionSnapshot()).status, "completed");
+      const sourceConversationId = randomUUID();
+      const inheritedId = randomUUID();
+      await jobs.insertOne({ _id: sourceConversationId, ownerId: foundationOwner, hostId,
+        workspace: body.workspace, profile: "full-access", workerRole: "direct", status: "completed",
+        studioActor: { role: "first-mate" }, createdAt: new Date() });
+      const inherited = { ...body, id: inheritedId, sourceConversationId,
+        steps: [authorized.steps[0], { ...reviewStep, profile: "read-only", allowProfileFallback: true,
+          requires: browserCapabilities.filter(value => value !== "isolated-review") }] };
+      assert.equal((await missionApi("/capability-plans", "POST", {
+        ...inherited, steps: [inherited.steps[0], { ...inherited.steps[1], allowProfileFallback: false }],
+      }))[0], 400);
+      const [inheritedStatus, inheritedMission] = await missionApi("/capability-plans", "POST", inherited);
+      assert.equal(inheritedStatus, 201);
+      assert.equal(inheritedMission.sourceConversationId, sourceConversationId);
+      const inheritedBeat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only", "full-access"],
+        missionPreflights: [report("read-only", ["read"]), report("full-access", inherited.steps[1].requires,
+          { environment: "windows-account", sandbox: "danger-full-access" })] });
+      await inheritedBeat();
+      const inheritedBaseline = await scopedClaim();
+      assert.equal(inheritedBaseline.profile, "read-only");
+      await finish(inheritedBaseline, "MISSION_RESULT: PASS");
+      const inheritedReview = await scopedClaim();
+      assert.equal(inheritedReview.profile, "full-access");
+      assert.equal(inheritedReview.permissionDiagnostics.requestedProfile, "read-only");
+      assert.equal(inheritedReview.employeeContext.name, director.name);
+      await send("/jobs/" + inheritedReview._id + "/sync", { instance, offset: 0, events: [],
+        result: { status: "failed", error: "The local mission preflight changed after relay admission." } });
+      assert.equal(await scopedClaim(), null);
+      await inheritedBeat();
+      const retry = await scopedClaim();
+      assert.notEqual(retry._id, inheritedReview._id);
+      assert.equal(retry.profile, "full-access");
+      await finish(retry, "MISSION_RESULT: PASS");
+      assert.equal(await scopedClaim(), null);
+      const completedInherited = (await missionApi(""))[1].find(record => record._id === inheritedId);
+      assert.equal(completedInherited.status, "completed");
+      assert.equal(completedInherited.results["browser-review"].previousJobId, inheritedReview._id);
+      await jobs.deleteMany({ ownerId: foundationOwner, $or: [{ missionId: inheritedId }, { _id: sourceConversationId }] });
+      await db.db.collection("operations_missions").deleteOne({ _id: inheritedId, ownerId: foundationOwner });
       const [pilotStatus, pilot] = await api("/hosts/mission-pilot", {
         user: foundationOwner, method: "POST", body: { label: "Disposable isolated pilot", missionOnly: true },
       });

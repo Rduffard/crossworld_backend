@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { acquireWorkerLock, loadCredential } from "./windows.mjs";
-import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -18,6 +18,119 @@ const { PROMPT_LIMIT } = promptLimits;
 const { rateLimitObservation, usageHoldUntil } = usageTools;
 const interval = 1000;
 const offlineLimit = 15_000;
+
+async function probeCommand(development, workshop, chrome, blender, fullAccess) {
+  const { mkdtempSync, readFileSync, rmSync, writeFileSync, unlinkSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join, parse } = await import("node:path");
+  const { randomUUID } = await import("node:crypto");
+  const { spawnSync } = await import("node:child_process");
+  const { pathToFileURL } = await import("node:url");
+  const marker = "cw-preflight-" + randomUUID();
+  const writeProbe = root => {
+    const file = join(root, marker);
+    try {
+      writeFileSync(file, marker, { flag: "wx" });
+      try { return readFileSync(file, "utf8") === marker; }
+      finally { unlinkSync(file); }
+    } catch { return false; }
+  };
+  const verified = [];
+  if (readFileSync(process.execPath).length) verified.push("read");
+  if (fullAccess === "true") {
+    const developmentWrite = writeProbe(development);
+    const workshopWrite = writeProbe(workshop);
+    if (developmentWrite && workshopWrite) {
+      verified.push("write");
+      if (parse(development).root.toLowerCase() !== parse(workshop).root.toLowerCase()) verified.push("cross-drive");
+    }
+    if (writeProbe(tmpdir())) verified.push("scratch");
+    const spawn = (command, args) => spawnSync(command, args, { timeout: 9000, encoding: "utf8", windowsHide: true });
+    if (spawn(process.execPath, ["-e", "process.exit(0)"]).status === 0) verified.push("subprocess");
+    try {
+      const response = await fetch("https://crossworldcreative.com/operations", { signal: AbortSignal.timeout(5000) });
+      if (response.ok) verified.push("network");
+      await response.body?.cancel();
+    } catch { /* Network remains unverified. */ }
+    if (chrome && verified.includes("scratch")) {
+      try {
+        const temporaryRoot = tmpdir();
+        const directory = mkdtempSync(join(temporaryRoot, marker + "-"));
+        try {
+          const file = join(directory, "fixture.html");
+          writeFileSync(file, "<script>document.documentElement.dataset.probed = 'yes'</script>", { flag: "wx" });
+          const result = spawn(chrome, ["--headless", "--no-first-run", "--no-default-browser-check",
+            "--user-data-dir=" + join(directory, "profile"), "--dump-dom", pathToFileURL(file).href]);
+          if (result.status === 0 && result.stdout.includes('data-probed="yes"')) verified.push("browser");
+        } finally {
+          if (parse(directory).root === parse(temporaryRoot).root &&
+              directory.startsWith(join(temporaryRoot, marker + "-"))) {
+            rmSync(directory, { recursive: true, force: true, maxRetries: 2 });
+          }
+        }
+      } catch { /* Browser remains unverified. */ }
+    }
+    if (blender) {
+      const result = spawn(blender, ["--background", "--factory-startup", "--python-exit-code", "1",
+        "--python-expr", "import bpy; assert bpy.data.objects.get('Cube'); print('CW_BLENDER_READY')"]);
+      if (result.status === 0 && result.stdout.includes("CW_BLENDER_READY")) verified.push("blender");
+    }
+  }
+  console.log(JSON.stringify(verified));
+}
+
+function missionPreflight({ exe, version, workspaces, fullAccess, draining }) {
+  const chrome = process.env.OPERATIONS_CHROME_EXE || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+  const blender = process.env.OPERATIONS_BLENDER_EXE || installedBlender();
+  const runtime = createHash("sha256").update(JSON.stringify({ exe, version, workspaces, chrome, blender, fullAccess,
+    probe: probeCommand.toString() })).digest("hex");
+  let reports = [];
+  let nextCheck = 0;
+  return () => {
+    if (!draining() && Date.now() >= nextCheck) {
+      nextCheck = Date.now() + 5 * 60_000;
+      void refresh();
+    }
+    return reports.filter(report => Date.now() - report.observedAt < 15 * 60_000);
+  };
+
+  async function refresh() {
+    const server = new AppServer(exe, workspaces.development);
+    const observed = [];
+    try {
+      await server.initialize();
+      for (const profile of fullAccess ? ["read-only", "full-access"] : ["read-only"]) {
+        const unrestricted = profile === "full-access";
+        try {
+          const result = await server.request("command/exec", {
+            command: [process.execPath, "-e", `(${probeCommand})(...process.argv.slice(1)).catch(() => process.exitCode = 1)`,
+              workspaces.development, workspaces.workshop, chrome, blender, String(unrestricted)],
+            cwd: workspaces.development, sandboxPolicy: { type: unrestricted ? "dangerFullAccess" : "readOnly" },
+            timeoutMs: 35_000,
+          });
+          if (result.exitCode !== 0) continue;
+          observed.push({ profile, runtime, observedAt: Date.now(), capabilities: JSON.parse(result.stdout),
+            environment: unrestricted ? "windows-account" : "windows-sandbox",
+            sandbox: unrestricted ? "danger-full-access" : "read-only" });
+        } catch { /* This route remains unverified. */ }
+      }
+    } catch { /* Keep the relay available for other work. */ }
+    finally { server.close(); reports = observed; }
+  }
+}
+
+function installedBlender() {
+  const directory = path.join(process.env.ProgramFiles || "C:\\Program Files", "Blender Foundation");
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && /^Blender \d/.test(entry.name))
+      .map(entry => path.join(directory, entry.name, "blender.exe"))
+      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+      .find(file => existsSync(file)) || "";
+  } catch {
+    return "";
+  }
+}
 
 export function backendClient(base, token) {
   if (!base) throw new Error("Set OPERATIONS_BACKEND_URL or open Start Crossworld Operations.cmd.");
@@ -98,7 +211,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
           Date.now() - live.observedAt >= 15 * 60_000 ||
           !receipt.requiredCapabilities.every(value => live.capabilities.includes(value)) ||
           !live.capabilities.every(value => receipt.authorizedCapabilities.includes(value))) {
-        state.result = { status: "failed", error: "The local mission preflight changed after relay admission." };
+        state.result = { status: "failed", error: diagnostics.preflightChanged };
         return;
       }
     }
@@ -385,6 +498,7 @@ async function startWorker(draining = () => false) {
     relayVersion: createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex").slice(0, 12),
     supervised: process.connected === true && process.argv.includes("--supervised"),
     draining,
+    getMissionPreflights: isolatedRoot ? undefined : missionPreflight({ exe, version, workspaces, fullAccess, draining }),
     reportHeartbeat: report => {
       if (process.connected) process.send({ type: "heartbeat", ...report }, () => {});
     },
