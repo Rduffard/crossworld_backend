@@ -420,7 +420,8 @@ try {
       const revision = { action: "revise", revision: snapshot.revision, steps: [first, evidence,
         { ...review, after: [...review.after, ...dep("evidence")] }, close] };
       await assert.rejects(coordinate(inheritedBaseline, { ...revision,
-        steps: [first, { ...evidence, profile: "full-access" }, ...revision.steps.slice(2)] }), { status: 403 });
+        steps: [first, step("evidence", dep("baseline"), { profile: "full-access", requires: ["read"] }),
+          ...revision.steps.slice(2)] }), { status: 403 });
       await coordinate(inheritedBaseline, revision);
       await assert.rejects(coordinate(inheritedBaseline, revision), { status: 409 });
       await finish(inheritedBaseline, "MISSION_RESULT: PASS");
