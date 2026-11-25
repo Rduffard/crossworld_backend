@@ -20,6 +20,7 @@ const liveWorkshop = live || process.argv.includes("--workshop-live");
 const liveCancellation = process.argv.includes("--cancel-live");
 const liveInteractive = process.argv.includes("--interactive-live");
 const liveObjectiveRuns = process.argv.includes("--objective-runs-live");
+const liveMission = process.argv.includes("--mission-live");
 const directGit = process.argv.includes("--direct-git-live");
 const owner = "1".repeat(24);
 const other = "2".repeat(24);
@@ -225,6 +226,108 @@ try {
     const source = randomUUID();
     const reviewImage = { id: randomUUID(), mime: "image/png", sha256: "d".repeat(64), size: 128 };
     const jobs = db.db.collection("operations_jobs");
+    {
+      const missionApi = (path, method = "GET", body, user = foundationOwner) => api("/missions" + path, { method, body, user });
+      const { id: hostId, token } = (await api("/hosts", {
+        user: foundationOwner, method: "POST", body: { label: "Disposable mission relay" },
+      }))[1];
+      const send = backendClient(base, token);
+      let instance = randomUUID();
+      const beat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only"] });
+      const claim = () => send("/claim", { instance });
+      await beat();
+      const missionPrompts = {
+        baseline: "Inspect src/modules/operations/missions.js. Identify the configured maximum operating window. For this disposable test, deliberately omit the value from your short report, then report MISSION_RESULT: PASS to pass it to QA.",
+        review: "The preceding baseline should have reported the maximum operating window value. Check its excerpt and the implementation. If the value is absent, explain the missing evidence and report MISSION_RESULT: CORRECT.",
+        correction: "Inspect src/modules/operations/missions.js and report the missing maximum operating window value, including its source expression and units. Report MISSION_RESULT: PASS when you can verify it.",
+        retest: "Independently verify the reported operating-window maximum against src/modules/operations/missions.js. Report MISSION_RESULT: PASS only if the correction gives the right value.",
+      };
+      const step = (key, after = [], fields = {}) => ({
+        key, title: key, prompt: missionPrompts[key] || "Inspect the fixture evidence.", profile: "read-only", after, ...fields,
+      });
+      const dep = (key, result = "pass") => [{ step: key, result }];
+      const id = randomUUID();
+      const body = { id, title: "Durable fixture", hostId, workspace: "development", effort: "low",
+        endsAt: new Date(Date.now() + 600_000).toISOString(),
+        steps: [step("baseline"), step("review", dep("baseline"), { reviewer: director._id }),
+          step("correction", dep("review", "correct")), step("retest", dep("correction"), { reviewer: director._id }),
+          step("owner-gate", [], { approval: true }), step("unrelated")] };
+      assert.equal((await missionApi("", "POST", body, owner))[0], 403);
+      assert.equal((await missionApi("", "POST", { ...body, steps: [step("constructor")] }))[0], 400);
+      assert.equal((await missionApi("", "POST", body))[0], 201);
+      assert.equal((await missionApi("", "POST", body))[0], 200);
+      assert.equal((await missionApi("", "POST", { ...body, title: "Changed plan" }))[0], 409);
+      const item = async () => (await missionApi(""))[1].find(record => record._id === id);
+      const action = async (action, extra = {}) => missionApi("/" + id, "PATCH", { action, revision: (await item()).revision, ...extra });
+      const finish = async (job, verdict) => {
+        const sync = data => send("/jobs/" + job._id + "/sync", { instance, offset: 0, ...data });
+        let text = verdict;
+        let result = { status: "completed", threadId: randomUUID(), error: "" };
+        if (liveMission && /\nStep: (?:baseline|review|correction|retest)\n/.test(job.prompt)) {
+          let response = "";
+          const lease = setInterval(() => { void beat().then(() => sync({ events: [] })).catch(() => {}); }, 3500);
+          try {
+            const { exe } = discoverCodex();
+            const cwd = process.cwd();
+            result = await runTurn(new AppServer(exe, cwd), job, cwd, (view, _label, value) => {
+              if (view === "response") response += value;
+            }, AbortSignal.timeout(120_000));
+            assert.equal(result.status, "completed", result.error);
+            assert.ok(response.includes(verdict.split(";")[0]), "Live mission execution omitted the expected verdict.");
+            text = response.slice(-3000).toWellFormed();
+          } finally { clearInterval(lease); }
+        }
+        return sync({ events: [{ view: "response", label: "Final response", text }], result });
+      };
+      const baseline = await claim();
+      assert.match(baseline.prompt, /Step: baseline/);
+      assert.equal(baseline.studioActions, true);
+      const status = await send("/jobs/" + baseline._id + "/studio-briefing", { instance });
+      assert.equal(status.missions.find(mission => mission.id === id).current.jobId, baseline._id);
+      await assert.rejects(send("/jobs/" + baseline._id + "/delegate-operations-review", {
+        instance, callId: "mission-must-not-delegate", employee: director.name,
+      }), { status: 409 });
+      assert.equal((await action("pause"))[0], 200);
+      await finish(baseline, "MISSION_RESULT: PASS");
+      assert.equal(await claim(), null);
+      assert.equal((await action("resume"))[0], 200);
+      await db.db.collection("operations_hosts").updateOne({ _id: hostId }, { $set: { lastSeen: new Date(0) } });
+      instance = randomUUID();
+      await beat();
+      const independent = await claim();
+      assert.match(independent.prompt, /Step: review/);
+      assert.equal(independent.employeeContext.name, director.name);
+      assert.equal((await claim())._id, independent._id);
+      await finish(independent, "MISSION_RESULT: CORRECT; NEXT: correction");
+      const correction = await claim();
+      assert.match(correction.prompt, /Step: correction/);
+      await finish(correction, "MISSION_RESULT: PASS");
+      const retest = await claim();
+      assert.match(retest.prompt, /Step: retest/);
+      await finish(retest, "MISSION_RESULT: PASS");
+      const unrelated = await claim();
+      assert.match(unrelated.prompt, /Step: unrelated/);
+      await finish(unrelated, "MISSION_RESULT: PASS");
+      assert.equal(await claim(), null);
+      assert.deepEqual((await item()).awaitingApprovals, ["owner-gate"]);
+      assert.equal((await action("approve", { step: "owner-gate" }))[0], 200);
+      await db.db.collection("operations_missions").updateOne({ _id: id }, { $set: { endsAt: new Date(0) } });
+      assert.equal(await claim(), null);
+      assert.equal((await item()).status, "expired");
+      assert.equal((await action("resume", { endsAt: new Date(Date.now() + 600_000).toISOString() }))[0], 200);
+      const gate = await claim();
+      assert.match(gate.prompt, /Step: owner-gate/);
+      assert.equal((await action("terminate"))[0], 200);
+      await finish(gate, "MISSION_RESULT: PASS");
+      assert.equal(await claim(), null);
+      assert.equal(await jobs.countDocuments({ missionId: id, missionStep: "review" }), 1);
+      await jobs.deleteMany({ missionId: id, ownerId: foundationOwner });
+      await db.db.collection("operations_missions").deleteOne({ _id: id, ownerId: foundationOwner });
+      await db.db.collection("operations_hosts").deleteOne({ _id: hostId, ownerId: foundationOwner });
+      console.log("Mission branching, independent identity, pause/resume, reconnect deduplication, approval, expiry and termination PASS" +
+        (liveMission ? " · Four subscription-backed turns completed against the loopback controller." : ""));
+    }
+    await reviewSend("/heartbeat", { instance: reviewInstance, efforts: ["low"], profiles: ["read-only"], media: true });
     await jobs.insertOne({
       _id: source, ownerId: foundationOwner, hostId: reviewHost, activeHost: reviewHost,
       instance: reviewInstance, status: "running", leaseUntil: new Date(Date.now() + 45000),

@@ -27,6 +27,7 @@ const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
+const { createMissions } = require("./missions");
 const { createMedia, mediaObservation } = require("./media");
 const { createFinance } = require("./finance");
 const { createCommunications } = require("./communications");
@@ -108,6 +109,9 @@ function createRouter({
   const series = () => db().collection("operations_recurrence");
   const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled, inMaintenance });
   const recurrence = createRecurrence({ records: series, jobs });
+  const missionRecords = () => db().collection("operations_missions");
+  const missions = createMissions({ records: missionRecords, jobs, workforce, hosts, eventBatches,
+    dispatch, owner, online, workerEnabled, inMaintenance });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
   const blueprintDefinitions = () => db().collection("operations_blueprints");
@@ -126,7 +130,8 @@ function createRouter({
       hostLimit(host) >= length && !usageHoldUntil(host.usage) ? host : null;
   }
   const studioActions = createStudioActions({
-    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
+    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references,
+    owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -140,6 +145,7 @@ function createRouter({
     indexes ||= Promise.all([
       eventBatches().createIndex({ jobId: 1, offset: 1 }, { unique: true }),
       series().createIndex({ ownerId: 1, hostId: 1, state: 1, nextAt: 1 }),
+      missionRecords().createIndex({ ownerId: 1, hostId: 1, status: 1, endsAt: 1 }),
       references().createIndex({ ownerId: 1, createdAt: -1, _id: -1 }),
       knowledge().createIndex({ ownerId: 1, projectId: 1, createdAt: -1 }),
       finance().createIndex({ ownerId: 1, month: 1 }),
@@ -356,6 +362,7 @@ function createRouter({
       const continuationEnabled = settings?.parentContinuation === true;
       if (!background) {
         await recurrence.reconcile(req.operationsHost);
+        await missions.reconcile({ ...req.operationsHost, ownerId: scope.ownerId });
         if (!usageHoldUntil(req.operationsHost.usage)) await blueprints.reconcile(scope);
         if (continuationEnabled && !usageHoldUntil(req.operationsHost.usage) &&
             req.operationsHost.extendedPrompts === true && req.body.extendedPrompts === true) {
@@ -370,6 +377,7 @@ function createRouter({
       const sameWorkspaceRestriction = other && (!background || (other.profile && other.profile !== "read-only"));
       const held = usageHoldUntil(req.operationsHost.usage);
       if (background && (held || spansWorkspaces.includes(other?.profile))) return res.json(null);
+      const missionJobs = background || held ? [] : await missions.eligible(scope.ownerId, scope.hostId);
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
@@ -389,6 +397,7 @@ function createRouter({
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
             { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: req.operationsHost.scopedRevision || "" }] },
             ...(background ? [{ $or: [
               { delegatedBy: { $exists: true }, workerRole: "assignment" },
@@ -413,6 +422,17 @@ function createRouter({
       }
     }
     if (!job) return res.json(null);
+    if (job.missionId && !job.runAuthorizedAt && job.status === "running") {
+      const pendingMission = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
+      if (!await missions.admit(job, req.operationsHost)) {
+        await jobs().updateOne(pendingMission, {
+          $set: { status: "queued" }, $unset: { activeHost: "", instance: "", leaseUntil: "", startedAt: "" },
+        });
+        return res.json(null);
+      }
+      const authorized = await jobs().updateOne(pendingMission, { $set: { runAuthorizedAt: new Date() } });
+      if (!authorized.matchedCount) return res.json(null);
+    }
     if (job.seriesId && !job.runAuthorizedAt && job.status === "running") {
       const key = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
       if (!await recurrence.authorizes(job)) {
@@ -471,14 +491,15 @@ function createRouter({
       _id: actorId, ownerId: scope.ownerId, kind: "employee", status: "available",
       ...(job.conversationActor ? { workspace: job.workspace, role: job.conversationActor.role } : {}),
     }) : null;
-    if ((job.conversationActor && !actor) || (job.resumedFrom && actor?.role !== "first-mate")) {
+    if ((job.conversationActor && !actor) || (job.resumedFrom && actor?.role !== "first-mate") ||
+        (job.missionId && actor?.role !== job.studioActor.role)) {
       await jobs().updateOne({ _id: job._id, ...scope, instance, status: "running" }, {
         $set: { status: "interrupted", finishedAt: new Date(), error: "The recipient is no longer available in this workspace and role." },
         $unset: { activeHost: "" },
       });
       return res.json(null);
     }
-    const outcomes = job.studioTools === true && !job.resumedFrom ? await jobs().find({
+    const outcomes = job.studioTools === true && !job.resumedFrom && !job.missionId ? await jobs().find({
       ownerId: scope.ownerId, "delegatedBy.sessionId": job.sessionId || job._id,
       status: { $in: terminal }, finishedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
     }, { projection: { assigneeName: 1, status: 1, error: 1, eventCount: 1, finishedAt: 1, events: 1 } })
@@ -614,6 +635,7 @@ function createRouter({
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
   router.use("/supervisor", lifecycle.browser);
+  router.use("/missions", missions.router);
   router.use("/owner-preferences", createOwnerPreferences({ records: () => db().collection("operations_owner_preferences"), owner }));
   router.use("/organization", createOrganization({ workforce, projects, objectives, owner }));
   router.use("/projects", createProjects({ records: projects, owner }));
@@ -1188,6 +1210,7 @@ function createRouter({
       return reject(res, 409, "Session cannot be continued with that execution profile.");
     }
     if (parent?.blueprintTyped) return reject(res, 409, "Run a Blueprint revision to execute typed Blueprint steps.");
+    if (parent?.missionId) return reject(res, 409, "Use the mission controls to continue a mission step.");
     if (parent && profile === "scoped" && parent.scopedRevision !== scopedRevision) {
       return reject(res, 409, "The scoped permissions changed. Start a new conversation to use them.");
     }

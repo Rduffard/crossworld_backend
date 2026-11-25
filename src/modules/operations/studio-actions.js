@@ -15,7 +15,8 @@ const fail = (res, status, message) => res.status(status).json({ message });
 const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
-function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
+function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters,
+  missionBriefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -26,13 +27,13 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, missionId: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
     if (!await directTurn(req)) return fail(res, 409, "An active First Mate turn is required.");
     const ownerId = owner();
-    const briefing = await headquarters(ownerId);
+    const [briefing, missions] = await Promise.all([headquarters(ownerId), missionBriefing(ownerId)]);
     const turn = (item) => ({
       id: item._id, title: item.title || item.workspace, workspace: item.workspace, status: item.status,
       url: `/operations?workspace=command&job=${item._id}`,
@@ -42,6 +43,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       observedAt: briefing.observedAt, paused: briefing.paused, hosts: briefing.hosts,
       turns: briefing.jobs, objectiveStatuses: briefing.objectives,
       finance: briefing.finance,
+      missions,
       relays: briefing.workforce.slice(0, 12).map(device => ({
         name: device.label, state: device.state, lastSeen: device.lastSeen, usageResumesAt: device.usageResumesAt,
         usage: device.usage || null,
@@ -80,6 +82,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }
     const source = await directTurn(req);
     if (!source?.studioActor?.id || !workerEnabled) return fail(res, 409, "An active, bound First Mate is required.");
+    if (source.missionId) return fail(res, 409, "The mission controller owns this step’s follow-on dispatch.");
     const ownerId = owner();
     const id = operationsReviewId(source._id);
     const key = { _id: id, ownerId, "delegatedBy.sourceTurnId": source._id };
@@ -171,6 +174,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }
     const job = await directTurn(req);
     if (!job) return fail(res, 409, "An active First Mate turn is required.");
+    if (job.missionId) return fail(res, 409, "Mission steps can read records. Use the owner’s mission controls to change the plan.");
     const candidates = await projects().find({ ownerId, status: "active", name: sameName(project.trim()) }, {
       projection: { name: 1, revision: 1 },
     }).limit(2).toArray();
