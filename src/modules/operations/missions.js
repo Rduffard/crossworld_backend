@@ -460,9 +460,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
     });
     if (usageHoldUntil(host.usage)) return;
-    if (!missionId && !host.missionOnly && horizonRecovery.expiresAt > new Date()) {
-      await recoverHostedHorizon(scope);
-    }
+    if (!missionId) await recoverHostedHorizon(host);
     const candidates = records().find({ ...activeQuery(scope.ownerId, scope.hostId), ...scope }).sort({ createdAt: 1, _id: 1 });
     for await (let mission of candidates) {
       if (mission.current) {
@@ -540,9 +538,10 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }
   }
 
-  async function recoverHostedHorizon(scope) {
+  async function recoverHostedHorizon(host) {
     const { missionId, jobId, coordinatorId, assigneeId, expiresAt, step, resolution } = horizonRecovery;
-    const mission = await records().findOne({ ...scope, _id: missionId, status: "blocked", current: null,
+    if (host.missionOnly || host.isolatedReviewSnapshot || usageHoldUntil(host.usage) || expiresAt <= new Date()) return;
+    const mission = await records().findOne({ ownerId: host.ownerId, hostId: host._id, _id: missionId, status: "blocked", current: null,
       workspace: "development", coordinatorActorId: coordinatorId, "registration.actorId": coordinatorId,
       endsAt: { $gt: new Date(), $lte: expiresAt }, "results.implementation.jobId": jobId,
       recoveries: { $not: { $elemMatch: { step } } } });
@@ -550,7 +549,9 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
         !mission.steps.some(candidate => candidate.key === step && candidate.assignee === assigneeId)) return;
     const recovery = recoverStep(mission, { step, resolution, end: mission.endsAt,
       attribution: { authorizationReference: "HORIZON owner recovery decision 2026-11-25" } });
-    if (recovery.fields) await change(mission, recovery.fields);
+    if (recovery.fields && (await change(mission, recovery.fields)).matchedCount) {
+      await enqueue({ ...mission, ...recovery.fields, revision: mission.revision + 1 }, host);
+    }
   }
 
   async function eligible(ownerId, host, supportsPreflight) {
@@ -590,7 +591,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }));
   }
 
-  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn };
+  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn, recoverHostedHorizon };
 }
 
 module.exports = { createMissions };
