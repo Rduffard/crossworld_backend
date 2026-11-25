@@ -3,7 +3,7 @@ const express = require("express");
 const idPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
 const fields = {
   title: 1, employeeId: 1, assigneeName: 1, reviewerName: 1, studioActor: 1, objectiveId: 1, projectId: 1,
-  workspace: 1, workerRole: 1, status: 1, error: 1, reviewOf: 1, parentId: 1,
+  workspace: 1, workerRole: 1, status: 1, error: 1, reviewOf: 1, parentId: 1, resumeDisposition: 1,
   "delegatedBy.sourceTurnId": 1, "delegatedBy.employeeId": 1, "delegatedBy.sessionId": 1,
   createdAt: 1, startedAt: 1, finishedAt: 1, leaseUntil: 1,
 };

@@ -89,6 +89,7 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled, inMai
     if (!host.media || !online(host) || req.body?.instance !== host.instance) return res.sendStatus(409);
     const current = pending.get(req.body.replyId);
     if (current?.hostId === host._id && current.instance === host.instance) current.finish(req.body.reply);
+    if (req.body.draining === true) return res.json(null);
     const find = () => [...pending].find(([, item]) => item.hostId === host._id && item.instance === host.instance);
     const payload = (entry) => entry ? { requestId: entry[0], ...entry[1].operation } : null;
     const ready = find();

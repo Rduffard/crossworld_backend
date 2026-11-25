@@ -1,6 +1,6 @@
 const express = require("express");
 
-const profiles = ["read-only", "development", "workshop", "full-access"];
+const profiles = ["read-only", "development", "workshop", "scoped", "full-access"];
 const efforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const validModel = value => typeof value === "string" && /^[a-z\d][a-z\d._-]{0,79}$/i.test(value);
 const validators = {

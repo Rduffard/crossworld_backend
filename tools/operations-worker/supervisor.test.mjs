@@ -3,6 +3,27 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { superviseRelay } from "./supervisor.mjs";
 import { runWorker } from "./worker.mjs";
+import { pollMedia } from "./media-storage.mjs";
+
+test("media drain acknowledges the accepted transfer without polling for another", { timeout: 5000 }, async () => {
+  const controller = new AbortController();
+  const requestId = "63d7822b-9b1c-4b29-b735-db87a743a8ed";
+  const requests = [];
+  let drain = false;
+  await pollMedia({
+    signal: controller.signal, instance: "fixture", draining: () => drain,
+    send: async (_path, message) => {
+      requests.push(message);
+      if (requests.length === 1) return { requestId };
+      return null;
+    },
+    storage: { execute: async () => { drain = true; return { state: "ok" }; } },
+  });
+  assert.deepEqual(requests, [
+    { instance: "fixture" },
+    { instance: "fixture", replyId: requestId, reply: { state: "ok" }, draining: true },
+  ]);
+});
 
 const launch = source => spawn(process.execPath, ["-e", source], {
   windowsHide: true, stdio: ["ignore", "ignore", "ignore", "ipc"],

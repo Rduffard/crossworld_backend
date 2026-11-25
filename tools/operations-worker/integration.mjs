@@ -47,8 +47,10 @@ const db = await mongoose.createConnection(`mongodb://127.0.0.1:${mongoPort}`, {
   dbName: database, serverSelectionTimeoutMS: 4000,
 }).asPromise();
 const app = express();
+let isolatedReviewHostId;
 app.use("/operations", createRouter({
   db: () => db.db,
+  isolatedReviewHostId: () => isolatedReviewHostId,
   reportError: console.error,
 }));
 const server = app.listen(0, "127.0.0.1");
@@ -289,8 +291,246 @@ try {
     assert.equal(workflowReview.hasReport, true);
     assert.equal((await api(workflowPath, { user: other }))[0], 403);
     console.log("First Mate Operations review authorization, concurrent replay, queue, independent claim and attribution PASS");
+    const { id: snapshotHost, token: snapshotToken } = (await api("/hosts", {
+      user: foundationOwner, method: "POST", body: { label: "Isolated snapshot relay" },
+    }))[1];
+    isolatedReviewHostId = snapshotHost;
+    const snapshotSend = backendClient(base, snapshotToken);
+    const snapshotInstance = randomUUID();
+    const snapshotHeartbeat = { instance: snapshotInstance, efforts: ["low"], backgroundReviews: true, isolatedReviewSnapshot: true };
+    await assert.rejects(snapshotSend("/heartbeat", { ...snapshotHeartbeat, profiles: ["read-only", "full-access"] }), { status: 409 });
+    await snapshotSend("/heartbeat", snapshotHeartbeat);
+    const full = randomUUID();
+    const thread = randomUUID();
+    const fullRecords = "/jobs/" + full + "/studio-records";
+    await reviewSend("/heartbeat", { instance: reviewInstance, efforts: ["low"], profiles: ["read-only", "full-access"],
+      extendedPrompts: true, backgroundReviews: true });
+    await jobs.insertOne({
+      _id: full, ownerId: foundationOwner, hostId: reviewHost, activeHost: reviewHost, instance: reviewInstance,
+      status: "running", leaseUntil: new Date(Date.now() + 45_000), workspace: "development", profile: "full-access",
+      workerRole: "direct", studioTools: true, studioActor: { id: barnaby._id }, model: "gpt-6.2-sol", effort: "low",
+    });
+    const isolatedReview = await reviewSend("/jobs/" + full + "/delegate-operations-review", { ...request, callId: "isolated_fixture" });
+    assert.equal(await reviewSend("/claim", { instance: reviewInstance, lane: "review" }), null);
+    assert.equal(await snapshotSend("/claim", { instance: snapshotInstance }), null);
+    const snapshot = await snapshotSend("/claim", { instance: snapshotInstance, lane: "review" });
+    assert.equal(snapshot._id, isolatedReview.assignmentId);
+    assert.equal(snapshot.isolatedReview, true);
+    assert.equal(snapshot.profile, "read-only");
+    assert.equal((await jobs.findOne({ _id: full })).status, "running");
+    await snapshotSend("/jobs/" + snapshot._id + "/sync", {
+      instance: snapshotInstance, offset: 0, events: [
+        { view: "response", label: "Final response", text: "Independent finding. Bearer fixture-" },
+        { view: "response", label: "Final response", text: "credential" },
+      ], result: { status: "completed", threadId: randomUUID(), error: "" },
+    });
+    const excerpt = await reviewSend(fullRecords, { instance: reviewInstance, kind: "assignments", id: snapshot._id });
+    assert.match(excerpt.items[0].resultExcerpt, /Independent finding\. Bearer \[redacted\]/);
+    assert.equal(excerpt.items[0].events, undefined);
+    assert.equal((await reviewSend("/claim", { instance: reviewInstance, extendedPrompts: true }))._id, full);
+    await jobs.updateOne({ _id: full }, { $set: { status: "completed", codexThreadId: thread }, $unset: { activeHost: "" } });
+    const claimParent = () => reviewSend("/claim", { instance: reviewInstance, extendedPrompts: true });
+    const continuationPath = "/dispatch/parent-continuation";
+    assert.deepEqual((await api(continuationPath, { user: foundationOwner }))[1], { enabled: false });
+    assert.equal(await claimParent(), null);
+    assert.equal(await jobs.countDocuments({ resumedFrom: snapshot._id }), 0);
+    assert.equal((await api(continuationPath, { user: other, method: "PATCH", body: { enabled: true } }))[0], 403);
+    assert.deepEqual((await api(continuationPath, { user: foundationOwner, method: "PATCH", body: { enabled: true } }))[1], { enabled: true });
+    const resumed = await claimParent();
+    assert.equal(resumed.codexThreadId, thread);
+    assert.equal(resumed.profile, "full-access");
+    assert.match(resumed.prompt, /Independent finding/);
+    assert.equal((await claimParent())._id, resumed._id);
+    assert.equal(await jobs.countDocuments({ resumedFrom: snapshot._id }), 1);
+    await reviewSend("/jobs/" + resumed._id + "/sync", {
+      instance: reviewInstance, offset: 0, events: [], result: { status: "completed", threadId: thread, error: "" },
+    });
+    assert.equal(await claimParent(), null);
+    console.log("Isolated review overlaps Full Access and resumes its parent exactly once PASS");
+    const blueprintId = randomUUID();
+    const firstStep = randomUUID();
+    const secondStep = randomUUID();
+    const blueprintPath = "/blueprints/" + blueprintId;
+    const steps = [
+      { id: firstStep, name: "Inspect fixture", employeeId: director._id, dependencies: [], prompt: "Record observation A.", requiresApproval: true },
+      { id: secondStep, name: "Check fixture", employeeId: director._id, dependencies: [firstStep], prompt: "Record observation B." },
+    ];
+    const blueprintApi = (path, method, body, user = foundationOwner) => api(path, { user, method, body });
+    assert.equal((await blueprintApi(blueprintPath, "PUT", {
+      revision: 0, name: "Review sequence", steps: [{ ...steps[0], dependencies: [secondStep] }, steps[1]],
+    }))[0], 400);
+    assert.equal((await blueprintApi(blueprintPath, "PUT", { revision: 0, name: "Review sequence", steps }, other))[0], 403);
+    const [blueprintStatus, blueprint] = await blueprintApi(blueprintPath, "PUT", { revision: 0, name: "Review sequence", steps });
+    assert.equal(blueprintStatus, 200);
+    const run = { runId: randomUUID(), revision: blueprint.revision, objectiveId: designObjective._id, hostId: reviewHost, workspace: "development" };
+    assert.equal((await blueprintApi(blueprintPath + "/runs", "POST", run))[0], 201);
+    assert.equal((await blueprintApi(blueprintPath + "/runs", "POST", run))[0], 200);
+    assert.equal((await blueprintApi(blueprintPath, "PUT", { revision: blueprint.revision, name: "New revision", steps }))[0], 200);
+    const countBlueprintJobs = () => jobs.countDocuments({ blueprintRunId: run.runId });
+    for (const [index, expected] of steps.entries()) {
+      const job = await claimParent();
+      assert.equal(job.profile, "read-only");
+      assert.match(job.prompt, new RegExp(expected.prompt));
+      assert.equal((await claimParent())._id, job._id);
+      assert.equal(await countBlueprintJobs(), index + 1);
+      const approvalPath = "/blueprints/runs/" + run.runId + "/steps/" + expected.id + "/approval";
+      if (index === 0) assert.equal((await blueprintApi(approvalPath, "POST", { jobId: job._id, decision: "approve" }))[0], 409);
+      if (index === 1) assert.match(job.prompt, /Fixture evidence A/);
+      await reviewSend("/jobs/" + job._id + "/sync", {
+        instance: reviewInstance, offset: 0, events: [{ view: "response", label: "Final response", text: "Fixture evidence A" }],
+        result: { status: "completed", threadId: randomUUID(), error: "" },
+      });
+      if (index === 0) {
+        assert.equal(await claimParent(), null);
+        const [, inbox] = await blueprintApi("/blueprints/pending-approvals", "GET");
+        assert.deepEqual(inbox, [{ jobId: job._id, runId: run.runId, stepId: expected.id,
+          name: "Review sequence", revision: blueprint.revision, stepName: expected.name }]);
+        assert.equal((await blueprintApi("/blueprints/pending-approvals", "GET", undefined, other))[0], 403);
+        assert.equal((await blueprintApi(approvalPath, "POST", { jobId: job._id, decision: "approve" }, other))[0], 403);
+        assert.equal((await blueprintApi(approvalPath, "POST", { jobId: job._id, decision: "approve" }))[0], 204);
+        assert.equal((await blueprintApi(approvalPath, "POST", { jobId: job._id, decision: "approve" }))[0], 204);
+        assert.equal((await blueprintApi(approvalPath, "POST", { jobId: job._id, decision: "reject" }))[0], 409);
+        assert.deepEqual((await blueprintApi("/blueprints/pending-approvals", "GET"))[1], []);
+      }
+    }
+    assert.equal(await claimParent(), null);
+    const [, blueprintList] = await blueprintApi("/blueprints", "GET");
+    const persistedRun = blueprintList.runs.find(item => item._id === run.runId);
+    assert.equal(persistedRun.revision, blueprint.revision);
+    assert.equal(persistedRun.name, "Review sequence");
+    assert.equal(persistedRun.status, "completed");
+    assert.deepEqual(persistedRun.steps.map(step => step.status), ["completed", "completed"]);
+    console.log("Blueprint graph validation, owner boundary, immutable run revision, replay and dependent dispatch PASS");
+    const directoryRecords = db.db.collection("operations_workforce");
+    const reviewer = randomUUID();
+    const editor = randomUUID();
+    await directoryRecords.insertMany([{ _id: reviewer, role: "qa" }, { _id: editor, role: "worker" }].map(employee => ({
+      ...employee, name: "Blueprint " + employee.role, ownerId: foundationOwner, kind: "employee",
+      status: "available", workspace: "development", revision: 0,
+    })));
+    const typedPath = "/blueprints/" + randomUUID();
+    const typedSteps = [
+      { id: randomUUID(), type: "task", employeeId: editor, name: "Prepare", prompt: "Inspect the fixture.", dependencies: [] },
+      { id: randomUUID(), type: "review", employeeId: reviewer, name: "Review", prompt: "Review the fixture.", dependencies: [] },
+      { id: randomUUID(), type: "correction", employeeId: editor, name: "Correct", prompt: "Only correct the disposable fixture marker.", dependencies: [] },
+      { id: randomUUID(), type: "retest", employeeId: reviewer, name: "Retest", prompt: "Verify the corrected marker.", dependencies: [] },
+    ];
+    for (let i = 1; i < typedSteps.length; i++) typedSteps[i].dependencies = [typedSteps[i - 1].id];
+    assert.equal((await blueprintApi(typedPath, "PUT", { revision: 0, name: "Self-review", steps: typedSteps.map(step =>
+      step.type === "review" ? { ...step, employeeId: editor } : step) }))[0], 400);
+    assert.equal((await blueprintApi(typedPath, "PUT", { revision: 0, name: "Missing retest", steps: typedSteps.slice(0, -1) }))[0], 400);
+    const [typedStatus, typedBlueprint] = await blueprintApi(typedPath, "PUT", { revision: 0, name: "Typed QA", steps: typedSteps });
+    assert.equal(typedStatus, 200);
+    const typedRunRequest = { ...run, revision: typedBlueprint.revision };
+    await reviewSend("/heartbeat", {
+      instance: reviewInstance, efforts: ["low"], profiles: ["read-only", "development"],
+      extendedPrompts: true, backgroundReviews: true, boundedCorrections: true,
+    });
+    assert.equal((await blueprintApi(typedPath + "/runs", "POST", { ...typedRunRequest, runId: randomUUID() }))[0], 409);
+    await reviewSend("/heartbeat", {
+      instance: reviewInstance, efforts: ["low"], profiles: ["read-only", "development", "scoped"],
+      extendedPrompts: true, backgroundReviews: true, boundedCorrections: true, blueprintBranches: true, scopedRevision: "a".repeat(64),
+    });
+    const finishStep = async (job, line) => reviewSend("/jobs/" + job._id + "/sync", {
+      instance: reviewInstance, offset: 0, events: [{ view: "response", label: "Final response", text: line }],
+      result: { status: "completed", threadId: randomUUID(), error: "" },
+    });
+    for (const mode of ["pass", "fix", "reject", "unverified", "retest failed", "fix scoped"]) {
+      const typedRun = { ...typedRunRequest, runId: randomUUID(), ...(mode === "fix scoped" ? { correctionProfile: "scoped" } : {}) };
+      assert.equal((await blueprintApi(typedPath + "/runs", "POST", typedRun))[0], 201);
+      if (mode === "reject") await db.db.collection("operations_blueprint_runs").updateOne({ _id: typedRun.runId },
+        { $unset: { routineCorrections: "" } }); // Simulate an existing approval-bound run.
+      const task = await claimParent();
+      assert.equal(task.profile, "read-only");
+      await finishStep(task, "Prepared candidate.");
+      const qa = await claimParent();
+      assert.equal(qa.workerRole, "qa");
+      assert.equal(qa.profile, "read-only");
+      await finishStep(qa, mode === "pass" ? "QA_VERDICT: PASS" :
+        mode === "unverified" ? "Missing exact final verdict" : "Marker missing.\nQA_VERDICT: FAIL");
+      const needsCorrection = ["fix", "retest failed", "fix scoped"].includes(mode);
+      const next = await claimParent();
+      if (!needsCorrection) assert.equal(next, null);
+      const request = (await blueprintApi("/blueprints/pending-approvals", "GET"))[1];
+      if (mode !== "reject") assert.deepEqual(request, []);
+      if (mode === "reject") {
+        assert.equal(request[0].jobId, qa._id);
+        assert.equal(request[0].correctionScope, typedSteps[2].prompt);
+        const approvalPath = "/blueprints/runs/" + typedRun.runId + "/steps/" + typedSteps[1].id + "/approval";
+        assert.equal((await blueprintApi(approvalPath, "POST", { decision: "reject", jobId: qa._id }))[0], 204);
+        assert.equal(await claimParent(), null);
+      }
+      if (needsCorrection) {
+          const repair = next;
+          assert.equal(repair.workerRole, "correction");
+          assert.equal(repair.profile, mode === "fix scoped" ? "scoped" : "development");
+          if (mode === "fix scoped") assert.equal(repair.scopedRevision, "a".repeat(64));
+          assert.match(repair.prompt, /Marker missing/);
+          assert.equal((await blueprintApi("/jobs/" + repair._id + "/steer", "POST", {
+            id: randomUUID(), turnId: "fixture-turn", input: "Change independently approved scope.",
+          }))[0], 409);
+          await finishStep(repair, "Fixture marker corrected.");
+          assert.equal((await blueprintApi("/jobs", "POST", {
+            id: randomUUID(), parentId: repair._id, hostId: reviewHost, workspace: "development",
+            model: "gpt-6.2-sol", effort: "low", profile: repair.profile, prompt: "Change independently approved scope.",
+          }))[0], 409);
+          const retest = await claimParent();
+          assert.equal(retest.workerRole, "qa");
+          assert.equal(retest.profile, "read-only");
+          assert.match(retest.prompt, /Fixture marker corrected/);
+          assert.match(retest.prompt, /Marker missing/);
+          await finishStep(retest, "QA_VERDICT: " + (mode.startsWith("fix") ? "PASS" : "FAIL"));
+        assert.equal(await claimParent(), null);
+      }
+      const report = (await blueprintApi("/blueprints", "GET"))[1].runs.find(item => item._id === typedRun.runId);
+      assert.equal(report.status, ["pass", "fix", "fix scoped"].includes(mode) ? "completed" : "blocked");
+      if (mode === "pass") assert.deepEqual(report.steps.slice(2).map(step => step.status), ["skipped", "skipped"]);
+      assert.equal((await api("/objectives/" + designObjective._id, { user: foundationOwner }))[1].status, "active");
+    }
+    console.log("Typed Blueprint review, run-authorized routine correction, legacy approval and independent retest PASS");
+    const scopedRevision = "a".repeat(64);
+    const scopedHeartbeat = { instance: reviewInstance, efforts: ["low"], profiles: ["read-only", "development", "scoped"],
+      extendedPrompts: true, backgroundReviews: true, blueprintBranches: true, scopedRevision };
+    await assert.rejects(reviewSend("/heartbeat", { ...scopedHeartbeat, scopedRevision: null }), { status: 400 });
+    await reviewSend("/heartbeat", scopedHeartbeat);
+    const directFixture = { hostId: reviewHost, model: "gpt-6.2-sol", effort: "low", prompt: "Inspect both drive roots." };
+    const scopedId = randomUUID();
+    assert.equal((await blueprintApi("/jobs", "POST", { ...directFixture, id: scopedId, profile: "scoped" }))[0], 201);
+    const qaId = randomUUID();
+    await jobs.insertOne({
+      _id: qaId, ownerId: foundationOwner, hostId: reviewHost, workspace: "workshop", status: "queued", model: directFixture.model,
+      effort: "low", profile: "read-only", workerRole: "qa", blueprintTyped: true, prompt: "Read-only background QA fixture.",
+      events: [], eventCount: 0, createdAt: new Date(),
+    });
+    const scopedJob = await claimParent();
+    assert.equal(scopedJob._id, scopedId);
+    assert.equal(scopedJob.workspace, "development");
+    assert.equal(scopedJob.scopedRevision, scopedRevision);
+    const claimReview = () => reviewSend("/claim", { instance: reviewInstance, lane: "review" });
+    assert.equal(await claimReview(), null);
+    await finishStep(scopedJob, "Scoped turn completed.");
+    assert.equal((await claimReview())._id, qaId);
+    const nextScoped = randomUUID();
+    assert.equal((await blueprintApi("/jobs", "POST", { ...directFixture, id: nextScoped, profile: "scoped", workspace: "workshop" }))[0], 201);
+    const readId = randomUUID();
+    assert.equal((await blueprintApi("/jobs", "POST", { ...directFixture, id: readId }))[0], 201);
+    const readonlyJob = await claimParent();
+    assert.equal(readonlyJob._id, readId);
+    assert.equal((await claimReview())._id, qaId);
+    await finishStep(readonlyJob, "Read-only turn completed.");
+    await finishStep({ _id: qaId }, "QA_VERDICT: PASS");
+    await reviewSend("/heartbeat", { ...scopedHeartbeat, scopedRevision: "b".repeat(64) });
+    assert.equal(await claimParent(), null);
+    assert.equal((await blueprintApi("/jobs", "POST", { ...directFixture, id: randomUUID(), parentId: scopedId,
+      profile: "scoped", workspace: "development" }))[0], 409);
+    await reviewSend("/heartbeat", scopedHeartbeat);
+    const workshopScoped = await claimParent();
+    assert.equal(workshopScoped._id, nextScoped);
+    assert.equal(workshopScoped.workspace, "workshop");
+    await finishStep(workshopScoped, "Scoped Workshop turn completed.");
+    console.log("Cross-drive permission revision, drive-free conversation, and same-host read-only overlap PASS");
     const conversation = {
-      id: randomUUID(), recipientId: director._id, hostId: reviewHost, workspace: director.workspace,
+      id: randomUUID(), recipientId: director._id, hostId: reviewHost,
       model: "gpt-6.2-sol", effort: "low", prompt: "What are your current responsibilities?",
     };
     const sendConversation = (body, user = foundationOwner) => api("/jobs", { method: "POST", body, user });
@@ -580,20 +820,41 @@ try {
   assert.equal((await api("/maintenance", { user: other }))[0], 403);
   assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 61 } }))[0], 400);
   assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 1 } }))[0], 200);
-  assert.equal((await api("/maintenance"))[1].active, true);
+  const [, heldMaintenance] = await api("/maintenance");
+  assert.equal(heldMaintenance.active, true);
+  assert.equal(heldMaintenance.history.at(-1).expiresAt, heldMaintenance.expiresAt);
+  const expiredClaim = randomUUID();
+  await db.db.collection("operations_jobs").insertOne({ _id: expiredClaim, ownerId: owner,
+    status: "running", leaseUntil: new Date(0) });
+  const [, unconfirmedMaintenance] = await api("/maintenance");
+  assert.equal(unconfirmedMaintenance.unconfirmedExecutions, 1);
+  assert.equal(unconfirmedMaintenance.ready, false);
+  await db.db.collection("operations_jobs").deleteOne({ _id: expiredClaim });
   assert.equal((await api("/jobs", { method: "POST", body: {} }))[0], 423);
   const maintenanceUpload = { hostId: randomUUID(), name: "maintenance.png", size: 12 };
   assert.equal((await api("/media", { method: "POST", body: maintenanceUpload }))[0], 423);
   await db.db.collection("operations_dispatch").updateOne({ _id: owner }, { $set: { maintenanceUntil: new Date(0) } });
   assert.equal((await api("/maintenance"))[1].active, false);
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 0 } }))[0], 200);
+  assert.equal((await api("/maintenance"))[1].history.at(-1).expiresAt, null);
   assert.equal((await api("/media", { method: "POST", body: {} }))[0], 400);
   console.log("Owner-only maintenance admission and automatic expiry PASS");
   const send = backendClient(base, device.token);
   const registeredHosts = db.db.collection("operations_hosts");
   const readinessBefore = await registeredHosts.findOne({ _id: device.id || device.token.split(".")[0] });
   assert.deepEqual(await send("/readiness"), { authenticated: true });
+  assert.deepEqual(await send("/handover-readiness"), { ready: false });
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 12 } }))[0], 200);
+  assert.deepEqual(await send("/handover-readiness"), { ready: false });
+  assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: true } }))[0], 204);
+  assert.deepEqual(await send("/handover-readiness"), { ready: true });
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 1 } }))[0], 200);
+  assert.deepEqual(await send("/handover-readiness"), { ready: false });
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 0 } }))[0], 200);
+  assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: false } }))[0], 204);
   assert.deepEqual(await registeredHosts.findOne({ _id: readinessBefore._id }), readinessBefore);
   await assert.rejects(backendClient(base, randomUUID() + "." + "a".repeat(64))("/readiness"), { status: 403 });
+  await assert.rejects(backendClient(base, randomUUID() + "." + "a".repeat(64))("/handover-readiness"), { status: 403 });
   let offline = false;
   let launchCount = 0;
   let usageObservation = {
@@ -746,8 +1007,13 @@ try {
     return id;
   }
   const detail = async (id) => (await api(`/jobs/${id}`))[1];
+  const liveStates = new Map();
   const settle = (id, timeout) => until(async () => {
     const job = await detail(id);
+    if (liveRunIds.has(id) && liveStates.get(id) !== job.status) {
+      liveStates.set(id, job.status);
+      console.log("Live objective state:", job.workerRole || "source", job.status, job.queueReason || "");
+    }
     return ["completed", "failed", "cancelled", "interrupted"].includes(job.status) && job;
   }, timeout ?? (liveWorkshop || liveInteractive || directGit || fullAccessLive || liveObjectiveRuns ? 180_000 : 15_000));
   if (fullAccessLive) {
@@ -1021,9 +1287,19 @@ try {
     if (liveObjectiveRuns) [sourceId, qa.id, mate.id, air.id, correction.id, retest.id].forEach((id) => liveRunIds.add(id));
     const beforeRuns = launchCount;
     await api("/dispatch", { method: "PATCH", body: { paused: false } });
-    const [sourceTurn, qaTurn, mateTurn, airTurn, correctedTurn, retestTurn] = await Promise.all(
-      [sourceId, qa.id, mate.id, air.id, correction.id, retest.id].map((id) => settle(id, liveObjectiveRuns ? 240_000 : 35_000)),
-    );
+    const runIds = [sourceId, qa.id, mate.id, air.id, correction.id, retest.id];
+    let completedRuns;
+    try {
+      completedRuns = await Promise.all(runIds.map((id) => settle(id, liveObjectiveRuns ? 240_000 : 35_000)));
+    } catch (error) {
+      const snapshots = await Promise.all(runIds.map(detail));
+      console.error("Objective run states at timeout:", snapshots.map((run) => ({
+        role: run.workerRole || "source", status: run.status, queueReason: run.queueReason, error: run.error,
+        eventLabels: run.events?.map(({ label }) => label).slice(-8),
+      })));
+      throw error;
+    }
+    const [sourceTurn, qaTurn, mateTurn, airTurn, correctedTurn, retestTurn] = completedRuns;
     assert.equal(launchCount - beforeRuns, 6);
     assert.equal(new Set([sourceTurn, qaTurn, mateTurn, airTurn, correctedTurn, retestTurn].map((turn) => turn.codexThreadId)).size, 6);
     for (const [turn, predecessor] of [[qaTurn, sourceTurn], [mateTurn, qaTurn], [airTurn, mateTurn], [retestTurn, correctedTurn]]) {
@@ -1435,6 +1711,9 @@ try {
   const observed = infrastructure.devices.find(item => item._id === actionHost);
   assert.equal(observed.online, true);
   assert.equal(observed.name, "Typed action fixture");
+  assert.equal(observed.slots, 1);
+  assert.equal(observed.claimedSlots, 0);
+  assert.deepEqual(observed.assignments, []);
   assert.deepEqual(observed.resources.memory, { total: 4096, free: 1024 });
   assert.equal((await api("/infrastructure", { user: other }))[0], 403);
   const actionProject = (await api("/projects", { method: "POST", body: {

@@ -8,7 +8,7 @@ function createOwnerPreferences({ records, owner }) {
   router.get("/", async (_req, res) => res.json(view(await records().findOne({ _id: owner() }))));
   router.patch("/", async (req, res) => {
     const { directDevelopmentProfile, revision } = req.body || {};
-    if (!["read-only", "full-access"].includes(directDevelopmentProfile) || !Number.isSafeInteger(revision) || revision < 0) {
+    if (!["read-only", "scoped", "full-access"].includes(directDevelopmentProfile) || !Number.isSafeInteger(revision) || revision < 0) {
       return res.status(400).json({ message: "Provide a direct-development permission and current revision." });
     }
     const _id = owner();

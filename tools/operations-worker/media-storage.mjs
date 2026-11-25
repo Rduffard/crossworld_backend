@@ -518,12 +518,14 @@ export async function localMediaStorage(root, {
   };
 }
 
-export async function pollMedia({ send, signal, instance, storage }) {
+export async function pollMedia({ send, signal, instance, storage, draining = () => false }) {
   let completed = {};
   while (!signal.aborted) {
     let delay = 50;
     try {
-      const command = await send("/media/exchange", { instance, ...completed });
+      const drain = draining();
+      if (drain && !completed.replyId) return;
+      const command = await send("/media/exchange", { instance, ...completed, ...(drain ? { draining: true } : {}) });
       completed = {};
       if (command && isId(command.requestId)) {
         const reply = await storage.execute(command).catch((error) => ({ state: error.code === "MEDIA_FULL" ? "full" : "unavailable" }));

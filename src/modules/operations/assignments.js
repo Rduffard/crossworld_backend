@@ -1,9 +1,11 @@
-async function resolveAssignment({ objectives, workforce, projects }, { ownerId, objectiveId, employeeId, workspace }) {
+async function resolveAssignment({ objectives, workforce, projects }, {
+  ownerId, objectiveId, employeeId, workspace, roles = ["worker", "lead", "art-director"],
+}) {
   const [objective, employee] = await Promise.all([
     objectives().findOne({ _id: objectiveId, ownerId, status: "active" }),
     workforce().findOne({
       _id: employeeId, ownerId, kind: "employee", workspace, status: "available",
-      role: { $in: ["worker", "lead", "art-director"] },
+      role: { $in: roles },
     }),
   ]);
   const project = objective?.projectId && await projects().findOne({

@@ -15,7 +15,7 @@ const fail = (res, status, message) => res.status(status).json({ message });
 const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
-function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance }) {
+function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -26,7 +26,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
@@ -132,10 +132,14 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const assignment = assignmentFields(selection);
     const length = prompt.length + assignment.assignmentContext.length;
     if (length > hostLimit(host)) return fail(res, 409, "The review context exceeds this relay's prompt limit.");
+    const isolated = source.profile === "full-access" && !source.mediaInputs?.length
+      ? await isolatedReviewHost(host, source.effort, length) : null;
 
     const job = {
       _id: id, ownerId, ...assignment, title: "Read-only Operations interface review", prompt,
-      hostId: host._id, workspace: project.workspace, profile: "read-only", model: source.model, effort: source.effort,
+      hostId: isolated?._id || host._id, workspace: project.workspace, profile: "read-only", model: source.model, effort: source.effort,
+      ...(isolated ? { isolatedReview: true } : {}),
+      resumeParent: { id: source._id, hostId: host._id },
       workerRole: "assignment", sessionId: id, parentId: null, codexThreadId: null, status: "queued",
       ...(source.mediaInputs?.length ? { mediaInputs: source.mediaInputs } : {}),
       delegatedBy: {

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { AppServer, discoverCodex, model, runTurn } from "./codex.mjs";
 import { turnControl } from "./control.mjs";
 import { findFfmpeg, localMediaStorage, pollMedia } from "./media-storage.mjs";
-import { developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifySandbox, workspacePaths } from "./profiles.mjs";
+import { crossDriveScope, developmentRepositories, protectedDirectories, sandboxFor, verifyDirectory, verifyEditTree, verifySandbox, workspacePaths } from "./profiles.mjs";
 
 import promptLimits from "../../src/modules/operations/prompt-limits.js";
 import usageTools from "../../src/modules/operations/usage.js";
@@ -44,10 +44,14 @@ export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
   mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
-  relayVersion, supervised = false, draining = () => false, reportHeartbeat, log = console.log }) {
+  relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision,
+  draining = () => false, reportHeartbeat, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
-  const mediaTask = mediaStorage && pollMedia({ send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage });
+  let mediaDrained = !mediaStorage;
+  const mediaTask = mediaStorage && pollMedia({
+    send, signal: AbortSignal.any([signal, mediaController.signal]), instance, storage: mediaStorage, draining,
+  }).finally(() => { mediaDrained = true; });
   let advertisedProfiles = profiles;
   const active = new Map();
   let reviewSupported = false;
@@ -84,6 +88,14 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       state.result = { status: "cancelled", error: "" };
       return;
     }
+    const peer = active.get(lane === "primary" ? "review" : "primary")?.job;
+    const primary = lane === "primary" ? job : peer;
+    const review = lane === "review" ? job : peer;
+    if (peer && (["scoped", "full-access"].includes(primary.profile) ||
+        (review.blueprintTyped && primary.profile && primary.profile !== "read-only"))) {
+      state.result = { status: "failed", error: "The claimed execution conflicts with an active local slot." };
+      return;
+    }
     const record = (view, label, value) => {
       const clean = redact(value, token).toWellFormed();
       const messageId = view === "activity" && ["Agent commentary", "Agent message"].includes(label)
@@ -116,19 +128,22 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             mediaOutput, artifactImport,
             mediaUsage: mediaStorage?.latestUsage(),
             resources: getResources?.(),
-            relayVersion, supervised,
+            relayVersion, supervised, isolatedReviewSnapshot, blueprintBranches,
+            ...(advertisedProfiles?.includes("scoped") ? { scopedRevision } : {}),
           });
           let capabilities;
-          try { capabilities = await announce(); }
-          catch (error) {
-            if (error.status !== 400 || !advertisedProfiles?.includes("full-access")) throw error;
-            advertisedProfiles = advertisedProfiles.filter((profile) => profile !== "full-access");
-            capabilities = await announce();
-            log("Relay did not accept Full Access. Restricted profiles remain available until the worker restarts.");
+          for (;;) {
+            try { capabilities = await announce(); break; }
+            catch (error) {
+              const optional = ["scoped", "full-access"].find(profile => advertisedProfiles?.includes(profile));
+              if (error.status !== 400 || !optional) throw error;
+              advertisedProfiles = advertisedProfiles.filter(profile => profile !== optional);
+              log("Relay did not accept the " + optional + " profile. Retrying with the remaining profiles.");
+            }
           }
           reviewSupported = backgroundReviews && capabilities?.backgroundReviews === true;
           heartbeat = Date.now();
-          reportHeartbeat?.({ profiles: advertisedProfiles, backgroundReviews: reviewSupported, active: active.size });
+          reportHeartbeat?.({ profiles: advertisedProfiles, backgroundReviews: reviewSupported, active: active.size, relayVersion, blueprintBranches });
         }
         await step("primary");
         if (reviewSupported || active.has("review")) await step("review");
@@ -137,7 +152,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
         else if (!connected) log("Connected to Crossworld Operations. Device authentication verified.");
         connected = true;
         disconnected = false;
-        if (draining() && active.size === 0) return;
+        if (draining() && active.size === 0 && mediaDrained) return;
       } catch (error) {
         if (error.status === 401 || error.status === 403) {
           throw new Error("Device registration is invalid or revoked. Open Register Crossworld Operations.cmd.", { cause: error });
@@ -184,18 +199,18 @@ function localSessions(deviceId) {
   try { content = readFileSync(ledger, "utf8"); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   for (const line of content.split("\n").filter(Boolean)) {
-    const { threadId, workspace, profile = "read-only" } = JSON.parse(line);
-    threads.set(threadId, { workspace, profile });
+    const { threadId, workspace, profile = "read-only", scopedRevision } = JSON.parse(line);
+    threads.set(threadId, { workspace, profile, scopedRevision });
   }
   return {
-    allows: (threadId, workspace, profile) => {
+    allows: (threadId, workspace, profile, scopedRevision) => {
       const saved = threads.get(threadId);
-      return saved?.workspace === workspace && saved?.profile === profile;
+      return saved?.workspace === workspace && saved?.profile === profile && saved?.scopedRevision === scopedRevision;
     },
-    remember(threadId, workspace, profile) {
+    remember(threadId, workspace, profile, scopedRevision) {
       if (threads.has(threadId)) return;
-      appendFileSync(ledger, JSON.stringify({ threadId, workspace, profile }) + "\n", { flush: true });
-      threads.set(threadId, { workspace, profile });
+      appendFileSync(ledger, JSON.stringify({ threadId, workspace, profile, scopedRevision }) + "\n", { flush: true });
+      threads.set(threadId, { workspace, profile, scopedRevision });
     },
   };
 }
@@ -228,11 +243,14 @@ async function startWorker(draining = () => false) {
   };
   startup("codex-discovery");
   const { exe, version } = discoverCodex();
-  const workspaces = resolvedWorkspaces();
+  const isolatedRoot = process.env.OPERATIONS_REVIEW_SNAPSHOT_ROOT;
+  if (isolatedRoot && !path.isAbsolute(isolatedRoot)) throw new Error("Review snapshot root must be absolute.");
+  const workspaces = isolatedRoot ? { development: verifyEditTree(isolatedRoot) } : resolvedWorkspaces();
   const autonomousNetwork = process.env.OPERATIONS_AUTONOMOUS_NETWORK === "development";
   let fullAccess = false;
+  let scopedRevision;
   const editRoots = {};
-  const candidates = { development: developmentRepositories, workshop: [workspaces.workshop] };
+  const candidates = isolatedRoot ? {} : { development: developmentRepositories, workshop: [workspaces.workshop] };
   const exclusions = (roots) => protectedDirectories.filter((directory) => !roots.some((root) => {
     const relative = path.relative(root, directory);
     return !relative || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep));
@@ -269,7 +287,7 @@ async function startWorker(draining = () => false) {
     await refreshUsage(probe);
     console.log(`${version} · ChatGPT sign-in verified · ${model} (${efforts.join(", ")})`);
     console.log("Authorized workspaces:", ...Object.values(workspaces));
-    if (process.env.OPERATIONS_FULL_ACCESS === "1") {
+    if (!isolatedRoot && process.env.OPERATIONS_FULL_ACCESS === "1") {
       try {
         const result = await probe.request("command/exec", {
           command: [process.execPath, "-e", "console.log('CW_FULL_ACCESS_READY')"],
@@ -287,6 +305,10 @@ async function startWorker(draining = () => false) {
     probe.close();
   }
   startup("workspace-checks");
+  if (!isolatedRoot && process.env.OPERATIONS_SCOPED_PROFILE === "1") {
+    try { candidates.scoped = crossDriveScope().roots; }
+    catch { console.error("Cross-drive scoped editing roots failed validation."); }
+  }
   for (const [profile, directories] of Object.entries(candidates)) {
     let profileProbe;
     try {
@@ -294,6 +316,10 @@ async function startWorker(draining = () => false) {
       profileProbe = new AppServer(exe, roots[0]);
       await profileProbe.initialize();
       await verifySandbox(profileProbe, roots[0], sandboxFor(roots[0], roots), exclusions(roots), roots);
+      if (profile === "scoped") {
+        await verifySandbox(profileProbe, roots.at(-1), sandboxFor(roots.at(-1), roots), exclusions(roots), roots);
+        scopedRevision = crossDriveScope().revision;
+      }
       editRoots[profile] = roots;
       console.log(`Editing verified for ${profile}.`);
     } catch (error) {
@@ -302,7 +328,10 @@ async function startWorker(draining = () => false) {
       profileProbe?.close();
     }
   }
-  if (process.argv.includes("--check")) return;
+  if (process.argv.includes("--check")) {
+    if (!isolatedRoot && process.env.OPERATIONS_SCOPED_PROFILE === "1" && !editRoots.scoped) process.exitCode = 1;
+    return;
+  }
   if (process.argv.includes("--check-device")) {
     const send = backendClient(process.env.OPERATIONS_BACKEND_URL, loadCredential({ onboard: false, register: false }));
     const result = await send("/readiness");
@@ -318,10 +347,10 @@ async function startWorker(draining = () => false) {
   const mediaOptions = {
     workspaceRoots: Object.values(workspaces),
     requirePrivateAcl: true,
-    ffmpeg: await findFfmpeg(process.env.OPERATIONS_FFMPEG_EXE, [...Object.values(workspaces), mediaRoot]),
+    ffmpeg: !isolatedRoot && await findFfmpeg(process.env.OPERATIONS_FFMPEG_EXE, [...Object.values(workspaces), mediaRoot]),
     ...(process.env.OPERATIONS_MEDIA_QUOTA_BYTES ? { quota: Number(process.env.OPERATIONS_MEDIA_QUOTA_BYTES) } : {}),
   };
-  const mediaStorage = await localMediaStorage(mediaRoot, mediaOptions).catch(() => {
+  const mediaStorage = !isolatedRoot && await localMediaStorage(mediaRoot, mediaOptions).catch(() => {
     console.error("Media storage is unavailable. Check the local media directory and quota.");
   });
   const mediaOutput = !!(mediaStorage && editRoots.workshop && await verifyMediaOutbox(exe, mediaStorage, editRoots.workshop));
@@ -349,18 +378,25 @@ async function startWorker(draining = () => false) {
     boundedCorrections: true,
     artifactImport: mediaOutput,
     employeeConversations: true,
-    backgroundReviews: process.env.OPERATIONS_BACKGROUND_REVIEWS === "1",
+    backgroundReviews: !!isolatedRoot || process.env.OPERATIONS_BACKGROUND_REVIEWS === "1",
+    isolatedReviewSnapshot: !!isolatedRoot,
+    blueprintBranches: !isolatedRoot,
+    scopedRevision,
     execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
       const correction = job.workerRole === "correction";
+      const scoped = profile === "scoped";
       const strictReadOnly = ["assignment", "employee-conversation"].includes(job.workerRole);
-      if ((strictReadOnly && profile !== "read-only") ||
+      if ((isolatedRoot && (job.isolatedReview !== true || job.workerRole !== "assignment" || job.codexThreadId ||
+          job.mediaInputs?.length || job.outputMedia || job.artifactImport || job.studioActions)) ||
+          (strictReadOnly && profile !== "read-only") ||
           (job.workerRole === "employee-conversation" && !job.employeeContext) ||
-          (correction && profile !== job.workspace) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
-          (unrestricted ? !fullAccess : profile !== "read-only" && (profile !== job.workspace || !Object.hasOwn(editRoots, profile))) ||
+          (correction && profile !== job.workspace && !scoped) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
+          (unrestricted ? !fullAccess : profile !== "read-only" && ((!scoped && profile !== job.workspace) || !Object.hasOwn(editRoots, profile))) ||
+          (scoped && job.scopedRevision !== scopedRevision) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
-          (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile))) {
+          (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile, job.scopedRevision))) {
         return { status: "failed", error: "Job is outside the worker allowlist." };
       }
       if (job.status === "cancelling" || job.eventCount > 0) {
@@ -382,7 +418,7 @@ async function startWorker(draining = () => false) {
         return { status: "completed", error: "" };
       }
       const roots = profile === "read-only" || unrestricted ? [] : editRoots[profile].map(verifyDirectory);
-      const [root] = roots;
+      const root = scoped && job.workspace === "workshop" ? roots.at(-1) : roots[0];
       const cwd = root || workspaces[job.workspace];
       let staged;
       let outbox;
@@ -401,11 +437,12 @@ async function startWorker(draining = () => false) {
           root,
           roots,
           gitRoots: profile === "development" && !correction ? roots : [],
-          protectedDirectories: unrestricted ? undefined : [...exclusions(roots), ...(mediaStorage?.protectedPaths || [])],
+          protectedDirectories: unrestricted ? undefined : isolatedRoot ? [workspaces.development] :
+            [...exclusions(roots), ...(mediaStorage?.protectedPaths || [])],
           supervised: !!root && !correction,
           fullAccess: unrestricted && fullAccess,
           autonomousNetwork: !correction && autonomousNetwork && profile === "development",
-          strictReadOnly,
+          strictReadOnly: strictReadOnly || scoped || correction || job.workerRole === "qa",
           employeeContext: job.employeeContext,
           delegatedOutcomes: job.delegatedOutcomes,
           approvedDecisions: job.approvedDecisions,
@@ -429,7 +466,7 @@ async function startWorker(draining = () => false) {
           readStudioRecords: job.studioActions === true ? (query) =>
             send(`/jobs/${job._id}/studio-records`, { ...query, instance }) : undefined,
           readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
-          remember: (threadId) => sessions.remember(threadId, job.workspace, profile),
+          remember: (threadId) => sessions.remember(threadId, job.workspace, profile, job.scopedRevision),
         });
       } finally {
         await staged?.cleanup().catch(() => {});
@@ -442,6 +479,11 @@ async function startWorker(draining = () => false) {
 async function main() {
   if (process.platform !== "win32" || Number(process.versions.node.split(".")[0]) < 22) {
     throw new Error("The worker requires Windows and Node.js 22 or later.");
+  }
+  if (process.argv.includes("--check-handover")) {
+    const send = backendClient(process.env.OPERATIONS_BACKEND_URL, loadCredential({ onboard: false, register: false }));
+    if ((await send("/handover-readiness", {})).ready !== true) throw new Error("Hosted dispatch must be paused and maintenance drained with at least five minutes remaining.");
+    return;
   }
   if (process.argv.some(argument => argument === "--check" || argument === "--check-device")) return startWorker();
   let drainRequested = false;

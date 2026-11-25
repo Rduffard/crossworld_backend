@@ -46,7 +46,8 @@ async function studioRecords({ sources, ownerId, input, jobView, eventBatches })
     filter.status = status;
   }
   const records = await sources[definition.source]().find(filter, {
-    projection: { ...Object.fromEntries(definition.fields.map(field => [field, 1])), ...(kind === "knowledge" && id ? { body: 1 } : {}) },
+    projection: { ...Object.fromEntries(definition.fields.map(field => [field, 1])),
+      ...(kind === "knowledge" && id ? { body: 1 } : {}), ...(kind === "assignments" && id ? { events: 1 } : {}) },
   }).sort(kind === "assignments" ? { createdAt: -1, _id: 1 } : { _id: 1 }).skip(offset).limit(limit + 1).toArray();
   const items = records.slice(0, limit).map(record => {
     const item = kind === "assignments" ? jobView(record) : record;
@@ -66,8 +67,9 @@ async function studioRecords({ sources, ownerId, input, jobView, eventBatches })
     return item;
   });
   if (kind === "assignments" && id && items[0]?.status === "completed") {
-    items[0].resultExcerpt = (await precedingResult(items[0], eventBatches)).trim();
+    items[0].resultExcerpt = (await precedingResult(items[0], eventBatches(), { limit: 9000 })).trim();
   }
+  if (kind === "assignments") for (const item of items) delete item.events;
   return { observedAt: new Date(), kind, items, nextOffset: records.length > limit ? offset + limit : null };
 }
 

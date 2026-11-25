@@ -21,6 +21,8 @@ const { resolveAssignment, assignmentFields } = require("./assignments");
 const { employeeContext } = require("./employee-context");
 const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
+const { reconcileParentContinuations } = require("./parent-continuation");
+const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
@@ -35,7 +37,8 @@ const { resourceObservation } = require("./resources");
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
 const workspaces = ["development", "workshop"];
-const profiles = ["read-only", ...workspaces, "full-access"];
+const profiles = ["read-only", ...workspaces, "scoped", "full-access"];
+const spansWorkspaces = ["full-access", "scoped"];
 const terminal = ["completed", "failed", "cancelled", "interrupted"];
 const leaseMs = 45_000;
 const syncEventLimit = 12;
@@ -80,6 +83,7 @@ function createRouter({
   authenticate = auth,
   reportError = () => {},
   workerEnabled = true,
+  isolatedReviewHostId = () => process.env.OPERATIONS_ISOLATED_REVIEW_HOST_ID,
   githubTestAdapter,
   mcpTestAdapter,
   repositories = () => (process.env.OPERATIONS_GITHUB_REPOSITORIES || "").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean),
@@ -104,8 +108,23 @@ function createRouter({
   const recurrence = createRecurrence({ records: series, jobs });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
+  const blueprintDefinitions = () => db().collection("operations_blueprints");
+  const blueprintRuns = () => db().collection("operations_blueprint_runs");
+  const blueprints = createBlueprints({
+    definitions: blueprintDefinitions, runs: blueprintRuns, jobs, objectives, projects, workforce, hosts,
+    owner, workerEnabled, inMaintenance, hostLimit, eventBatches,
+  });
+  const reviewOnlyHost = host => host.isolatedReviewSnapshot === true && host.backgroundReviews === true &&
+    host.profiles?.length === 1 && host.profiles[0] === "read-only";
+  async function isolatedReviewHost(source, effort, length) {
+    const id = isolatedReviewHostId();
+    if (!uuid(id) || id === source._id) return null;
+    const host = await hosts().findOne({ _id: id, ownerId: owner(), revokedAt: null });
+    return host && online(host) && reviewOnlyHost(host) && host.efforts?.includes(effort) &&
+      hostLimit(host) >= length && !usageHoldUntil(host.usage) ? host : null;
+  }
   const studioActions = createStudioActions({
-    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance,
+    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -133,6 +152,17 @@ function createRouter({
       }),
       jobs().createIndex({ successorOf: 1 }, {
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
+      }),
+      jobs().createIndex({ resumedFrom: 1 }, {
+        unique: true, partialFilterExpression: { resumedFrom: { $type: "string" } },
+      }),
+      jobs().createIndex({ ownerId: 1, "resumeParent.hostId": 1, resumeDisposition: 1, finishedAt: 1 }),
+      blueprintRuns().createIndex({ ownerId: 1, hostId: 1, status: 1, lastCheckedAt: 1, createdAt: 1 }),
+      jobs().createIndex({ ownerId: 1, blueprintRunId: 1 }, {
+        partialFilterExpression: { blueprintRunId: { $type: "string" } },
+      }),
+      jobs().createIndex({ ownerId: 1, status: 1, finishedAt: 1 }, {
+        partialFilterExpression: { blueprintApprovalRequired: true },
       }),
       jobs().createIndex({ ownerId: 1, hostId: 1, status: 1, scheduledAt: 1, createdAt: 1 }),
       jobs().createIndex({ ownerId: 1, createdAt: -1, _id: -1 }),
@@ -165,26 +195,62 @@ function createRouter({
     req.operationsHost = host;
     next();
   });
-  // Authenticated device probe without a heartbeat, dispatch, or lease mutation.
+  async function maintenanceStatus() {
+    const ownerId = owner();
+    const admissionsAtRead = admittingClaims;
+    const current = new Date();
+    const [settings, claims, mediaTransfers] = await Promise.all([
+      dispatch().findOne({ _id: ownerId }),
+      jobs().aggregate([
+        { $match: { ownerId, status: { $in: ["running", "cancelling"] } } },
+        { $group: { _id: null, total: { $sum: 1 }, live: { $sum: { $cond: [
+          { $and: [{ $eq: [{ $type: "$leaseUntil" }, "date"] }, { $gt: ["$leaseUntil", current] }] }, 1, 0,
+        ] } } } },
+      ]).toArray(),
+      media.drainStatus(),
+    ]);
+    const executions = claims[0]?.live || 0;
+    const unconfirmedExecutions = (claims[0]?.total || 0) - executions;
+    const active = maintenanceActive(settings);
+    const claimAdmissions = Math.max(admissionsAtRead, admittingClaims);
+    return { active, expiresAt: active ? settings.maintenanceUntil : null,
+      executions, unconfirmedExecutions, mediaTransfers, claimAdmissions,
+      paused: settings?.paused === true, history: settings?.maintenanceHistory || [],
+      ready: active && executions === 0 && unconfirmedExecutions === 0 && mediaTransfers === 0 && claimAdmissions === 0 };
+  }
+  // These probes authenticate without acquiring a relay lease.
   worker.post("/readiness", (_req, res) => res.json({ authenticated: true }));
+  worker.post("/handover-readiness", async (_req, res) => {
+    const status = await maintenanceStatus();
+    res.json({ ready: status.ready && status.paused && +status.expiresAt - Date.now() >= 5 * 60_000 });
+  });
   worker.use(express.json({ limit: "640kb" }));
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
   worker.post("/heartbeat", async (req, res) => {
-    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false } = req.body || {};
+    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false, isolatedReviewSnapshot = false } = req.body || {};
     const relayVersion = typeof req.body?.relayVersion === "string" && /^[a-f\d]{12}$/.test(req.body.relayVersion)
       ? req.body.relayVersion : null;
-    if (typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
+    const blueprintBranches = req.body?.blueprintBranches === true;
+    const scopedRevision = typeof req.body?.scopedRevision === "string" && /^[a-f\d]{64}$/.test(req.body.scopedRevision)
+      ? req.body.scopedRevision : null;
+    if (typeof isolatedReviewSnapshot !== "boolean" || typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
-        !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry))) {
+        !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry)) ||
+        (supported.includes("scoped") && !scopedRevision)) {
       return reject(res, 400, "Invalid worker capabilities.");
+    }
+    if ((isolatedReviewSnapshot || req.operationsHost._id === isolatedReviewHostId()) &&
+        (req.operationsHost._id !== isolatedReviewHostId() || !reviewOnlyHost({ profiles: supported, backgroundReviews, isolatedReviewSnapshot }) ||
+          req.body.media === true || req.body.mediaOutput === true || req.body.artifactImport === true)) {
+      return reject(res, 409, "The isolated review device requires the reserved snapshot configuration.");
     }
     const now = new Date();
     const resources = resourceObservation(req.body?.resources, +now);
     const host = await hosts().findOneAndUpdate({
       _id: req.operationsHost._id, revokedAt: null,
       $or: [{ instance }, { lastSeen: { $lt: new Date(+now - leaseMs) } }, { lastSeen: null }],
-    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations, backgroundReviews,
+    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations, backgroundReviews, isolatedReviewSnapshot, blueprintBranches, scopedRevision,
       media: req.body?.media === true, mediaVideoFrames: req.body?.media === true && req.body?.mediaVideoFrames === true,
       mediaOutput: req.body?.media === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       artifactImport: req.body?.artifactImport === true && req.body?.mediaOutput === true && supported.includes("workshop"),
@@ -227,13 +293,15 @@ function createRouter({
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
     const activeHost = background ? scope.hostId + ":review" : scope.hostId;
     let job = await jobs().findOne({ ...scope, activeHost, instance });
+    const isolated = scope.hostId === isolatedReviewHostId();
+    if (!job && isolated && (!background || !reviewOnlyHost(req.operationsHost))) return res.json(null);
     if (!job && !background) {
       const blocked = await jobs().aggregate([
         { $match: { ...scope, status: "waiting" } },
         { $set: { dependencyId: { $ifNull: ["$reviewOf", "$parentId"] } } },
         { $lookup: {
           from: "operations_jobs", localField: "dependencyId", foreignField: "_id", as: "predecessor",
-          pipeline: [{ $match: scope }, { $project: { status: 1, leaseUntil: 1 } }],
+          pipeline: [{ $match: { ownerId: scope.ownerId } }, { $project: { status: 1, leaseUntil: 1 } }],
         } },
         { $unwind: { path: "$predecessor", preserveNullAndEmptyArrays: true } },
         { $match: { $or: [
@@ -245,7 +313,8 @@ function createRouter({
         { $project: { parentId: 1, reviewOf: 1, workerRole: 1, prompt: 1 } },
       ]).toArray();
       for (const child of blocked) {
-        const predecessor = await jobs().findOne({ _id: child.reviewOf || child.parentId, ...scope }, {
+        const predecessor = await jobs().findOne({ _id: child.reviewOf || child.parentId, ownerId: scope.ownerId,
+          ...(child.reviewOf ? {} : { hostId: scope.hostId }) }, {
           projection: { status: 1, codexThreadId: 1, leaseUntil: 1, events: 1, eventCount: 1, reviewOf: 1, workerRole: 1 },
         });
         const parent = predecessor && jobView(predecessor);
@@ -278,15 +347,23 @@ function createRouter({
     if (!job) {
       const settings = await dispatch().findOne({ _id: scope.ownerId });
       if (settings?.paused || maintenanceActive(settings)) return res.json(null);
-      if (!background) await recurrence.reconcile(req.operationsHost);
+      const continuationEnabled = settings?.parentContinuation === true;
+      if (!background) {
+        await recurrence.reconcile(req.operationsHost);
+        if (!usageHoldUntil(req.operationsHost.usage)) await blueprints.reconcile(scope);
+        if (continuationEnabled && !usageHoldUntil(req.operationsHost.usage) &&
+            req.operationsHost.extendedPrompts === true && req.body.extendedPrompts === true) {
+          await reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope });
+        }
+      }
       const allocated = req.operationsHost.backgroundReviews === true;
       const other = allocated && await jobs().findOne({
         ...scope, activeHost: background ? scope.hostId : scope.hostId + ":review", instance,
         status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
-      }, { projection: { workspace: 1, profile: 1 } });
+      }, { projection: { workspace: 1, profile: 1, workerRole: 1, blueprintTyped: 1 } });
       const sameWorkspaceRestriction = other && (!background || (other.profile && other.profile !== "read-only"));
       const held = usageHoldUntil(req.operationsHost.usage);
-      if (background && (held || other?.profile === "full-access")) return res.json(null);
+      if (background && (held || spansWorkspaces.includes(other?.profile))) return res.json(null);
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
@@ -295,16 +372,25 @@ function createRouter({
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
           ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
+          ...(req.operationsHost.blueprintBranches === true ? {} : { blueprintTyped: { $ne: true } }),
           ...(req.operationsHost.media === true ? {} : { mediaInputs: { $exists: false } }),
           ...(req.operationsHost.mediaOutput === true ? {} : { outputMedia: { $ne: true } }),
           ...(req.operationsHost.artifactImport === true && req.body.artifactImport === true ? {} : { artifactImport: { $exists: false } }),
-          ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false } } : {}),
-          ...(background ? { delegatedBy: { $exists: true }, workerRole: "assignment", profile: "read-only" }
+          ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false }, blueprintRunId: { $exists: false } } : {}),
+          ...(held || !continuationEnabled ? { resumedFrom: { $exists: false } } : {}),
+          ...(isolated ? { isolatedReview: true } : { isolatedReview: { $ne: true } }),
+          ...(background ? { profile: "read-only" }
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: req.operationsHost.scopedRevision || "" }] },
+            ...(background ? [{ $or: [
+              { delegatedBy: { $exists: true }, workerRole: "assignment" },
+              ...(!other?.profile || other.profile === "read-only" ? [{ blueprintTyped: true, workerRole: "qa" }] : []),
+            ] }] : []),
+            ...(!background && other?.blueprintTyped && other.workerRole === "qa" ? [{ profile: { $in: [null, "read-only"] } }] : []),
             ...(sameWorkspaceRestriction ? [background ? { workspace: { $ne: other.workspace } } : {
-              $or: [{ workspace: { $ne: other.workspace }, profile: { $ne: "full-access" } }, { profile: { $in: [null, "read-only"] } }],
+              $or: [{ workspace: { $ne: other.workspace }, profile: { $nin: spansWorkspaces } }, { profile: { $in: [null, "read-only"] } }],
             }] : []),
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
@@ -335,10 +421,12 @@ function createRouter({
       const [objective, employee] = await Promise.all([
         objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active",
           ...(job.delegatedBy ? { revision: job.delegatedBy.objectiveRevision } : {}),
+          ...(job.blueprintRevisions ? { revision: job.blueprintRevisions.objective } : {}),
         }, { projection: { projectId: 1 } }),
         workforce().findOne({
           _id: job.employeeId, ownerId: scope.ownerId, kind: "employee",
           ...(job.delegatedBy ? { revision: job.delegatedBy.employeeRevision, supervisorId: job.delegatedBy.employeeId } : {}),
+          ...(job.blueprintRevisions ? { revision: job.blueprintRevisions.employee } : {}),
           role: job.assignedRole || (job.workerRole === "correction" ? "worker" : job.workerRole),
           workspace: job.workspace, status: "available",
         }, { projection: { _id: 1 } }),
@@ -347,6 +435,7 @@ function createRouter({
       const activeProject = !objective?.projectId || await projects().findOne({
         _id: objective.projectId, ownerId: scope.ownerId, status: "active", workspace: job.workspace,
         ...(job.delegatedBy ? { revision: job.delegatedBy.projectRevision } : {}),
+        ...(job.blueprintRevisions ? { revision: job.blueprintRevisions.project } : {}),
       }, { projection: { _id: 1 } });
       const mandateCurrent = !job.delegatedBy || (employee && activeProject && await workforce().findOne({
         ownerId: scope.ownerId, kind: "project-assignment", employeeId: job.employeeId,
@@ -376,21 +465,21 @@ function createRouter({
       _id: actorId, ownerId: scope.ownerId, kind: "employee", status: "available",
       ...(job.conversationActor ? { workspace: job.workspace, role: job.conversationActor.role } : {}),
     }) : null;
-    if (job.conversationActor && !actor) {
+    if ((job.conversationActor && !actor) || (job.resumedFrom && actor?.role !== "first-mate")) {
       await jobs().updateOne({ _id: job._id, ...scope, instance, status: "running" }, {
         $set: { status: "interrupted", finishedAt: new Date(), error: "The recipient is no longer available in this workspace and role." },
         $unset: { activeHost: "" },
       });
       return res.json(null);
     }
-    const outcomes = job.studioTools === true ? await jobs().find({
+    const outcomes = job.studioTools === true && !job.resumedFrom ? await jobs().find({
       ownerId: scope.ownerId, "delegatedBy.sessionId": job.sessionId || job._id,
       status: { $in: terminal }, finishedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-    }, { projection: { assigneeName: 1, status: 1, error: 1, eventCount: 1, finishedAt: 1 } })
+    }, { projection: { assigneeName: 1, status: 1, error: 1, eventCount: 1, finishedAt: 1, events: 1 } })
       .sort({ finishedAt: -1, _id: 1 }).limit(2).toArray() : [];
     const delegatedOutcomes = await Promise.all(outcomes.map(async result => ({
       employee: result.assigneeName, status: result.status, finishedAt: result.finishedAt,
-      result: result.status === "completed" ? (await precedingResult(result, eventBatches)).trim() : result.error,
+      result: result.status === "completed" ? (await precedingResult(result, eventBatches())).trim() : result.error,
       url: "/operations?workspace=command&job=" + result._id,
     })));
     const identity = actor && await employeeContext({ workforce, projects, objectives, jobs }, scope.ownerId, actor);
@@ -398,6 +487,9 @@ function createRouter({
     const decisions = identity ? await approvedDecisions(knowledge, scope.ownerId, projectIds) : [];
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
     res.json({ _id, prompt: job.assignmentContext ? prompt + job.assignmentContext : prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole,
+      ...(job.scopedRevision ? { scopedRevision: job.scopedRevision } : {}),
+      ...(job.blueprintTyped ? { blueprintTyped: true } : {}),
+      ...(job.isolatedReview ? { isolatedReview: true } : {}),
       ...(job.studioTools === true ? { studioActions: true } : {}),
       ...(identity ? { employeeContext: identity } : {}),
       ...(decisions.length ? { approvedDecisions: decisions } : {}),
@@ -533,16 +625,33 @@ function createRouter({
   }));
   router.use(studioActions.browser);
   router.get("/infrastructure", async (_req, res) => {
-    const devices = await hosts().find({ ownerId: owner(), revokedAt: null }, {
-      projection: { label: 1, lastSeen: 1, media: 1, resources: 1, relayVersion: 1, supervised: 1, profiles: 1, backgroundReviews: 1 },
+    const ownerId = owner();
+    const devices = await hosts().find({ ownerId, revokedAt: null }, {
+      projection: { label: 1, lastSeen: 1, media: 1, resources: 1, relayVersion: 1, supervised: 1,
+        profiles: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, employeeConversations: 1, mediaOutput: 1, artifactImport: 1 },
     }).sort({ lastSeen: -1 }).limit(25).toArray();
     const observedAt = Date.now();
-    return res.json({ observedAt, cloud: "unavailable", devices: devices.map(device => ({
-      _id: device._id, name: device.label, lastSeen: device.lastSeen, online: online(device, observedAt),
-      media: device.media === true, resources: resourceObservation(device.resources, observedAt),
-      relayVersion: device.relayVersion || null, supervised: device.relayVersion ? device.supervised === true : null,
-      profiles: device.profiles, reviewSlot: device.backgroundReviews === true,
-    })) });
+    const active = await jobs().find({
+      ownerId, hostId: { $in: devices.map(device => device._id) }, status: { $in: ["running", "cancelling"] },
+      leaseUntil: { $gt: new Date(observedAt) }, activeHost: { $type: "string" },
+    }, { projection: { hostId: 1, activeHost: 1, title: 1, status: 1 } }).toArray();
+    return res.json({ observedAt, cloud: "unavailable", devices: devices.map(device => {
+      const connected = online(device, observedAt);
+      const assignments = active.filter(job => job.hostId === device._id).map(job => ({
+        _id: job._id, title: job.title, status: job.status,
+        slot: job.activeHost === device._id + ":review" ? "background review" : "primary",
+      }));
+      const slots = device.backgroundReviews === true && device._id !== isolatedReviewHostId() ? 2 : 1;
+      return {
+        _id: device._id, name: device.label, lastSeen: device.lastSeen, online: connected,
+        media: device.media === true, resources: resourceObservation(device.resources, observedAt),
+        relayVersion: device.relayVersion || null, supervised: device.relayVersion ? device.supervised === true : null,
+        profiles: device.profiles, reviewSlot: device.backgroundReviews === true,
+        isolatedReviewSnapshot: device.isolatedReviewSnapshot === true,
+        employeeConversations: device.employeeConversations === true, mediaOutput: device.mediaOutput === true,
+        artifactImport: device.artifactImport === true, slots, claimedSlots: assignments.length, assignments,
+      };
+    }) });
   });
   router.use("/engineering", createEngineering({ repositories: () => {
     const configured = repositories();
@@ -560,30 +669,36 @@ function createRouter({
   router.use("/objective-runs", createObjectiveRuns({
     jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes, inMaintenance,
   }));
+  router.use("/blueprints", blueprints.router);
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
     res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
   });
+  router.get("/dispatch/parent-continuation", async (_req, res) => {
+    const settings = await dispatch().findOne({ _id: owner() }, { projection: { parentContinuation: 1 } });
+    res.json({ enabled: settings?.parentContinuation === true });
+  });
+  router.patch("/dispatch/parent-continuation", async (req, res) => {
+    if (typeof req.body?.enabled !== "boolean") return reject(res, 400, "Select whether to enable automatic parent continuation.");
+    await dispatch().updateOne({ _id: owner() }, {
+      $set: { parentContinuation: req.body.enabled, parentContinuationUpdatedAt: new Date() },
+    }, { upsert: true });
+    res.json({ enabled: req.body.enabled });
+  });
   router.get("/maintenance", async (_req, res) => {
-    const ownerId = owner();
-    const admissionsAtRead = admittingClaims;
-    const [settings, executions, mediaTransfers] = await Promise.all([
-      dispatch().findOne({ _id: ownerId }),
-      jobs().countDocuments({ ownerId, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() } }),
-      media.drainStatus(),
-    ]);
-    const active = maintenanceActive(settings);
-    const claimAdmissions = Math.max(admissionsAtRead, admittingClaims);
-    res.json({ active, expiresAt: active ? settings.maintenanceUntil : null, executions, mediaTransfers, claimAdmissions,
-      ready: active && executions === 0 && mediaTransfers === 0 && claimAdmissions === 0 });
+    res.json(await maintenanceStatus());
   });
   router.patch("/maintenance", async (req, res) => {
     const minutes = req.body?.minutes;
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 60) {
       return reject(res, 400, "Choose a maintenance window of 1 to 60 minutes, or zero to end it.");
     }
-    const maintenanceUntil = minutes ? new Date(Date.now() + minutes * 60_000) : null;
-    await dispatch().updateOne({ _id: owner() }, { $set: { maintenanceUntil } }, { upsert: true });
+    const at = new Date();
+    const maintenanceUntil = minutes ? new Date(+at + minutes * 60_000) : null;
+    await dispatch().updateOne({ _id: owner() }, {
+      $set: { maintenanceUntil },
+      $push: { maintenanceHistory: { $each: [{ at, expiresAt: maintenanceUntil }], $slice: -25 } },
+    }, { upsert: true });
     res.json({ expiresAt: maintenanceUntil });
   });
   router.patch("/dispatch", async (req, res) => {
@@ -620,7 +735,7 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, usage: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, usage: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
     const now = new Date();
     const slots = records.filter(host => !host.revokedAt).flatMap(host => [host._id, host._id + ":review"]);
@@ -631,7 +746,7 @@ function createRouter({
     res.json(records.map(host => {
       const connected = online(host, now);
       const activeSlots = Number(occupied.has(host._id)) + Number(occupied.has(host._id + ":review"));
-      const relaySlots = connected ? 1 + Number(host.backgroundReviews === true) : 0;
+      const relaySlots = connected ? 1 + Number(host.backgroundReviews === true && host._id !== isolatedReviewHostId()) : 0;
       return { ...host, usage: rateLimitObservation(host.usage, +now), online: connected, promptLimit: hostLimit(host),
         activeSlots, relaySlots };
     }));
@@ -790,12 +905,19 @@ function createRouter({
     ]);
     if (maintenanceActive(settings)) return "Production maintenance";
     if (settings?.paused) return "Dispatch paused";
+    if (job.resumedFrom && settings?.parentContinuation !== true) return "Automatic parent continuation is disabled";
     if (!host || !online(host)) return "Waiting for the relay to reconnect";
+    if (job.profile === "scoped" && (host.scopedRevision !== job.scopedRevision || !host.profiles?.includes("scoped"))) {
+      return "Waiting for the original scoped permissions";
+    }
+    if (job.isolatedReview && (host._id !== isolatedReviewHostId() || !reviewOnlyHost(host))) {
+      return "Waiting for the isolated read-only review relay";
+    }
     if ((job.delegatedBy || job.reviewOf || job.seriesId) && usageHoldUntil(host.usage)) return "Waiting for subscription capacity";
     if (host.backgroundReviews === true) {
       const other = await jobs().findOne({
         ownerId, hostId: job.hostId, activeHost: job.delegatedBy ? job.hostId : job.hostId + ":review",
-        ...(job.profile === "full-access" ? {} : { $or: [{ workspace: job.workspace }, { profile: "full-access" }] }),
+        ...(spansWorkspaces.includes(job.profile) ? {} : { $or: [{ workspace: job.workspace }, { profile: { $in: spansWorkspaces } }] }),
         status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() },
       }, { projection: { profile: 1 } });
       const editing = job.delegatedBy ? other?.profile : job.profile;
@@ -884,6 +1006,7 @@ function createRouter({
     if (invalid) return reject(res, 400, invalid);
     const job = await jobs().findOne({ _id: req.params.id, ownerId: owner() });
     if (job?.instruction?.id === id) return res.sendStatus(204);
+    if (job?.blueprintTyped) return reject(res, 409, "Typed Blueprint steps use the recorded instructions for their run.");
     const host = job && await hosts().findOne({ _id: job.hostId, ownerId: owner(), instance: job.instance });
     if (!host || !online(host)) return reject(res, 409, "The assigned worker is disconnected.");
     if (input.length > hostLimit(host)) return reject(res, 409, upgradeMessage);
@@ -899,14 +1022,25 @@ function createRouter({
   router.post(["/jobs", "/schedule", "/recurrence"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
     if (await inMaintenance()) return reject(res, 423, "New executions are paused for production maintenance.");
-    const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId,
+    const { id, hostId, workspace: requestedWorkspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId,
       attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId, artifactImport } = req.body || {};
     const repeating = /^\/recurrence\/?$/i.test(req.path);
     const scheduling = repeating || /^\/schedule\/?$/i.test(req.path);
     const assigning = objectiveId !== undefined || employeeId !== undefined;
+    const ordinary = !assigning && !scheduling && !parentId && !outputMedia;
+    const parent = uuid(parentId) && uuid(hostId) ? await jobs().findOne({
+      _id: parentId, ownerId: owner(), hostId,
+      status: { $in: queue ? ["queued", "running", "completed"] : terminal },
+    }) : null;
+    const recipient = ordinary && uuid(recipientId) ? await workforce().findOne({
+      _id: recipientId, ownerId: owner(), kind: "employee", status: "available",
+    }, { projection: { name: 1, role: 1, workspace: 1 } }) : null;
+    const workspace = requestedWorkspace === undefined && (ordinary || parentId)
+      ? parent?.workspace || recipient?.workspace || (workspaces.includes(profile) ? profile : "development") : requestedWorkspace;
     if (!uuid(id) || !uuid(hostId) || !workspaces.includes(workspace) || model !== "gpt-6.2-sol" ||
         (parentId != null && !uuid(parentId)) || (queue !== false && (queue !== true || !parentId)) ||
-        (profile !== "read-only" && profile !== "full-access" && profile !== workspace) ||
+        (profile !== "read-only" && !spansWorkspaces.includes(profile) && profile !== workspace) ||
+        (profile === "scoped" && scheduling) ||
         (recipientId !== undefined && (!uuid(recipientId) || parentId || assigning || scheduling || studioTools || profile !== "read-only")) ||
         (assigning && (scheduling || parentId || !uuid(objectiveId) || !uuid(employeeId))) ||
         (typeof studioTools !== "boolean" || (studioTools && (scheduling || assigning))) ||
@@ -947,12 +1081,15 @@ function createRouter({
       return reject(res, 400, "Select a future execution time.");
     }
     const host = await hosts().findOne({ _id: hostId, ownerId: owner(), revokedAt: null });
+    if (hostId === isolatedReviewHostId()) return reject(res, 409, "This device is reserved for isolated delegated reviews.");
     if (!host || (!queue && scheduledAt === undefined && !online(host)) || !host.efforts?.includes(effort) ||
         !(host.profiles || ["read-only"]).includes(profile)) {
       return reject(res, 409, scheduledAt === undefined
         ? "Select an online host and a supported reasoning effort."
         : "Select a registered host with that execution profile and reasoning effort.");
     }
+    const scopedRevision = profile === "scoped" ? host.scopedRevision : null;
+    if (profile === "scoped" && !scopedRevision) return reject(res, 409, "The relay has not verified the scoped profile.");
     const mediaInputs = await media.resolveImages(attachmentIds, hostId);
     if (!mediaInputs || (mediaInputs.length && !host.media)) {
       return reject(res, 409, "Choose up to four uploaded images of 12 MiB or less on the selected media device.");
@@ -1013,20 +1150,17 @@ function createRouter({
       if (registered === "conflict") return reject(res, 409, "Repeating schedule identifier already in use.");
       return res.status(registered === "created" ? 201 : 200).json({ _id: id, recurring: true });
     }
-    const parent = parentId && await jobs().findOne({
-      _id: parentId, ownerId: owner(), hostId, workspace,
-      status: { $in: queue ? ["queued", "running", "completed"] : terminal },
-    });
-    if (parentId && (!parent || (!queue && !parent.codexThreadId) || (parent.profile || "read-only") !== profile)) {
+    if (parentId && (!parent || parent.workspace !== workspace || (!queue && !parent.codexThreadId) || (parent.profile || "read-only") !== profile)) {
       return reject(res, 409, "Session cannot be continued with that execution profile.");
+    }
+    if (parent?.blueprintTyped) return reject(res, 409, "Run a Blueprint revision to execute typed Blueprint steps.");
+    if (parent && profile === "scoped" && parent.scopedRevision !== scopedRevision) {
+      return reject(res, 409, "The scoped permissions changed. Start a new conversation to use them.");
     }
     if (studioTools && parent && parent.studioTools !== true) return reject(res, 409, "Open a new conversation to enable studio tools.");
     let conversationActor = parent?.conversationActor;
     if (recipientId) {
-      const recipient = await workforce().findOne({
-        _id: recipientId, ownerId: owner(), kind: "employee", status: "available", workspace,
-      }, { projection: { name: 1, role: 1 } });
-      if (!recipient) return reject(res, 409, "Select an available employee in the conversation workspace.");
+      if (!recipient || recipient.workspace !== workspace) return reject(res, 409, "Select an available employee in the conversation workspace.");
       if (recipient.role === "first-mate") return reject(res, 409, "Use the default Command Center conversation for First Mate.");
       conversationActor = { id: recipient._id, name: recipient.name, role: recipient.role };
     }
@@ -1050,6 +1184,7 @@ function createRouter({
     try {
       await jobs().insertOne({
         _id: id, ownerId: owner(), hostId, workspace, profile, model, effort, prompt, ...inherited, ...assignment, ...studioScope,
+        ...(scopedRevision ? { scopedRevision } : {}),
         ...(conversationActor ? { conversationActor, title: conversationActor.name } : {}),
         ...(recipientId ? { requestedRecipientId: recipientId } : {}),
         ...(mediaInputs.length ? { mediaInputs } : {}),

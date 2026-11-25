@@ -1,6 +1,7 @@
 const { createHash } = require("node:crypto");
 const express = require("express");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
+const { redact } = require("./diagnostics");
 
 const plans = {
   qa: {
@@ -32,12 +33,13 @@ const uuid = (value) => typeof value === "string" && /^[a-f\d-]{36}$/.test(value
 const text = (value, max) => typeof value === "string" && value.length <= max;
 const reject = (res, status, message) => res.status(status).json({ message });
 
-async function precedingResult(job, batches) {
+async function precedingResult(job, batches, { limit = 1400 } = {}) {
   const filter = { jobId: job._id, offset: { $lt: job.eventCount }, events: { $elemMatch: { view: "response" } } };
-  const first = await batches.findOne(filter, { sort: { offset: 1 }, projection: { offset: 1, events: 1 } });
-  const committed = first ? first.events.slice(0, job.eventCount - first.offset) : job.events || [];
-  let response = committed.find((event) => event.view === "response")?.text?.slice(0, 1_400).toWellFormed() || "";
-  while (JSON.stringify(response).length > resultAllowance - 150) response = response.slice(0, -100).toWellFormed();
+  const first = await batches.find(filter, { projection: { offset: 1, events: 1 } }).sort({ offset: 1 }).limit(5).toArray();
+  const committed = first.length ? first.flatMap((batch) => batch.events.slice(0, job.eventCount - batch.offset)) : job.events || [];
+  let response = redact(committed.filter((event) => event.view === "response").map((event) => event.text).join("")).slice(0, limit).toWellFormed();
+  const allowance = limit === 1400 ? resultAllowance - 150 : limit + 150;
+  while (JSON.stringify(response).length > allowance) response = response.slice(0, -100).toWellFormed();
   const line = job.workerRole === "qa" ? await lastResponseLine(job, batches) : null;
   const qaVerdict = ["QA_VERDICT: PASS", "QA_VERDICT: FAIL", "QA_VERDICT: UNVERIFIED"].includes(line) ? line : undefined;
   return "\n\nPreceding turn result (response excerpt): " + JSON.stringify({ id: job._id, status: job.status, qaVerdict, response });
@@ -89,7 +91,7 @@ function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, own
     const [objective, source, reviewer] = await Promise.all([
       objectives().findOne({ _id: objectiveId, ownerId, status: "active" }),
       jobs().findOne({ _id: sourceId, ownerId, workerRole: plan.source, ...(["first-mate", "correction"].includes(role) ? { objectiveId } : { $or: [{ objectiveId }, { objectiveId: null }] }) }, {
-        projection: { hostId: 1, workspace: 1, status: 1, leaseUntil: 1, effort: 1, model: 1 },
+        projection: { hostId: 1, workspace: 1, status: 1, leaseUntil: 1, effort: 1, model: 1, studioTools: 1, studioActor: 1, resumeParent: 1, isolatedReview: 1 },
       }),
       workforce().findOne({ _id: employeeId, ownerId, kind: "employee", role: plan.employeeRole || role, status: "available" }),
     ]);
@@ -103,7 +105,8 @@ function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, own
     if (objective.projectId && !project) {
       return reject(res, 409, "The objective project is inactive or uses a different workspace.");
     }
-    const host = await hosts().findOne({ _id: source.hostId, ownerId, revokedAt: null });
+    const executionHost = source.isolatedReview ? source.resumeParent?.hostId : source.hostId;
+    const host = executionHost && await hosts().findOne({ _id: executionHost, ownerId, revokedAt: null });
     const profile = plan.edits ? source.workspace : "read-only";
     if (!host || !(host.profiles || ["read-only"]).includes(profile) || !host.efforts?.includes(source.effort)) {
       return reject(res, 409, "The source host must support the requested profile at the source effort.");
@@ -120,12 +123,15 @@ function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, own
       (plan.edits ? "Stay within the selected editing workspace. " : "Keep the workspace read-only. ") +
       "Do not contact external services. The human owner records acceptance.\n\n" + brief;
     if (prompt.length + resultAllowance > hostLimit(host)) return reject(res, 409, upgradeMessage);
+    const resumeParent = source.resumeParent || (source.studioTools && source.studioActor?.id
+      ? { id: source._id, hostId: source.hostId } : null);
     if (plan.edits) await ensureIndexes();
     try {
       await jobs().insertOne({
         _id: id, ownerId, workerRole: role, objectiveId, reviewOf: sourceId, employeeId, requestDigest,
+        ...(resumeParent ? { resumeParent } : {}),
         ...(project ? { projectId: project._id } : {}),
-        hostId: source.hostId, workspace: source.workspace, profile, model: source.model,
+        hostId: executionHost, workspace: source.workspace, profile, model: source.model,
         effort: source.effort, prompt, reviewerName: reviewer.name, sessionId: id, parentId: null,
         title: plan.title + " - " + objective.title, codexThreadId: null, status: "waiting", createdAt: new Date(),
         ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
@@ -141,4 +147,4 @@ function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, own
   return router;
 }
 
-module.exports = { createObjectiveRuns, precedingResult, responseMarker };
+module.exports = { createObjectiveRuns, precedingResult, responseMarker, lastResponseLine };

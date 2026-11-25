@@ -2,6 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
+const workerFiles = /^tools\/operations-worker\/[\w -]+\.(?:mjs|cmd|md)$/;
+const workerDependencies = ["diagnostics", "media-artifacts", "prompt-limits", "usage"]
+  .map(name => "src/modules/operations/" + name + ".js");
+const workerReleaseFile = file => workerFiles.test(file) || workerDependencies.includes(file);
+
 function createWorkerSupervisor({ directory, service }) {
   if (!path.isAbsolute(directory) || directory !== fs.realpathSync(directory)) throw new Error("Invalid supervisor directory.");
   const active = path.join(directory, "active-worker.json");
@@ -23,9 +28,10 @@ function createWorkerSupervisor({ directory, service }) {
   };
   async function recover() {
     if (!fs.existsSync(journal)) return;
-    const { previous } = read(journal);
+    const { previous, phase } = read(journal);
     const location = versionPath(previous);
-    await service.stop();
+    if (phase === "draining") await service.drainAndStop();
+    else await service.stop();
     save(active, { version: previous });
     await service.startAndWait(location);
     fs.unlinkSync(journal);
@@ -47,17 +53,21 @@ function createWorkerSupervisor({ directory, service }) {
       const next = `worker-${randomUUID()}`;
       const location = path.join(directory, next);
       if (!release.files.includes("tools/operations-worker/worker.mjs")) throw new Error("Worker entrypoint missing.");
+      if (release.files.some(file => !workerReleaseFile(file))) throw new Error("Invalid worker release file.");
       fs.mkdirSync(location, { mode: 0o700 });
       for (const file of release.files) {
-        if (!/^tools\/operations-worker\/[\w -]+\.(?:mjs|cmd|md)$/.test(file)) throw new Error("Invalid worker release file.");
-        fs.writeFileSync(path.join(location, path.posix.basename(file)), release.readFile(file), {
+        const target = path.join(location, file);
+        fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+        fs.writeFileSync(target, release.readFile(file), {
           mode: 0o600, flag: "wx", flush: true,
         });
       }
       await service.probe(location);
-      save(journal, { previous, next, commit: intent.headSha });
+      const receipt = { previous, next, commit: intent.headSha };
+      save(journal, { ...receipt, phase: "draining" });
+      await service.drainAndStop();
+      save(journal, { ...receipt, phase: "starting" });
       try {
-        await service.drainAndStop();
         save(active, { version: next });
         await service.startAndWait(location);
         fs.unlinkSync(journal);
@@ -69,4 +79,4 @@ function createWorkerSupervisor({ directory, service }) {
   };
 }
 
-module.exports = { createWorkerSupervisor };
+module.exports = { createWorkerSupervisor, workerReleaseFile, workerDependencies };

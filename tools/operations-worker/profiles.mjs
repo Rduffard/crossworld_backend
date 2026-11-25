@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +19,23 @@ export const protectedDirectories = [
   tmpdir(),
 ];
 export const productionArt = ["Art", "Loom/Assets"].map((directory) => path.win32.join(workspacePaths.development, directory));
+
+export function crossDriveScope(config = process.env.OPERATIONS_SCOPED_ROOTS) {
+  const workshop = path.win32.join(workspacePaths.workshop, "10_Active_Experiments");
+  const approved = [...developmentRepositories, workshop];
+  const entries = config ? JSON.parse(config) : approved;
+  if (!Array.isArray(entries) || entries.length < 2 || entries.length > 12 || entries.some(entry =>
+    typeof entry !== "string" || !approved.some(base => {
+      const relative = path.win32.relative(base, entry);
+      return path.win32.isAbsolute(entry) && !path.win32.isAbsolute(relative) &&
+        relative.split("\\").every(part => !part.startsWith(".") && !/[.: ]$/.test(part) && !part.includes(":"));
+    }))) throw new Error("Scoped roots must be canonical directories within approved development repositories or active Workshop experiments.");
+  const roots = entries.map(verifyDirectory).sort();
+  const identity = roots.map(root => root.toLowerCase());
+  const drives = new Set(identity.map(root => path.win32.parse(root).root));
+  if (new Set(identity).size !== roots.length || drives.size !== 2) throw new Error("Scoped roots require unique directories across both drives.");
+  return { roots, revision: createHash("sha256").update(JSON.stringify(identity)).digest("hex") };
+}
 
 export const approvalPolicy = { granular: {
   sandbox_approval: false, rules: false, skill_approval: false,
@@ -138,6 +155,8 @@ export async function verifySandbox(server, cwd, sandboxPolicy, protectedDirecto
           existsSync(file) !== allowed) {
         throw new Error(`Windows filesystem enforcement check failed at ${directory} (${allowed ? "expected write" : "expected denial"}, exit ${exitCode}, ${stdout.trim()} ${stderr.trim()}).`);
       }
+    } catch (error) {
+      throw new Error(`Sandbox probe from ${cwd} to ${directory}: ${error.message}`, { cause: error });
     } finally {
       if (existsSync(file)) unlinkSync(file);
     }

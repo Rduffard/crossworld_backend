@@ -1,6 +1,7 @@
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { workerReleaseFile, workerDependencies } = require("./worker-supervisor");
 
 const integrationRef = "refs/heads/operations/integration";
 const bundleRef = "refs/heads/operations/review";
@@ -64,17 +65,17 @@ function createLocalPromotion({ gitExe, repositories, inbox, emptyHooks, supervi
       const proof = inspect(intent);
       if (!proof.safe) throw new Error("The reviewed staging content changed or exceeded its allowed scope.");
       if (intent.operation === "updateWorker") {
-        const entries = git(proof.cwd, "ls-tree", "-r", "-z", intent.headSha, "--", "tools/operations-worker")
+        const entries = git(proof.cwd, "ls-tree", "-r", "-z", intent.headSha, "--", "tools/operations-worker", ...workerDependencies)
           .split("\0").filter(Boolean);
         const files = entries.map((entry) => {
           const match = /^100644 blob [a-f0-9]{40}\t(.+)$/.exec(entry);
-          if (!match || !workerScope.test(match[1])) throw new Error("Unsafe worker release tree.");
+          if (!match || !workerReleaseFile(match[1])) throw new Error("Unsafe worker release tree.");
           return match[1];
         });
         await supervisor.activate(intent, {
           files,
           readFile: (file) => {
-            if (!workerScope.test(file)) throw new Error("File is outside the worker release scope.");
+            if (!workerReleaseFile(file)) throw new Error("File is outside the worker release scope.");
             return gitBytes(proof.cwd, "show", `${intent.headSha}:${file}`);
           },
         });

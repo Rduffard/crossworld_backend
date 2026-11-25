@@ -38,7 +38,8 @@ export async function superviseRelay({ launch, log, signal, retryMs = 5_000, fai
       lastHeartbeat = Date.now();
       const state = JSON.stringify([message.profiles, message.backgroundReviews, message.active]);
       if (state !== lastState) {
-        log("healthy", { pid, profiles: message.profiles, backgroundReviews: message.backgroundReviews, active: message.active });
+        log("healthy", { pid, profiles: message.profiles, backgroundReviews: message.backgroundReviews, active: message.active,
+          relayVersion: message.relayVersion, blueprintBranches: message.blueprintBranches });
         lastState = state;
       }
     });
@@ -95,7 +96,7 @@ async function main() {
   try {
     const folder = path.join(process.env.LOCALAPPDATA, "Crossworld Operations");
     mkdirSync(folder, { recursive: true });
-    const logFile = path.join(folder, "supervisor.jsonl");
+    const logFile = process.env.OPERATIONS_SUPERVISOR_LOG || path.join(folder, "supervisor.jsonl");
     const log = (state, detail = {}) => appendFileSync(logFile,
       JSON.stringify({ at: new Date().toISOString(), state, ...detail }) + "\n", { flush: true });
     const controller = new AbortController();

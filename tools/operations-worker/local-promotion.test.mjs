@@ -36,11 +36,18 @@ const pointer = path.join(supervisorRoot, "active-worker.json");
 fs.writeFileSync(pointer, JSON.stringify({ version: originalName }));
 const calls = [];
 let failOnce = false;
+let blockDrain = false;
 const supervisor = createWorkerSupervisor({
   directory: supervisorRoot,
   service: {
-    async probe() { calls.push("probe"); },
-    async drainAndStop() { calls.push("drain"); },
+    async probe(location) {
+      calls.push("probe");
+      execFileSync(process.execPath, [path.join(location, "tools", "operations-worker", "worker.mjs")], { windowsHide: true });
+    },
+    async drainAndStop() {
+      calls.push("drain");
+      if (blockDrain) throw new Error("Pending transfer");
+    },
     async stop() { calls.push("stop"); },
     async startAndWait(location) {
       calls.push(path.basename(location) === originalName ? "recover" : "start");
@@ -62,8 +69,10 @@ try {
   git(staging, "clone", "--quiet", repository, ".");
   git(staging, "switch", "-c", "operations/review");
   const module = "src/modules/operations/example.js";
+  const workerDependency = "src/modules/operations/diagnostics.js";
   fs.mkdirSync(path.dirname(path.join(staging, module)), { recursive: true });
   fs.writeFileSync(path.join(staging, module), "module.exports = 42;\n");
+  fs.writeFileSync(path.join(staging, workerDependency), "module.exports = 42;\n");
   git(staging, "add", ".");
   git(staging, "commit", "-m", "Candidate");
   const headSha = git(staging, "rev-parse", "HEAD");
@@ -73,7 +82,7 @@ try {
     repositories: new Map([["example/disposable", { path: repository, kind: "backend" }]]),
   });
   const intent = { operation: "applyStaged", repository: "example/disposable", branch: "operations/integration",
-    baseSha, headSha, changes: module, diff: git(staging, "diff", "--no-renames", baseSha, headSha) };
+    baseSha, headSha, changes: [module, workerDependency].sort().join("\n"), diff: git(staging, "diff", "--no-renames", baseSha, headSha) };
   assert.equal(adapter.inspect({ ...intent, changes: "incorrect summary" }).safe, false);
   assert.equal(adapter.inspect(intent).safe, true);
   await adapter.perform(intent);
@@ -92,13 +101,22 @@ try {
   git(staging, "switch", "-C", "operations/review");
   const entrypoint = "tools/operations-worker/worker.mjs";
   fs.mkdirSync(path.dirname(path.join(staging, entrypoint)), { recursive: true });
-  fs.writeFileSync(path.join(staging, entrypoint), "// disposable release\n");
+  fs.writeFileSync(path.join(staging, entrypoint), 'import version from "../../src/modules/operations/diagnostics.js"; if (version !== 42) process.exit(1);\n');
   git(staging, "add", ".");
   git(staging, "commit", "-m", "Reviewed worker version");
   const workerSha = git(staging, "rev-parse", "HEAD");
   git(staging, "bundle", "create", path.join(inbox, `${workerSha}.bundle`), "operations/review", "^" + headSha);
   const update = { ...intent, operation: "updateWorker", target: originalName, baseSha: headSha, headSha: workerSha,
     changes: entrypoint, diff: git(staging, "diff", "--no-renames", headSha, workerSha) };
+  blockDrain = true;
+  await assert.rejects(adapter.perform(update), /Pending transfer/);
+  await assert.rejects(supervisor.recover(), /Pending transfer/);
+  assert.equal(JSON.parse(fs.readFileSync(pointer)).version, originalName);
+  assert.deepEqual(calls, ["probe", "drain", "drain"]);
+  blockDrain = false;
+  await supervisor.recover();
+  assert.deepEqual(calls.slice(-2), ["drain", "recover"]);
+  calls.length = 0;
   failOnce = true;
   await assert.rejects(adapter.perform(update), /Simulated health failure/);
   assert.equal(JSON.parse(fs.readFileSync(pointer)).version, originalName);
