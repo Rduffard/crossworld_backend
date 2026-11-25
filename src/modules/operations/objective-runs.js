@@ -59,7 +59,7 @@ async function responseMarker(job, batches, marker) {
   return await lastResponseLine(job, batches) === marker;
 }
 
-function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes }) {
+function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes, inMaintenance }) {
   const router = express.Router();
 
   router.get("/:objectiveId", async (req, res) => {
@@ -78,6 +78,7 @@ function createObjectiveRuns({ jobs, objectives, projects, workforce, hosts, own
       return reject(res, 400, "Provide the source turn, the employee and the location of the deliverable.");
     }
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
+    if (await inMaintenance()) return reject(res, 423, "New executions are paused for production maintenance.");
     const ownerId = owner();
     const requestDigest = createHash("sha256").update(JSON.stringify([objectiveId, sourceId, employeeId, role, evidence.trim()])).digest("hex");
     const existingRequest = () => jobs().findOne({ _id: id, ownerId }, { projection: { requestDigest: 1 } });

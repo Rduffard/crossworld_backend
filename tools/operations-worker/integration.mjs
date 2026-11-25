@@ -577,6 +577,17 @@ try {
   assert.ok(!JSON.stringify(await api("/hosts")).includes(host.digest));
 
   await verifyMedia({ api, base, bearer: jwt.sign({ _id: owner }, jwtSecret), db: db.db, other });
+  assert.equal((await api("/maintenance", { user: other }))[0], 403);
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 61 } }))[0], 400);
+  assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 1 } }))[0], 200);
+  assert.equal((await api("/maintenance"))[1].active, true);
+  assert.equal((await api("/jobs", { method: "POST", body: {} }))[0], 423);
+  const maintenanceUpload = { hostId: randomUUID(), name: "maintenance.png", size: 12 };
+  assert.equal((await api("/media", { method: "POST", body: maintenanceUpload }))[0], 423);
+  await db.db.collection("operations_dispatch").updateOne({ _id: owner }, { $set: { maintenanceUntil: new Date(0) } });
+  assert.equal((await api("/maintenance"))[1].active, false);
+  assert.equal((await api("/media", { method: "POST", body: {} }))[0], 400);
+  console.log("Owner-only maintenance admission and automatic expiry PASS");
   const send = backendClient(base, device.token);
   const registeredHosts = db.db.collection("operations_hosts");
   const readinessBefore = await registeredHosts.findOne({ _id: device.id || device.token.split(".")[0] });

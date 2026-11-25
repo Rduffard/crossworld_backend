@@ -1,7 +1,7 @@
 const express = require("express");
 const { randomUUID, createHash } = require("node:crypto");
 const { once } = require("node:events");
-const { ARTIFACT_LIMIT, ARTIFACT_BYTES, artifactMime } = require("./media-artifacts");
+const { ARTIFACT_LIMIT, GLB_MIME, artifactMime, artifactMaxBytes } = require("./media-artifacts");
 
 const CHUNK = 192 * 1024;
 const MAX_SIZE = 100 * 1024 * 1024;
@@ -20,9 +20,9 @@ const fail = (res, status, message) => res.status(status).json({ message });
 const stableId = (value) => digest(Buffer.from(value)).slice(0, 32).replace(/^(........)(....)(....)(....)(............)$/, "$1-$2-$3-$4-$5");
 
 function view(record, includeHistory = false) {
-  const { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId, review } = record;
+  const { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId, projectId, review } = record;
   const { state: reviewState = "pending", revision = 0, history = [] } = review || {};
-  return { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId,
+  return { _id, name, size, offset, state, hostId, mime, sha256, createdAt, derivedFrom, jobId, projectId,
     ...(state === "ready" ? { review: { state: reviewState, revision, ...(includeHistory === true ? { history } : {}) } } : {}) };
 }
 
@@ -42,7 +42,7 @@ function mediaObservation(value, now = Date.now()) {
   return { usedBytes, quotaBytes, freeBytes, observedAt };
 }
 
-function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
+function createMedia({ records, hosts, jobs, owner, online, workerEnabled, inMaintenance }) {
   const browser = express.Router();
   const worker = express.Router();
   const pending = new Map();
@@ -113,7 +113,8 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
     const host = req.operationsHost;
     const { instance, phase, name, mime, size, sha256 } = req.body || {};
     if (!isId(jobId) || !["reserve", "finish"].includes(phase) || !mime || mime !== artifactMime(name) ||
-        !Number.isSafeInteger(size) || size < 12 || size > ARTIFACT_BYTES || typeof sha256 !== "string" || !/^[\da-f]{64}$/.test(sha256)) {
+        !Number.isSafeInteger(size) || size < (mime === GLB_MIME ? 20 : 12) || size > artifactMaxBytes(mime) ||
+        typeof sha256 !== "string" || !/^[\da-f]{64}$/.test(sha256)) {
       return fail(res, 400, "Invalid artifact metadata.");
     }
     if (!host.mediaOutput || !online(host) || instance !== host.instance) return fail(res, 409, "Artifact worker is unavailable.");
@@ -126,7 +127,7 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
       const job = await jobs().findOne({
         _id: jobId, ownerId, hostId: host._id, activeHost: host._id, instance, outputMedia: true, workspace: "workshop",
         profile: "workshop", status: "running", leaseUntil: { $gt: new Date() },
-      }, { projection: { _id: 1 } });
+      }, { projection: { _id: 1, projectId: 1 } });
       if (!job) return fail(res, 403, "Artifact publication is not authorized for this turn.");
       const id = stableId(`artifact:${ownerId}:${jobId}:${name.toLowerCase()}`);
       const query = { _id: id, ownerId, hostId: host._id, jobId, kind: "artifact" };
@@ -142,9 +143,11 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
         return res.json({ id, name: existing.name, state: "ready" });
       }
       if (!existing) {
+        if (await inMaintenance()) return fail(res, 423, "New media transfers are paused for production maintenance.");
         const count = await records().countDocuments({ ownerId, jobId, kind: "artifact" }, { limit: ARTIFACT_LIMIT });
         if (count >= ARTIFACT_LIMIT) return fail(res, 409, "The turn has reached its artifact limit.");
-        await records().insertOne({ ...query, name, mime, size, sha256, createdAt: new Date(), state: "publishing" });
+        await records().insertOne({ ...query, name, mime, size, sha256, createdAt: new Date(), state: "publishing",
+          ...(job.projectId ? { projectId: job.projectId } : {}) });
       }
       return res.json({ id, name: existing?.name || name, state: "publishing" });
     } finally { mutations.delete(key); }
@@ -190,6 +193,7 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
     if (mutations.has(key)) return fail(res, 429, "Another upload is starting.");
     mutations.add(key);
     try {
+      if (await inMaintenance()) return fail(res, 423, "New media transfers are paused for production maintenance.");
       if (!await liveHost(hostId)) return fail(res, 503, "The media device is offline.");
       await indexes();
       if (await records().countDocuments({ ownerId: owner(), hostId, state: "uploading",
@@ -291,6 +295,7 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
   }));
 
   browser.post("/:id/frames", mutate(async (req, res, source, host) => {
+    if (await inMaintenance()) return fail(res, 423, "New media transfers are paused for production maintenance.");
     const atMs = req.body?.atMs;
     if (!Number.isSafeInteger(atMs) || atMs < 0 || atMs > 3_600_000) return fail(res, 400, "Choose a frame offset up to one hour.");
     if (source.state !== "ready" || !videoTypes.has(source.mime)) return fail(res, 409, "Choose an uploaded video.");
@@ -326,9 +331,10 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
       activeReads--;
       controller.abort();
     });
+    if (await inMaintenance()) return fail(res, 423, "New media transfers are paused for production maintenance.");
     const headers = { "Content-Type": mime, "Content-Length": String(range.end - range.start + 1), "Accept-Ranges": "bytes",
       "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox",
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (character) => "%" + character.charCodeAt(0).toString(16))}` };
+      "Content-Disposition": `${mime === GLB_MIME ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (character) => "%" + character.charCodeAt(0).toString(16))}` };
     if (req.get("range")) headers["Content-Range"] = `bytes ${range.start}-${range.end}/${size}`;
     if (req.method === "HEAD") {
       const reply = await exchange(host, { kind: "read", id, size, offset: range.start, length: 1 }, controller.signal).catch(() => null);
@@ -372,7 +378,13 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled }) {
     }).sort({ createdAt: 1 }).limit(ARTIFACT_LIMIT).toArray();
     return entries.map(({ _id, name, mime, size }) => ({ id: _id, name, mime, size }));
   }
-  return { browser, worker, resolveImages, outputs };
+  async function drainStatus() {
+    const inFlight = activeReads + mutations.size;
+    const uploads = await records().countDocuments({ ownerId: owner(), state: "uploading",
+      createdAt: { $gt: new Date(Date.now() - TTL) } });
+    return uploads + Math.max(inFlight, activeReads + mutations.size);
+  }
+  return { browser, worker, resolveImages, outputs, drainStatus };
 }
 
 module.exports = { createMedia, CHUNK, MAX_SIZE, parseRange, mediaObservation };

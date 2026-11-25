@@ -15,7 +15,7 @@ const fail = (res, status, message) => res.status(status).json({ message });
 const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
-function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView }) {
+function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -91,6 +91,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const replay = job => job.delegatedBy.callId === callId && job.assigneeName.toLowerCase() === employee.trim().toLowerCase()
       ? res.json(receipt(job)) : fail(res, 409, "This turn already delegated an Operations review.");
     if (existing) return replay(existing);
+    if (await inMaintenance()) return fail(res, 423, "New executions are paused for production maintenance.");
 
     const host = req.operationsHost;
     if (!(host.profiles || ["read-only"]).includes("read-only") || !host.efforts?.includes(source.effort)) {

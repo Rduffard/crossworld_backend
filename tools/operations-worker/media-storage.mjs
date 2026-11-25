@@ -18,7 +18,28 @@ const missing = (error) => error.code === "ENOENT";
 const imageExtension = new Map([["image/png", ".png"], ["image/jpeg", ".jpg"], ["image/webp", ".webp"]]);
 const videoContainer = new Map([["video/mp4", "mov"], ["video/quicktime", "mov"], ["video/webm", "matroska"]]);
 const run = promisify(execFile);
-const { ARTIFACT_BYTES, artifactMime } = artifactRules;
+const { GLB_MIME, artifactMime, artifactMaxBytes } = artifactRules;
+
+export async function validGlb(handle, size) {
+  const header = Buffer.alloc(20);
+  if ((await handle.read(header, 0, 20, 0)).bytesRead !== 20 || header.toString("ascii", 0, 4) !== "glTF" ||
+      header.readUInt32LE(4) !== 2 || header.readUInt32LE(8) !== size ||
+      header.toString("ascii", 16, 20) !== "JSON") return false;
+  const jsonSize = header.readUInt32LE(12);
+  if (jsonSize < 4 || jsonSize % 4 !== 0 || jsonSize > 4 * 1024 * 1024 || 20 + jsonSize > size) return false;
+  const json = Buffer.alloc(jsonSize);
+  if ((await handle.read(json, 0, jsonSize, 20)).bytesRead !== jsonSize) return false;
+  let document;
+  try { document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(json)); }
+  catch { return false; }
+  if (document?.asset?.version !== "2.0") return false;
+  const binOffset = 20 + jsonSize;
+  if (binOffset === size) return true;
+  const bin = Buffer.alloc(8);
+  return (await handle.read(bin, 0, 8, binOffset)).bytesRead === 8 &&
+    bin.toString("ascii", 4, 8) === "BIN\0" && bin.readUInt32LE(0) % 4 === 0 &&
+    binOffset + 8 + bin.readUInt32LE(0) === size;
+}
 
 function safeEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(systemroot|windir|temp|tmp)$/i.test(key)));
@@ -338,7 +359,7 @@ export async function localMediaStorage(root, {
     if (requirePrivateAcl) await verifyWindowsAcl([outbox, jobRoot, attachments, temporary]);
     const source = path.join(jobRoot, name);
     const info = await regular(source);
-    if (!info || info.size < 12 || info.size > ARTIFACT_BYTES) throw new Error("Artifact is unavailable or exceeds the size limit.");
+    if (!info || info.size < 12 || info.size > artifactMaxBytes(mime)) throw new Error("Artifact is unavailable or exceeds the size limit.");
     const sourceHandle = await open(source, "r");
     let staging;
     try {
@@ -348,7 +369,9 @@ export async function localMediaStorage(root, {
       }
       const header = Buffer.alloc(Math.min(info.size, 4096));
       await sourceHandle.read(header, 0, header.length, 0);
-      if (detectMime(header) !== mime) throw new Error("Artifact type does not match its filename.");
+      if (!(mime === GLB_MIME ? await validGlb(sourceHandle, info.size) : detectMime(header) === mime)) {
+        throw new Error("Artifact type does not match its filename.");
+      }
       const streamOptions = { start: 0, end: info.size - 1, autoClose: false, signal };
       const hash = createHash("sha256");
       for await (const bytes of sourceHandle.createReadStream(streamOptions)) hash.update(bytes);
@@ -374,7 +397,9 @@ export async function localMediaStorage(root, {
         const check = await open(staging, "r");
         try {
           await check.read(header, 0, header.length, 0);
-          if (detectMime(header) !== mime) throw new Error("Stored artifact type changed.");
+          if (!(mime === GLB_MIME ? await validGlb(check, info.size) : detectMime(header) === mime)) {
+            throw new Error("Stored artifact type changed.");
+          }
         } finally { await check.close(); }
         signal.throwIfAborted();
         await rename(staging, final);

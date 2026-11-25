@@ -88,6 +88,9 @@ function createRouter({
   const jobs = () => db().collection("operations_jobs");
   const eventBatches = () => db().collection("operations_event_batches");
   const dispatch = () => db().collection("operations_dispatch");
+  const maintenanceActive = (settings) => +settings?.maintenanceUntil > Date.now();
+  const inMaintenance = async () => maintenanceActive(await dispatch().findOne({ _id: owner() }));
+  let admittingClaims = 0;
   const objectives = () => db().collection("operations_objectives");
   const projects = () => db().collection("operations_projects");
   const workforce = () => db().collection("operations_workforce");
@@ -96,12 +99,12 @@ function createRouter({
   const finance = () => db().collection("operations_finance");
   const correspondence = () => db().collection("operations_correspondence");
   const series = () => db().collection("operations_recurrence");
-  const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled });
+  const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled, inMaintenance });
   const recurrence = createRecurrence({ records: series, jobs });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
   const studioActions = createStudioActions({
-    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView,
+    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -271,7 +274,8 @@ function createRouter({
       }
     }
     if (!job) {
-      if ((await dispatch().findOne({ _id: scope.ownerId }))?.paused) return res.json(null);
+      const settings = await dispatch().findOne({ _id: scope.ownerId });
+      if (settings?.paused || maintenanceActive(settings)) return res.json(null);
       if (!background) await recurrence.reconcile(req.operationsHost);
       const allocated = req.operationsHost.backgroundReviews === true;
       const other = allocated && await jobs().findOne({
@@ -281,7 +285,9 @@ function createRouter({
       const sameWorkspaceRestriction = other && (!background || (other.profile && other.profile !== "read-only"));
       const held = usageHoldUntil(req.operationsHost.usage);
       if (background && (held || other?.profile === "full-access")) return res.json(null);
+      admittingClaims++;
       try {
+        if (await inMaintenance()) return res.json(null);
         job = await jobs().findOneAndUpdate({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
@@ -307,6 +313,8 @@ function createRouter({
       } catch (error) {
         if (error.code !== 11000) throw error;
         job = await jobs().findOne({ ...scope, activeHost, instance });
+      } finally {
+        admittingClaims--;
       }
     }
     if (!job) return res.json(null);
@@ -546,11 +554,33 @@ function createRouter({
   router.use("/workforce", createWorkforce({ records: workforce, jobs, objectives, owner, jobView }));
   router.use("/activity", createActivity({ sources: { job: jobs, objective: objectives, knowledge }, owner }));
   router.use("/objective-runs", createObjectiveRuns({
-    jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes,
+    jobs, objectives, projects, workforce, hosts, owner, workerEnabled, jobView, hostLimit, upgradeMessage, ensureIndexes, inMaintenance,
   }));
   router.get("/dispatch", async (_req, res) => {
     const settings = await dispatch().findOne({ _id: owner() });
     res.json({ paused: settings?.paused === true, updatedAt: settings?.updatedAt || null });
+  });
+  router.get("/maintenance", async (_req, res) => {
+    const ownerId = owner();
+    const admissionsAtRead = admittingClaims;
+    const [settings, executions, mediaTransfers] = await Promise.all([
+      dispatch().findOne({ _id: ownerId }),
+      jobs().countDocuments({ ownerId, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date() } }),
+      media.drainStatus(),
+    ]);
+    const active = maintenanceActive(settings);
+    const claimAdmissions = Math.max(admissionsAtRead, admittingClaims);
+    res.json({ active, expiresAt: active ? settings.maintenanceUntil : null, executions, mediaTransfers, claimAdmissions,
+      ready: active && executions === 0 && mediaTransfers === 0 && claimAdmissions === 0 });
+  });
+  router.patch("/maintenance", async (req, res) => {
+    const minutes = req.body?.minutes;
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 60) {
+      return reject(res, 400, "Choose a maintenance window of 1 to 60 minutes, or zero to end it.");
+    }
+    const maintenanceUntil = minutes ? new Date(Date.now() + minutes * 60_000) : null;
+    await dispatch().updateOne({ _id: owner() }, { $set: { maintenanceUntil } }, { upsert: true });
+    res.json({ expiresAt: maintenanceUntil });
   });
   router.patch("/dispatch", async (req, res) => {
     const paused = req.body?.paused;
@@ -754,6 +784,7 @@ function createRouter({
       dispatch().findOne({ _id: ownerId }),
       hosts().findOne({ _id: job.hostId, ownerId, revokedAt: null }),
     ]);
+    if (maintenanceActive(settings)) return "Production maintenance";
     if (settings?.paused) return "Dispatch paused";
     if (!host || !online(host)) return "Waiting for the relay to reconnect";
     if ((job.delegatedBy || job.reviewOf || job.seriesId) && usageHoldUntil(host.usage)) return "Waiting for subscription capacity";
@@ -863,6 +894,7 @@ function createRouter({
   });
   router.post(["/jobs", "/schedule", "/recurrence"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
+    if (await inMaintenance()) return reject(res, 423, "New executions are paused for production maintenance.");
     const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId,
       attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId } = req.body || {};
     const repeating = /^\/recurrence\/?$/i.test(req.path);
