@@ -59,7 +59,13 @@ function definition(input) {
         dependents(dependency.id).length !== 1 || dependents(step.id).length !== 1 || dependents(step.id)[0].type !== "retest")) return null;
     if (step.type === "retest" && (step.dependencies.length !== 1 || dependency?.type !== "correction")) return null;
   }
-  return { name: input.name.trim(), steps };
+  const layout = input.layout ?? {};
+  if (typeof layout !== "object" || Array.isArray(layout) ||
+      Object.entries(layout).some(([id, point]) => !byId.has(id) ||
+        !point || ![point.x, point.y].every(value => Number.isInteger(value) && value >= 0 && value <= 4000))) return null;
+  return { name: input.name.trim(), steps, layout: Object.fromEntries(
+    Object.entries(layout).map(([id, { x, y }]) => [id, { x, y }]),
+  ) };
 }
 
 function stepStates(run, executions) {
