@@ -324,6 +324,52 @@ try {
       await finish(gate, "MISSION_RESULT: PASS");
       assert.equal(await claim(), null);
       assert.equal(await jobs.countDocuments({ missionId: id, missionStep: "review" }), 1);
+      const recoveryId = randomUUID();
+      const recovered = async () => (await missionApi(""))[1].find(record => record._id === recoveryId);
+      assert.equal((await missionApi("", "POST", { ...body, id: recoveryId, steps: [
+        step("prepare"), step("implement", dep("prepare")), step("verify", dep("implement"), { reviewer: director._id, approval: true }),
+      ] }))[0], 201);
+      const prepare = await claim();
+      await finish(prepare, "MISSION_RESULT: PASS");
+      const blocked = await claim();
+      await finish(blocked, "Candidate work preserved. Awaiting commit authorization.\nMISSION_RESULT: BLOCKED");
+      const before = await recovered();
+      assert.equal(before.status, "blocked");
+      assert.equal(before.results.verify.result, "skipped");
+      const resolution = { action: "recover", revision: before.revision, step: "implement", resolution: "The owner authorizes the candidate commit." };
+      const recover = (input, user) => missionApi("/" + recoveryId, "PATCH", input, user);
+      assert.equal((await recover(resolution, owner))[0], 403);
+      assert.equal((await recover({ ...resolution, step: "prepare" }))[0], 400);
+      const responses = await Promise.all([recover(resolution), recover(resolution)]);
+      assert.deepEqual(responses.map(([status]) => status).sort(), [200, 409]);
+      const resumedJob = await claim();
+      assert.notEqual(resumedJob._id, blocked._id);
+      assert.equal(resumedJob.missionId, recoveryId);
+      assert.match(resumedJob.prompt, /The owner authorizes the candidate commit/);
+      assert.match(resumedJob.prompt, /Candidate work preserved/);
+      const resumed = await recovered();
+      assert.deepEqual(resumed.results.prepare, before.results.prepare);
+      assert.deepEqual(resumed.recoveries[0].previous, before.results.implement);
+      assert.deepEqual(resumed.steps, before.steps);
+      await finish(resumedJob, "MISSION_RESULT: PASS");
+      assert.deepEqual((await recovered()).awaitingApprovals, ["verify"]);
+      assert.equal(await claim(), null);
+      assert.equal((await recover({ action: "approve", step: "verify", revision: (await recovered()).revision }))[0], 200);
+      const verify = await claim();
+      assert.equal(verify.employeeContext.name, director.name);
+      await finish(verify, "MISSION_RESULT: PASS");
+      assert.equal((await recovered()).status, "completed");
+      const handledId = randomUUID();
+      assert.equal((await missionApi("", "POST", { ...body, id: handledId, steps: [
+        step("implement"), step("record-blocker", dep("implement", "blocked")),
+      ] }))[0], 201);
+      await finish(await claim(), "MISSION_RESULT: BLOCKED");
+      await finish(await claim(), "MISSION_RESULT: PASS");
+      const handled = (await missionApi(""))[1].find(record => record._id === handledId);
+      assert.equal(handled.status, "blocked");
+      assert.equal((await missionApi("/" + handledId, "PATCH", { ...resolution, revision: handled.revision }))[0], 409);
+      assert.equal(await claim(), null);
+      console.log("Blocked mission recovery, concurrent replay, retained history, and independent review gate PASS");
       const scopedId = randomUUID();
       const scope = "c".repeat(64);
       const browserCapabilities = ["read", "write", "scratch", "subprocess", "network", "browser", "isolated-review"];
