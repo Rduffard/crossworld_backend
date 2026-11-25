@@ -1,4 +1,5 @@
 const express = require("express");
+const { createRemoteLifecycle } = require("./remote-lifecycle");
 const mongoose = require("mongoose");
 const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const auth = require("../../core/middleware/auth");
@@ -225,6 +226,10 @@ function createRouter({
     res.json({ ready: status.ready && status.paused && +status.expiresAt - Date.now() >= 5 * 60_000 });
   });
   worker.use(express.json({ limit: "640kb" }));
+  const lifecycleRequests = () => db().collection("operations_supervisor_requests");
+  const lifecycle = createRemoteLifecycle({ hosts, requests: lifecycleRequests, owner, maintenanceStatus, workerEnabled });
+  const lifecycleRunning = () => lifecycleRequests().findOne({ ownerId: owner(), status: "running" }, { projection: { _id: 1 } });
+  worker.use("/supervisor", lifecycle.worker);
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
   worker.post("/heartbeat", async (req, res) => {
@@ -607,6 +612,7 @@ function createRouter({
     const isBrief = req.method === "POST" && /^\/(?:schedule|recurrence|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
+  router.use("/supervisor", lifecycle.browser);
   router.use("/owner-preferences", createOwnerPreferences({ records: () => db().collection("operations_owner_preferences"), owner }));
   router.use("/organization", createOrganization({ workforce, projects, objectives, owner }));
   router.use("/projects", createProjects({ records: projects, owner }));
@@ -694,6 +700,7 @@ function createRouter({
       return reject(res, 400, "Choose a maintenance window of 1 to 60 minutes, or zero to end it.");
     }
     const at = new Date();
+    if (minutes < 5 && await lifecycleRunning()) return reject(res, 409, "Wait for the independent supervisor to finish handover.");
     const maintenanceUntil = minutes ? new Date(+at + minutes * 60_000) : null;
     await dispatch().updateOne({ _id: owner() }, {
       $set: { maintenanceUntil },
@@ -704,6 +711,7 @@ function createRouter({
   router.patch("/dispatch", async (req, res) => {
     const paused = req.body?.paused;
     if (typeof paused !== "boolean") return reject(res, 400, "Choose whether to pause future dispatch.");
+    if (!paused && await lifecycleRunning()) return reject(res, 409, "Wait for the independent supervisor to finish handover.");
     await dispatch().updateOne({ _id: owner() }, { $set: { paused, updatedAt: new Date() } }, { upsert: true });
     res.sendStatus(204);
   });

@@ -13,7 +13,7 @@ export function turnControl(signal, clean) {
       steer = send;
     },
     approve(request) {
-      if (approval?.state === "pending" || signal.aborted) return Promise.resolve("deny");
+      if (request.canApprove !== true || approval?.state === "pending" || signal.aborted) return Promise.resolve("deny");
       approval = {
         id: randomUUID(), state: "pending", expiresAt: Date.now() + 90_000,
         operation: clean(request.operation).slice(0, 4000),

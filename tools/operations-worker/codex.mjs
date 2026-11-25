@@ -407,21 +407,23 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
               typeof p.command === "string" && !!p.command.trim();
             const paths = JSON.stringify(p.permissions || p.additionalPermissions || p.commandActions ||
               [p.grantRoot || p.cwd].filter(Boolean));
-            if (elicitation && !confirm) {
-              record("execution", "Unsupported MCP prompt declined", p.serverName || "Unknown MCP server");
+            const reason = [elicitation ? p.message : p.reason,
+              grant?.network && "This grants network access for the remainder of the turn.",
+              commandApproval && "Approving once may run this command outside the workspace sandbox."].filter(Boolean).join("\n");
+            const operation = elicitation ? "MCP confirmation: " + p.serverName
+              : p.command || approvalNames[message.method];
+            const exceedsLimits = paths.length > 4000 || operation.length > 4000 || reason.length > 2000;
+            if (exceedsLimits || (!confirm && !grant && !commandApproval)) {
+              const explanation = exceedsLimits
+                ? "The request exceeds the size Operations can present for an owner decision."
+                : message.method === "item/permissions/requestApproval"
+                  ? "The worker rejected the requested grant under this execution profile. Network grants require an eligible development turn. Filesystem grants must resolve inside eligible roots and exclude protected paths."
+                  : "The current execution profile cannot offer owner approval for this operation.";
+              record("activity", "Permission request unavailable", explanation);
               server.write({ id: message.id, result: decline });
               return;
             }
-            const choice = await control.approve({
-              operation: elicitation ? `MCP confirmation · ${p.serverName}` : p.command || approvalNames[message.method],
-              paths,
-              reason: commandApproval
-                ? [p.reason, "Approving once may run this command outside the workspace sandbox."].filter(Boolean).join("\n")
-                : [elicitation ? p.message : p.reason,
-                  grant?.network && "This grants network access for the remainder of the turn."].filter(Boolean).join("\n"),
-              canApprove: paths.length <= 4000 && (p.command?.length ?? 0) <= 4000 &&
-                (confirm || !!grant || commandApproval),
-            });
+            const choice = await control.approve({ operation, paths, reason, canApprove: true });
             if (choice === "approve" && !finished && !signal.aborted) {
               if (confirm && isMcpConfirmation(p, scope.reviewMcpConfirmation)) {
                 result = { action: "accept", content: {}, _meta: null };
