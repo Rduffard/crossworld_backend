@@ -14,6 +14,7 @@ import { acquireWorkerLock } from "./windows.mjs";
 import { protectedDirectories, workspacePaths as workspaces } from "./profiles.mjs";
 import { verifyMedia } from "./media-integration.mjs";
 import releaseFormat from "../../src/modules/operations/managed-release-format.js";
+import scopeRules from "../../src/modules/operations/assignment-scopes.js";
 
 const fullAccessLive = process.argv.includes("--full-access-live");
 const live = process.argv.includes("--live") && !fullAccessLive;
@@ -542,6 +543,33 @@ try {
     assert.equal(workshopScoped.workspace, "workshop");
     await finishStep(workshopScoped, "Scoped Workshop turn completed.");
     console.log("Cross-drive permission revision, drive-free conversation, and same-host read-only overlap PASS");
+    const engineeringScope = scopeRules.assignmentScope("engineering", ["C:\\Stage\\Engineering", "D:\\Stage\\Engineering"]);
+    assert.equal(scopeRules.assignmentScope("bad", ["C:\\Stage", "C:\\Stage\\Child"]), null);
+    assert.equal(scopeRules.assignmentScope("bad", ["C:\\Stage\\PROGRA~1"]), null);
+    const scopedCatalog = { ...scopedHeartbeat, assignmentScopes: [engineeringScope] };
+    await assert.rejects(reviewSend("/heartbeat", { ...scopedCatalog, assignmentScopes: [
+      { ...engineeringScope, revision: "b".repeat(64) },
+    ] }), { status: 400 });
+    await reviewSend("/heartbeat", scopedCatalog);
+    const assigned = { ...directFixture, profile: "scoped", workspace: "development", id: randomUUID(),
+      objectiveId: designObjective._id, employeeId: director._id };
+    assert.equal((await blueprintApi("/jobs", "POST", assigned))[0], 400);
+    const scopedAssigned = { ...assigned, assignmentScopeId: engineeringScope.id, assignmentScopeRevision: engineeringScope.revision };
+    assert.equal((await blueprintApi("/jobs", "POST", scopedAssigned))[0], 201);
+    assert.equal((await blueprintApi("/jobs", "POST", { ...scopedAssigned, assignmentScopeRevision: "b".repeat(64) }))[0], 409);
+    await reviewSend("/heartbeat", scopedHeartbeat);
+    assert.equal(await claimParent(), null);
+    assert.equal((await blueprintApi("/jobs/" + assigned.id, "GET"))[1].queueReason, "Waiting for the original assignment write scope");
+    await reviewSend("/heartbeat", scopedCatalog);
+    const scopedClaim = await claimParent();
+    assert.equal(scopedClaim._id, assigned.id);
+    assert.equal(scopedClaim.workerRole, "scoped-assignment");
+    assert.equal(scopedClaim.assignmentScopeId, engineeringScope.id);
+    assert.equal(scopedClaim.assignmentScopeRevision, engineeringScope.revision);
+    assert.equal(scopedClaim.roots, undefined);
+    await finishStep(scopedClaim, "Verified scoped assignment completed.");
+    await reviewSend("/heartbeat", scopedHeartbeat);
+    console.log("Assignment write scope binds explicit authorization and refuses stale or broadened roots PASS");
     const conversation = {
       id: randomUUID(), recipientId: director._id, hostId: reviewHost,
       model: "gpt-6.2-sol", effort: "low", prompt: "What are your current responsibilities?",

@@ -12,6 +12,7 @@ import { crossDriveScope, developmentRepositories, protectedDirectories, sandbox
 import promptLimits from "../../src/modules/operations/prompt-limits.js";
 import usageTools from "../../src/modules/operations/usage.js";
 import diagnostics from "../../src/modules/operations/diagnostics.js";
+import assignmentScopes from "../../src/modules/operations/assignment-scopes.js";
 import { resourceSampler } from "./resources.mjs";
 
 const { PROMPT_LIMIT } = promptLimits;
@@ -44,7 +45,7 @@ export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
   mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
-  relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision,
+  relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision, verifiedAssignmentScopes = [],
   draining = () => false, reportHeartbeat, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
@@ -134,6 +135,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             resources: getResources?.(),
             relayVersion, supervised, isolatedReviewSnapshot, blueprintBranches,
             ...(advertisedProfiles?.includes("scoped") ? { scopedRevision } : {}),
+            ...(advertisedProfiles?.includes("scoped") && verifiedAssignmentScopes.length ? { assignmentScopes: verifiedAssignmentScopes } : {}),
           });
           let capabilities;
           for (;;) {
@@ -332,6 +334,38 @@ async function startWorker(draining = () => false) {
       profileProbe?.close();
     }
   }
+  const verifiedAssignmentScopes = [];
+  const localAssignmentRoots = new Map();
+  const configuredScopes = !isolatedRoot && process.env.OPERATIONS_ASSIGNMENT_SCOPES;
+  if (configuredScopes) {
+    try {
+      const allowed = new Map((editRoots.scoped || []).map(root => [assignmentScopes.pathKey(root), root]));
+      const definitions = JSON.parse(configuredScopes);
+      if (!Array.isArray(definitions) || !definitions.length || definitions.length > 12) throw new Error("Invalid scope catalog.");
+      const declared = definitions.map(({ id, roots }) => assignmentScopes.assignmentScope(id, roots));
+      if (declared.some(scope => !scope || !scope.roots.every(root => allowed.has(root))) ||
+          !assignmentScopes.scopeCatalog(declared)) throw new Error("Assignment scopes must use verified scoped roots.");
+      for (const scope of declared) {
+        const roots = scope.roots.map(key => allowed.get(key));
+        const forbidden = [...new Set([...exclusions(roots), ...[...allowed.entries()]
+          .filter(([key]) => !assignmentScopes.rootsOverlap([key], scope.roots)).map(([, directory]) => directory)])];
+        for (const root of roots) {
+          const scopeProbe = new AppServer(exe, root);
+          try {
+            await scopeProbe.initialize();
+            await verifySandbox(scopeProbe, root, sandboxFor(root, roots), forbidden, roots);
+          } finally { scopeProbe.close(); }
+        }
+        verifiedAssignmentScopes.push(scope);
+        localAssignmentRoots.set(scope.id, roots);
+      }
+    } catch {
+      verifiedAssignmentScopes.length = 0;
+      localAssignmentRoots.clear();
+      console.error("Assignment write scopes failed Windows sandbox attestation.");
+      if (process.argv.includes("--check")) process.exitCode = 1;
+    }
+  }
   if (process.argv.includes("--check")) {
     if (!isolatedRoot && process.env.OPERATIONS_SCOPED_PROFILE === "1" && !editRoots.scoped) process.exitCode = 1;
     return;
@@ -386,11 +420,14 @@ async function startWorker(draining = () => false) {
     isolatedReviewSnapshot: !!isolatedRoot,
     blueprintBranches: !isolatedRoot,
     scopedRevision,
+    verifiedAssignmentScopes,
     execute: async (job, record, signal, control, instance) => {
       const profile = job.profile || "read-only";
       const unrestricted = profile === "full-access";
       const correction = job.workerRole === "correction";
       const scoped = profile === "scoped";
+      const scopedAssignment = job.workerRole === "scoped-assignment";
+      const assignmentScope = assignmentScopes.matchingScope(job, new Map(verifiedAssignmentScopes.map(scope => [scope.id, scope])));
       const strictReadOnly = ["assignment", "employee-conversation"].includes(job.workerRole);
       if ((isolatedRoot && (job.isolatedReview !== true || job.workerRole !== "assignment" || job.codexThreadId ||
           job.mediaInputs?.length || job.outputMedia || job.artifactImport || job.studioActions)) ||
@@ -399,6 +436,8 @@ async function startWorker(draining = () => false) {
           (correction && profile !== job.workspace && !scoped) || !Object.hasOwn(workspaces, job.workspace) || job.model !== model || !efforts.includes(job.effort) ||
           (unrestricted ? !fullAccess : profile !== "read-only" && ((!scoped && profile !== job.workspace) || !Object.hasOwn(editRoots, profile))) ||
           (scoped && job.scopedRevision !== scopedRevision) ||
+          ((scopedAssignment || job.assignmentScopeId || job.assignmentScopeRevision) &&
+            (!scopedAssignment || !scoped || !assignmentScope || job.codexThreadId || job.studioActions)) ||
           typeof job.prompt !== "string" || job.prompt.length > PROMPT_LIMIT || !job.prompt.isWellFormed() ||
           (job.codexThreadId && !sessions.allows(job.codexThreadId, job.workspace, profile, job.scopedRevision))) {
         return { status: "failed", error: "Job is outside the worker allowlist." };
@@ -421,7 +460,8 @@ async function startWorker(draining = () => false) {
         }
         return { status: "completed", error: "" };
       }
-      const roots = profile === "read-only" || unrestricted ? [] : editRoots[profile].map(verifyDirectory);
+      const roots = profile === "read-only" || unrestricted ? [] :
+        (scopedAssignment ? localAssignmentRoots.get(assignmentScope.id) : editRoots[profile]).map(verifyDirectory);
       const root = scoped && job.workspace === "workshop" ? roots.at(-1) : roots[0];
       const cwd = root || workspaces[job.workspace];
       let staged;
@@ -470,7 +510,7 @@ async function startWorker(draining = () => false) {
           readStudioRecords: job.studioActions === true ? (query) =>
             send(`/jobs/${job._id}/studio-records`, { ...query, instance }) : undefined,
           readStudioBriefing: job.studioActions === true ? () => send(`/jobs/${job._id}/studio-briefing`, { instance }) : undefined,
-          remember: (threadId) => sessions.remember(threadId, job.workspace, profile, job.scopedRevision),
+          remember: (threadId) => { if (!scopedAssignment) sessions.remember(threadId, job.workspace, profile, job.scopedRevision); },
         });
       } finally {
         await staged?.cleanup().catch(() => {});

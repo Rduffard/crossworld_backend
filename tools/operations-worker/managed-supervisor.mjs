@@ -10,7 +10,7 @@ import { backendClient } from "./worker.mjs";
 import releaseFormat from "../../src/modules/operations/managed-release-format.js";
 
 const digest = /^[a-f\d]{64}$/;
-const allowed = /^(?:tools\/operations-worker\/[\w .-]+\.(?:mjs|md|cmd|ps1)|src\/modules\/operations\/(?:diagnostics|media-artifacts|prompt-limits|usage)\.js)$/;
+const allowed = /^(?:tools\/operations-worker\/[\w .-]+\.(?:mjs|md|cmd|ps1)|src\/modules\/operations\/(?:assignment-scopes|diagnostics|media-artifacts|prompt-limits|usage)\.js)$/;
 const entrypoint = "tools/operations-worker/worker.mjs";
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 

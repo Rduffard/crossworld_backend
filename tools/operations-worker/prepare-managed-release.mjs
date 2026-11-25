@@ -7,7 +7,7 @@ import releaseFormat from "../../src/modules/operations/managed-release-format.j
 
 const directory = "tools/operations-worker/";
 const operations = "src/modules/operations/";
-const { gitCommit, hash, runtimeFiles } = releaseFormat;
+const { gitCommit, hash, runtimeFiles, optionalRuntimeFiles } = releaseFormat;
 
 export function prepareManagedRelease({ repository, commit, output }) {
   if (!gitCommit(commit)) throw new Error("Provide the full reviewed Git commit SHA.");
@@ -26,7 +26,7 @@ export function prepareManagedRelease({ repository, commit, output }) {
   const files = new Map();
   for (const row of listing) {
     const [metadata, file] = row.split("\t", 2);
-    if (!runtimeFiles.has(file)) continue;
+    if (!runtimeFiles.has(file) && !optionalRuntimeFiles.has(file)) continue;
     const [mode, type, oid] = metadata.split(" ");
     if (!["100644", "100755"].includes(mode) || type !== "blob") throw new Error("Unsafe release member: " + file);
     const bytes = git("cat-file", "blob", oid);

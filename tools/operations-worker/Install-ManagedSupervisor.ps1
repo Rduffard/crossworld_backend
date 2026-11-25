@@ -30,7 +30,7 @@ if (!(Test-Path -LiteralPath $environment -PathType Leaf)) { throw 'The current 
 if ((Get-FileHash -LiteralPath $manifest).Hash -ne $ManifestSha) { throw 'The seed bundle is not the reviewed release.' }
 $files = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
 foreach ($entry in $files) {
-    if ($entry.file -notmatch '^(tools/operations-worker/[\w .-]+\.(mjs|md|cmd|ps1)|src/modules/operations/(diagnostics|media-artifacts|prompt-limits|usage)\.js)$' -or
+  if ($entry.file -notmatch '^(tools/operations-worker/[\w .-]+\.(mjs|md|cmd|ps1)|src/modules/operations/(assignment-scopes|diagnostics|media-artifacts|prompt-limits|usage)\.js)$' -or
         (Get-FileHash -LiteralPath (Join-Path $ActiveBundle $entry.file)).Hash -ne $entry.sha256) {
         throw 'The seed runtime does not match its reviewed manifest.'
     }

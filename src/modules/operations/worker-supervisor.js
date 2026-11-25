@@ -3,7 +3,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const workerFiles = /^tools\/operations-worker\/[\w -]+\.(?:mjs|cmd|md)$/;
-const workerDependencies = ["diagnostics", "media-artifacts", "prompt-limits", "usage"]
+const workerDependencies = ["assignment-scopes", "diagnostics", "media-artifacts", "prompt-limits", "usage"]
   .map(name => "src/modules/operations/" + name + ".js");
 const workerReleaseFile = file => workerFiles.test(file) || workerDependencies.includes(file);
 
