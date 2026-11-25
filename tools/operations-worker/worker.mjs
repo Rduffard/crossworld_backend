@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { acquireWorkerLock, loadCredential } from "./windows.mjs";
-import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -282,8 +282,10 @@ async function startWorker(draining = () => false) {
   let fullAccess = false;
   let scopedRevision;
   const editRoots = {};
+  const productionDirectory = process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Crossworld Operations");
+  const operationalExclusions = productionDirectory && existsSync(productionDirectory) ? [productionDirectory] : [];
   const candidates = isolatedRoot ? {} : { development: developmentRepositories, workshop: [workspaces.workshop] };
-  const exclusions = (roots) => protectedDirectories.filter((directory) => !roots.some((root) => {
+  const exclusions = (roots) => [...protectedDirectories, ...operationalExclusions].filter((directory) => !roots.some((root) => {
     const relative = path.relative(root, directory);
     return !relative || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep));
   }));
@@ -439,7 +441,7 @@ async function startWorker(draining = () => false) {
     reportHeartbeat: report => {
       if (process.connected) process.send({ type: "heartbeat", ...report }, () => {});
     },
-    getResources: process.env.OPERATIONS_RESOURCE_TELEMETRY === "1" ? resourceSampler() : undefined,
+    getResources: maxScopedExecutions || process.env.OPERATIONS_RESOURCE_TELEMETRY === "1" ? resourceSampler() : undefined,
     getUsage: () => {
       if (usageHoldUntil(usage) && Date.now() - lastUsageAttempt >= 120_000) void refreshHeldUsage();
       return usage;

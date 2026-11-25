@@ -296,6 +296,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
       sandbox: fullAccess ? "danger-full-access" : "read-only", serviceTier: "default",
       developerInstructions: [
         "Work within the selected Operations workspace. Use existing local authentication without printing or reading credentials.",
+        "Treat the Home PC production supervisor, relay processes, scheduled tasks, launch configuration and release stores as operational infrastructure. Routine assignments may inspect approved status surfaces. Develop and test in isolated workspaces with separate processes and configuration. Do not stop, reconfigure, overwrite, or signal production infrastructure outside an explicitly authorized maintenance handover.",
         "Commit, push, or open a pull request only when the owner explicitly instructs you.",
         "For GitHub pull requests, use gh if available. Otherwise use the Operations open-pull-request.mjs helper with the absolute repository path, source branch, base branch, title, and optional body.",
         "Never publish packages, releases, or release tags, or enable publishing workflows.",

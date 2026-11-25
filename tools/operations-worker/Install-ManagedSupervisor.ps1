@@ -2,10 +2,13 @@
 param(
     [Parameter(Mandatory)][string]$ActiveBundle,
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$ManifestSha,
+    [Parameter(Mandatory)][string]$SupervisorCandidate,
+    [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{64}$')][string]$SupervisorManifestSha,
     [switch]$Apply
 )
 
 . (Join-Path $PSScriptRoot 'Handover-Core.ps1')
+. (Join-Path $PSScriptRoot 'Supervisor-Runtime.ps1')
 $ErrorActionPreference = 'Stop'
 $original = 'Crossworld Operations Fleetmaster Supervisor'
 $managed = 'Crossworld Operations Release-Managed Supervisor'
@@ -16,7 +19,6 @@ $state = Join-Path $releaseHome 'state.json'
 $marker = Join-Path $releaseHome 'supervisor-ready.json'
 $history = Join-Path $releaseHome 'bootstrap.txt'
 $environment = Join-Path $operationsRoot 'Fleetmaster Handover\candidate.env'
-$controller = Join-Path $PSScriptRoot 'managed-supervisor.mjs'
 $manifest = Join-Path $ActiveBundle 'runtime-manifest.json'
 $worker = Join-Path $ActiveBundle 'tools\operations-worker\worker.mjs'
 $node = (Get-Command node.exe).Source
@@ -27,6 +29,7 @@ if ($originalTask.State -ne 'Running' -or ($originalTask.Principal.UserId -split
     throw 'The current attended Fleetmaster supervisor must be running under this Windows account.'
 }
 if (!(Test-Path -LiteralPath $environment -PathType Leaf)) { throw 'The current worker launch environment is missing.' }
+$null = Assert-SupervisorRuntime -Directory $SupervisorCandidate -ManifestSha $SupervisorManifestSha
 if ((Get-FileHash -LiteralPath $manifest).Hash -ne $ManifestSha) { throw 'The seed bundle is not the reviewed release.' }
 $files = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
 foreach ($entry in $files) {
@@ -65,9 +68,11 @@ function Wait-Stop($task) {
 }
 Confirm-Hold
 if (Get-ScheduledTask -TaskName $managed -ErrorAction SilentlyContinue) { throw 'Inspect the existing managed supervisor task before retrying.' }
+$runtime = Install-SupervisorRuntime -Candidate $SupervisorCandidate -ManifestSha $SupervisorManifestSha -OperationsRoot $operationsRoot
+$controller = Join-Path $runtime 'tools\operations-worker\managed-supervisor.mjs'
 $taskAction = @{
     Execute = $node
-    WorkingDirectory = @($originalTask.Actions)[0].WorkingDirectory
+    WorkingDirectory = $runtime
     Argument = '--env-file="{0}" "{1}" --managed-releases "{2}"' -f $environment,$controller,$releaseHome
 }
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
