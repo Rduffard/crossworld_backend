@@ -127,19 +127,31 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled, inMai
       const job = await jobs().findOne({
         _id: jobId, ownerId, hostId: host._id, activeHost: host._id, instance, outputMedia: true, workspace: "workshop",
         profile: "workshop", status: "running", leaseUntil: { $gt: new Date() },
-      }, { projection: { _id: 1, projectId: 1 } });
+      }, { projection: { _id: 1, projectId: 1, artifactImport: 1 } });
       if (!job) return fail(res, 403, "Artifact publication is not authorized for this turn.");
-      const id = stableId(`artifact:${ownerId}:${jobId}:${name.toLowerCase()}`);
-      const query = { _id: id, ownerId, hostId: host._id, jobId, kind: "artifact" };
-      const existing = await records().findOne(query);
+      if (job.artifactImport && !job.artifactImport.some((file) => file.name === name && file.size === size && file.sha256 === sha256)) {
+        return fail(res, 403, "The file is not in the authorized import manifest.");
+      }
+      const originalId = stableId(`artifact:${ownerId}:${jobId}:${name.toLowerCase()}`);
+      let query = { _id: originalId, ownerId, hostId: host._id, jobId, kind: "artifact" };
+      let existing = await records().findOne(query);
+      if (!existing && job.artifactImport) {
+        existing = await records().findOne({
+          ownerId, hostId: host._id, kind: "artifact", name, size, mime, sha256,
+          projectId: job.projectId ?? null, state: { $in: ["ready", "publishing"] },
+        }, { sort: { state: -1, createdAt: 1 } });
+        if (existing) query = { ...query, _id: existing._id, jobId: existing.jobId };
+      }
+      const id = query._id;
       if (existing && (existing.sha256 !== sha256 || existing.mime !== mime || existing.size !== size)) {
         return fail(res, 409, "This artifact filename already represents different bytes.");
       }
-      if (existing?.state === "ready") return res.json({ id, name: existing.name, state: "ready" });
+      if (existing?.state === "ready" && phase === "reserve") return res.json({ id, name: existing.name, state: "ready" });
       if (phase === "finish") {
         if (!existing) return fail(res, 409, "Reserve this artifact before publishing it.");
         await records().updateOne({ ...query, state: "publishing" },
           { $set: { state: "ready", offset: size, finalizedAt: new Date() } });
+        if (job.artifactImport) await jobs().updateOne({ _id: jobId, ownerId }, { $addToSet: { artifactIds: id } });
         return res.json({ id, name: existing.name, state: "ready" });
       }
       if (!existing) {
@@ -372,8 +384,9 @@ function createMedia({ records, hosts, jobs, owner, online, workerEnabled, inMai
     const byId = new Map(entries.map(({ _id, mime, size, sha256 }) => [_id, { id: _id, mime, size, sha256 }]));
     return ids.map((id) => byId.get(id));
   }
-  async function outputs(jobId) {
-    const entries = await records().find({ ownerId: owner(), jobId, kind: "artifact", state: "ready" }, {
+  async function outputs(jobId, artifactIds) {
+    const entries = await records().find({ ownerId: owner(), kind: "artifact", state: "ready",
+      ...(artifactIds?.length ? { _id: { $in: artifactIds } } : { jobId }) }, {
       projection: { name: 1, mime: 1, size: 1 },
     }).sort({ createdAt: 1 }).limit(ARTIFACT_LIMIT).toArray();
     return entries.map(({ _id, name, mime, size }) => ({ id: _id, name, mime, size }));

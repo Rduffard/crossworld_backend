@@ -21,6 +21,7 @@ const { resolveAssignment, assignmentFields } = require("./assignments");
 const { employeeContext } = require("./employee-context");
 const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
+const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
 const { createMedia, mediaObservation } = require("./media");
@@ -186,6 +187,7 @@ function createRouter({
     }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations, backgroundReviews,
       media: req.body?.media === true, mediaVideoFrames: req.body?.media === true && req.body?.mediaVideoFrames === true,
       mediaOutput: req.body?.media === true && req.body?.mediaOutput === true && supported.includes("workshop"),
+      artifactImport: req.body?.artifactImport === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       mediaUsage: req.body?.media === true ? mediaObservation(req.body?.mediaUsage, +now) : null,
       relayVersion, supervised: relayVersion !== null && req.body?.supervised === true,
       resources, lastSeen: now } }, { returnDocument: "after" });
@@ -295,6 +297,7 @@ function createRouter({
           ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
           ...(req.operationsHost.media === true ? {} : { mediaInputs: { $exists: false } }),
           ...(req.operationsHost.mediaOutput === true ? {} : { outputMedia: { $ne: true } }),
+          ...(req.operationsHost.artifactImport === true && req.body.artifactImport === true ? {} : { artifactImport: { $exists: false } }),
           ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false } } : {}),
           ...(background ? { delegatedBy: { $exists: true }, workerRole: "assignment", profile: "read-only" }
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
@@ -399,7 +402,8 @@ function createRouter({
       ...(identity ? { employeeContext: identity } : {}),
       ...(decisions.length ? { approvedDecisions: decisions } : {}),
       ...(delegatedOutcomes.length ? { delegatedOutcomes } : {}),
-      ...(job.mediaInputs ? { mediaInputs: job.mediaInputs } : {}), ...(job.outputMedia === true ? { outputMedia: true } : {}) });
+      ...(job.mediaInputs ? { mediaInputs: job.mediaInputs } : {}), ...(job.outputMedia === true ? { outputMedia: true } : {}),
+      ...(job.artifactImport ? { artifactImport: job.artifactImport } : {}) });
   });
 
   worker.post("/jobs/:id/sync", async (req, res) => {
@@ -616,7 +620,7 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, employeeConversations: 1, backgroundReviews: 1, usage: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, usage: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
     const now = new Date();
     const slots = records.filter(host => !host.revokedAt).flatMap(host => [host._id, host._id + ":review"]);
@@ -830,7 +834,7 @@ function createRouter({
     }
     const [root, mediaOutputs, delegatedReview] = await Promise.all([
       jobs().findOne({ _id: job.sessionId || job._id, ownerId: owner() }, { projection: { title: 1, archivedAt: 1 } }),
-      job.outputMedia === true ? media.outputs(job._id) : undefined,
+      job.outputMedia === true ? media.outputs(job._id, job.artifactIds) : undefined,
       job.studioTools ? jobs().findOne({
         ownerId: owner(), _id: operationsReviewId(job._id), "delegatedBy.sourceTurnId": job._id,
       }, { projection: { title: 1, status: 1, assigneeName: 1, leaseUntil: 1, hostId: 1, workspace: 1, profile: 1, "delegatedBy.sourceTurnId": 1 } }) : null,
@@ -896,7 +900,7 @@ function createRouter({
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
     if (await inMaintenance()) return reject(res, 423, "New executions are paused for production maintenance.");
     const { id, hostId, workspace, model, effort, prompt, parentId, queue = false, profile = "read-only", scheduledAt, repeat, objectiveId, employeeId,
-      attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId } = req.body || {};
+      attachmentIds = [], includeProjectReferences = false, outputMedia = false, studioTools = false, recipientId, artifactImport } = req.body || {};
     const repeating = /^\/recurrence\/?$/i.test(req.path);
     const scheduling = repeating || /^\/schedule\/?$/i.test(req.path);
     const assigning = objectiveId !== undefined || employeeId !== undefined;
@@ -908,6 +912,7 @@ function createRouter({
         (typeof studioTools !== "boolean" || (studioTools && (scheduling || assigning))) ||
         (typeof includeProjectReferences !== "boolean" || (includeProjectReferences && !assigning)) ||
         (typeof outputMedia !== "boolean" || (outputMedia && (scheduling || parentId || workspace !== "workshop" || profile !== "workshop"))) ||
+        (artifactImport !== undefined && (!outputMedia || studioTools || !validArtifactImport(artifactImport))) ||
         (!Array.isArray(attachmentIds) || attachmentIds.length > 4 || (scheduling && attachmentIds.length)) ||
         (repeating ? !validRepeat(repeat) : repeat !== undefined) ||
         (scheduling ? parentId || !future(scheduledAt, maxScheduleDelayMs) : scheduledAt !== undefined)) {
@@ -915,6 +920,7 @@ function createRouter({
     }
     const invalid = promptError(prompt, "Prompt");
     if (invalid) return reject(res, 400, invalid);
+    const manifest = artifactImport?.map(({ source, name, size, sha256 }) => ({ source, name, size, sha256 }));
     const seriesRequest = repeat && {
       id, ownerId: owner(), hostId, workspace, model, effort, profile, prompt, scheduledAt,
       repeat: { days: repeat.days, count: repeat.count }, requiresExtendedPrompt: prompt.length > LEGACY_PROMPT_LIMIT,
@@ -928,10 +934,11 @@ function createRouter({
       .update(JSON.stringify([objectiveId, employeeId, hostId, workspace, profile, model, effort, prompt,
         ...(includeProjectReferences ? [true] : [])])).digest("hex") : undefined;
     const existingJob = () => jobs().findOne({ _id: id, ownerId: owner() }, {
-      projection: { assignmentDigest: 1, mediaInputs: 1, submittedAttachmentIds: 1, outputMedia: 1, studioTools: 1, requestedRecipientId: 1 },
+      projection: { assignmentDigest: 1, mediaInputs: 1, submittedAttachmentIds: 1, outputMedia: 1, studioTools: 1, requestedRecipientId: 1, artifactImport: 1 },
     });
     const replayJob = (record) => seriesRequest || record.assignmentDigest !== assignmentDigest || (record.outputMedia === true) !== outputMedia ||
         (record.studioTools === true) !== studioTools || record.requestedRecipientId !== recipientId ||
+        JSON.stringify(record.artifactImport) !== JSON.stringify(manifest) ||
         JSON.stringify(record.submittedAttachmentIds || record.mediaInputs?.map((entry) => entry.id) || []) !== JSON.stringify(attachmentIds)
       ? reject(res, 409, "Identifier already belongs to a different turn.") : res.json({ _id: id });
     const existing = await existingJob();
@@ -951,6 +958,7 @@ function createRouter({
       return reject(res, 409, "Choose up to four uploaded images of 12 MiB or less on the selected media device.");
     }
     if (outputMedia && host.mediaOutput !== true) return reject(res, 409, "The selected host has not verified a private export folder.");
+    if (artifactImport && host.artifactImport !== true) return reject(res, 409, "The selected host does not support deterministic artifact import.");
     let assignment = {};
     if (assigning) {
       const ownerId = owner();
@@ -1046,6 +1054,7 @@ function createRouter({
         ...(recipientId ? { requestedRecipientId: recipientId } : {}),
         ...(mediaInputs.length ? { mediaInputs } : {}),
         ...(outputMedia ? { outputMedia: true } : {}),
+        ...(manifest ? { artifactImport: manifest } : {}),
         ...(includeProjectReferences ? { submittedAttachmentIds: attachmentIds } : {}),
         ...(deliveredLength > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
         workerRole: conversationActor ? "employee-conversation" : parent?.workerRole || "direct", sessionId: parent?.sessionId || id, parentId: parentId || null,

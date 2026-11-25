@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -14,7 +14,7 @@ import media from "../../src/modules/operations/media.js";
 const { CHUNK } = media;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-async function verifyOutput({ api, send, db, device, instance, storage, pixel, outputJobs, files, fetchMedia }) {
+async function verifyOutput({ api, send, device, instance, storage, pixel, outputJobs, files, fetchMedia, root }) {
   const name = "test-card.png";
   const metadata = { name, size: pixel.length, mime: "image/png", sha256: hash(pixel) };
   const submit = (body) => api("/jobs", { method: "POST", body });
@@ -56,7 +56,7 @@ async function verifyOutput({ api, send, db, device, instance, storage, pixel, o
         if (view === "response") finalResponse += text;
       }, signal, undefined, {
         root: cwd, roots: [cwd, outbox.directory], artifactDir: outbox.directory, publishArtifact: publication,
-        protectedDirectories: storage.protectedPaths,
+        protectedDirectories: storage.protectedPaths, attestArtifactAcl: outbox.attestSandboxAcl,
       });
       assert.equal(result.status, "completed", result.error);
     } finally { clearInterval(lease); }
@@ -92,8 +92,47 @@ async function verifyOutput({ api, send, db, device, instance, storage, pixel, o
   assert.match(downloaded.headers.get("content-disposition"), /^attachment;/);
   assert.equal(hash(Buffer.from(await downloaded.arrayBuffer())), hash(model));
   await assert.rejects(notify(job._id, "reserve", { ...metadata, sha256: "0".repeat(64) }), { status: 409 });
-  await db.collection("operations_jobs").updateOne({ _id: job._id }, { $set: { leaseUntil: new Date(0) } });
+  await send(`/jobs/${job._id}/sync`, { instance, events: [], offset: 0, result: { status: "completed", error: "" } });
   await assert.rejects(notify(job._id, "reserve"), { status: 403 });
+  const folder = path.join(root, "10_Active_Experiments");
+  const source = "10_Active_Experiments/source.png";
+  const modelSource = "10_Active_Experiments/source.glb";
+  await mkdir(folder);
+  try {
+    await writeFile(path.join(root, source), pixel);
+    await writeFile(path.join(root, modelSource), model);
+    const artifactImport = [
+      { source, name, size: pixel.length, sha256: hash(pixel) },
+      { source: modelSource, name: "imported.glb", size: model.length, sha256: hash(model) },
+    ];
+    const importId = randomUUID();
+    const input = { ...request, id: importId, artifactImport };
+    assert.equal((await submit({ ...input, artifactImport: [{ ...artifactImport[0], source: "10_Active_Experiments/../source.png" }] }))[0], 400);
+    assert.equal((await submit(input))[0], 201);
+    assert.equal((await submit(input))[0], 200);
+    assert.equal(await send("/claim", { instance }), null);
+    const claimed = await send("/claim", { instance, artifactImport: true });
+    assert.deepEqual(claimed.artifactImport, artifactImport);
+    await assert.rejects(storage.importArtifact(importId, root,
+      { ...artifactImport[0], sha256: "0".repeat(64) }, () => assert.fail("must verify before reserve"), signal), /authorized size and hash/);
+    await assert.rejects(notify(importId, "reserve", { ...metadata, sha256: "0".repeat(64) }), { status: 403 });
+    const imported = await storage.importArtifact(importId, root, artifactImport[0],
+      (phase, content) => notify(importId, phase, content), signal);
+    assert.deepEqual(imported, { id: detail.mediaOutputs[0].id, name });
+    const importedModel = await storage.importArtifact(importId, root, artifactImport[1],
+      (phase, content) => notify(importId, phase, content), signal);
+    files.push(importedModel.id);
+    const [, importDetail] = await api(`/jobs/${importId}?compact=true`);
+    assert.deepEqual(importDetail.mediaOutputs, [...detail.mediaOutputs, { ...importedModel, mime: "model/gltf-binary", size: model.length }]);
+    const original = await fetchMedia(`/${importedModel.id}/content`);
+    assert.equal(original.status, 200);
+    assert.equal(hash(Buffer.from(await original.arrayBuffer())), hash(model));
+    await send(`/jobs/${importId}/sync`, { instance, events: [], offset: 0, result: { status: "completed", error: "" } });
+  } finally {
+    await unlink(path.join(root, source));
+    await unlink(path.join(root, modelSource));
+    await rmdir(folder);
+  }
   console.log("Worker artifacts opt-in, lease, replay and path validation, scoped publication, owner preview and original preservation PASS");
 }
 
@@ -110,7 +149,7 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
   const storage = await localMediaStorage(root, { quota: CHUNK * 3, freeReserve: 0, ffmpeg });
   const send = backendClient(base, device.token);
   const heartbeat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only", "workshop"], media: true,
-    mediaVideoFrames: storage.videoFrames, mediaOutput: true, mediaUsage: storage.latestUsage() });
+    mediaVideoFrames: storage.videoFrames, mediaOutput: true, artifactImport: true, mediaUsage: storage.latestUsage() });
   const pending = pollMedia({ send, signal: signal.signal, instance, storage });
   const files = [];
   const outputJobs = [];
@@ -190,7 +229,7 @@ export async function verifyMedia({ api, base, bearer, db, other }) {
     assert.equal((await api(`/jobs/${accepted._id}?compact=true`))[1].mediaInputs[0].id, id);
     await send(`/jobs/${claimed._id}/sync`, { instance, offset: 0, events: [],
       result: { status: "completed", threadId: randomUUID(), error: "" } });
-    await verifyOutput({ api, send, db, device, instance, storage, pixel: prefix, outputJobs, files, fetchMedia });
+    await verifyOutput({ api, send, device, instance, storage, pixel: prefix, outputJobs, files, fetchMedia, root });
     await heartbeat();
 
     if (process.argv.includes("--media-image-live")) {

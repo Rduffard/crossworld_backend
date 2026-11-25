@@ -18,7 +18,7 @@ const missing = (error) => error.code === "ENOENT";
 const imageExtension = new Map([["image/png", ".png"], ["image/jpeg", ".jpg"], ["image/webp", ".webp"]]);
 const videoContainer = new Map([["video/mp4", "mov"], ["video/quicktime", "mov"], ["video/webm", "matroska"]]);
 const run = promisify(execFile);
-const { GLB_MIME, artifactMime, artifactMaxBytes } = artifactRules;
+const { GLB_MIME, artifactMime, artifactMaxBytes, validArtifactImport } = artifactRules;
 
 export async function validGlb(handle, size) {
   const header = Buffer.alloc(20);
@@ -64,6 +64,18 @@ async function verifyWindowsAcl(directories) {
     await run(executable, ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
       { timeout: 5000, windowsHide: true, maxBuffer: 8192, env: { ...safeEnv(), CW_MEDIA_ACL_PATHS: JSON.stringify(directories) } });
   } catch { throw new Error("Media storage ACL must be restricted to the Windows worker account and SYSTEM."); }
+}
+
+async function windowsDacl(target) {
+  const script = `$ErrorActionPreference = 'Stop'
+    (Get-Acl -LiteralPath $env:CW_MEDIA_ACL_PATH).GetSecurityDescriptorSddlForm(
+      [System.Security.AccessControl.AccessControlSections]'Owner,Access')`;
+  const executable = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const { stdout } = await run(executable, ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+    Buffer.from(script, "utf16le").toString("base64")], { timeout: 5000, windowsHide: true, maxBuffer: 8192,
+    env: { ...safeEnv(), CW_MEDIA_ACL_PATH: target } });
+  if (!stdout.trim()) throw new Error("Unable to attest the job output folder ACL.");
+  return stdout.trim();
 }
 
 export async function findFfmpeg(preferred, excluded = []) {
@@ -332,6 +344,7 @@ export async function localMediaStorage(root, {
     throw new Error("Unknown media operation.");
   }
 
+  const jobDacls = new Map();
   async function openOutbox(jobId) {
     if (!isId(jobId)) throw new Error("Invalid artifact job.");
     const jobRoot = path.join(outbox, jobId);
@@ -339,7 +352,15 @@ export async function localMediaStorage(root, {
     if (requirePrivateAcl) await verifyWindowsAcl([outbox, jobRoot]);
     return {
       directory: jobRoot,
+      async attestSandboxAcl() {
+        if (requirePrivateAcl && process.platform === "win32") {
+          await directory(jobRoot, false);
+          await verifyWindowsAcl([outbox, attachments, temporary]);
+          jobDacls.set(jobId, await windowsDacl(jobRoot));
+        }
+      },
       async removeIfEmpty() {
+        jobDacls.delete(jobId);
         await directory(jobRoot, false);
         await rmdir(jobRoot).catch((error) => {
           if (!["ENOTEMPTY", "ENOENT"].includes(error.code)) throw error;
@@ -348,16 +369,24 @@ export async function localMediaStorage(root, {
     };
   }
 
-  async function publish(jobId, name, notify, signal) {
+  async function publish(jobId, name, notify, signal, imported) {
     const mime = artifactMime(name);
     if (!isId(jobId) || !mime) throw new Error("Invalid artifact name.");
     signal.throwIfAborted();
     const jobRoot = path.join(outbox, jobId);
-    await directory(jobRoot, false);
+    if (!imported) await directory(jobRoot, false);
     await directory(temporary, false);
     await directory(attachments, false);
-    if (requirePrivateAcl) await verifyWindowsAcl([outbox, jobRoot, attachments, temporary]);
-    const source = path.join(jobRoot, name);
+    if (requirePrivateAcl) {
+      await verifyWindowsAcl([outbox, attachments, temporary]);
+      if (!imported) {
+        const attested = jobDacls.get(jobId);
+        if (!attested) await verifyWindowsAcl([jobRoot]);
+        else if (await windowsDacl(jobRoot) !== attested) throw new Error("Job output folder ACL changed after sandbox verification.");
+      }
+    }
+    const source = imported ? path.join(imported.root, imported.file.source) : path.join(jobRoot, name);
+    if (imported) await directory(path.dirname(source), false);
     const info = await regular(source);
     if (!info || info.size < 12 || info.size > artifactMaxBytes(mime)) throw new Error("Artifact is unavailable or exceeds the size limit.");
     const sourceHandle = await open(source, "r");
@@ -376,6 +405,9 @@ export async function localMediaStorage(root, {
       const hash = createHash("sha256");
       for await (const bytes of sourceHandle.createReadStream(streamOptions)) hash.update(bytes);
       const sha256 = hash.digest("hex");
+      if (imported && (imported.file.sha256 !== sha256 || imported.file.size !== info.size)) {
+        throw new Error("Source bytes do not match the authorized size and hash.");
+      }
       const metadata = { name, mime, size: info.size, sha256 };
       const allocation = await notify("reserve", metadata);
       if (!isId(allocation?.id)) throw new Error("Artifact reservation was declined.");
@@ -418,6 +450,10 @@ export async function localMediaStorage(root, {
 
   return {
     protectedPaths: [resolved, attachments, temporary, outbox],
+    importArtifact(jobId, root, file, notify, signal) {
+      if (!validArtifactImport([file])) throw new Error("Invalid Workshop artifact import.");
+      return publish(jobId, file.name, notify, signal, { root, file });
+    },
     videoFrames: !!ffmpeg,
     latestUsage() {
       if (Date.now() - (usage?.observedAt || 0) >= 120_000) {

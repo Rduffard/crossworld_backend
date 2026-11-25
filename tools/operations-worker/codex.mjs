@@ -290,6 +290,7 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
     if (fullAccess && scope.fullAccess !== true) throw new Error("Full Access is disabled on this host.");
     const sandboxPolicy = fullAccess ? { type: "dangerFullAccess" } : sandboxFor(scope.root, scope.roots);
     if (scope.protectedDirectories) await verifySandbox(server, cwd, sandboxPolicy, scope.protectedDirectories, scope.roots || scope.root);
+    await scope.attestArtifactAcl?.();
     const settings = {
       cwd, model: job.model, modelProvider: "openai", approvalPolicy: "never", approvalsReviewer: "user",
       sandbox: fullAccess ? "danger-full-access" : "read-only", serviceTier: "default",
@@ -370,7 +371,11 @@ export async function runTurn(server, job, cwd, record, signal, control, scope =
               }
             }
           }
-        } catch {
+        } catch (error) {
+          if (params?.tool === artifactTool.name) {
+            record("activity", "Artifact registration failed", Number.isInteger(error.status)
+              ? `Relay HTTP ${error.status}` : "The worker could not validate or store the artifact.");
+          }
           text = params?.tool === objectiveTool.name
             ? "The proposal could not be saved. Check the exact active project name and distinct acceptance criteria."
             : params?.tool === artifactTool.name

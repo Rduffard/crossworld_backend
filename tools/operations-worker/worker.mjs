@@ -43,7 +43,7 @@ export function backendClient(base, token) {
 export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
-  mediaOutput = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
+  mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
   relayVersion, supervised = false, draining = () => false, reportHeartbeat, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
@@ -75,7 +75,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     const previous = active.get(lane);
     if (previous) return sync(lane, previous);
     if (draining()) return;
-    const job = await send("/claim", { instance, extendedPrompts: true, lane });
+    const job = await send("/claim", { instance, extendedPrompts: true, artifactImport, lane });
     if (!job || signal.aborted) return;
     const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
     state.control = turnControl(state.controller.signal, (value) => redact(value, token));
@@ -113,7 +113,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
           const announce = () => send("/heartbeat", {
             instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, backgroundReviews, media: !!mediaStorage, usage: getUsage?.() || undefined,
             mediaVideoFrames: mediaStorage?.videoFrames === true,
-            mediaOutput,
+            mediaOutput, artifactImport,
             mediaUsage: mediaStorage?.latestUsage(),
             resources: getResources?.(),
             relayVersion, supervised,
@@ -347,6 +347,7 @@ async function startWorker(draining = () => false) {
       return usage;
     },
     boundedCorrections: true,
+    artifactImport: mediaOutput,
     employeeConversations: true,
     backgroundReviews: process.env.OPERATIONS_BACKGROUND_REVIEWS === "1",
     execute: async (job, record, signal, control, instance) => {
@@ -368,11 +369,24 @@ async function startWorker(draining = () => false) {
       if (job.outputMedia && (!mediaOutput || job.codexThreadId || profile !== "workshop" || correction)) {
         return { status: "failed", error: "Job-scoped media export is unavailable on this host." };
       }
+      const notifyArtifact = (phase, metadata) => send(`/media/jobs/${job._id}/artifacts`, { instance, phase, ...metadata });
+      if (job.artifactImport) {
+        for (const file of job.artifactImport) {
+          try {
+            const result = await mediaStorage.importArtifact(job._id, workspaces.workshop, file, notifyArtifact, signal);
+            record("activity", "Artifact registered", result.name);
+          } catch (error) {
+            return { status: "failed", error: `Artifact import failed: ${error.status ? "relay HTTP " + error.status : error.message}` };
+          }
+        }
+        return { status: "completed", error: "" };
+      }
       const roots = profile === "read-only" || unrestricted ? [] : editRoots[profile].map(verifyDirectory);
       const [root] = roots;
       const cwd = root || workspaces[job.workspace];
       let staged;
       let outbox;
+      let publication = Promise.resolve();
       if (job.mediaInputs?.length) {
         if (!mediaStorage) return { status: "failed", error: "The media store is unavailable." };
         try { staged = await mediaStorage.stageImages(job.mediaInputs); }
@@ -399,8 +413,12 @@ async function startWorker(draining = () => false) {
           observeUsage,
           imagePaths: staged?.files,
           artifactDir: outbox?.directory,
-          publishArtifact: outbox ? (filename) => mediaStorage.publishArtifact(job._id, filename, (phase, metadata) =>
-            send(`/media/jobs/${job._id}/artifacts`, { instance, phase, ...metadata }), signal) : undefined,
+          attestArtifactAcl: outbox?.attestSandboxAcl,
+          publishArtifact: outbox ? (filename) => {
+            const next = publication.then(() => mediaStorage.publishArtifact(job._id, filename, notifyArtifact, signal));
+            publication = next.catch(() => {});
+            return next;
+          } : undefined,
           proposeObjective: job.studioActions === true ? (callId, value) => send(`/jobs/${job._id}/objective-proposal`, {
             instance, callId, project: redact(value.project, token), title: redact(value.title, token),
             instruction: redact(value.instruction, token), priority: value.priority,

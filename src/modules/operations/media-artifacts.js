@@ -18,4 +18,19 @@ function artifactMime(name) {
 }
 
 const artifactMaxBytes = (mime) => mime === GLB_MIME ? GLB_BYTES : ARTIFACT_BYTES;
-module.exports = { ARTIFACT_LIMIT, GLB_MIME, artifactMime, artifactMaxBytes };
+
+function validArtifactImport(files) {
+  return Array.isArray(files) && files.length > 0 && files.length <= ARTIFACT_LIMIT &&
+    new Set(files.map((file) => typeof file?.name === "string" ? file.name.toLowerCase() : null)).size === files.length &&
+    files.every((file) => {
+      const mime = artifactMime(file?.name);
+      return !!mime && typeof file.source === "string" && file.source.length <= 240 &&
+        /^10_Active_Experiments\/[a-z\d _.-]+(?:\/[a-z\d _.-]+)*$/i.test(file.source) &&
+        file.source.split("/").every((part) => part !== "." && part !== ".." && !/[ .]$/.test(part) &&
+          !/^(?:con|prn|aux|nul|com\d|lpt\d)(?:\.|$)/i.test(part)) &&
+        artifactMime(file.source.split("/").at(-1)) === mime &&
+        Number.isSafeInteger(file.size) && file.size >= (mime === GLB_MIME ? 20 : 12) &&
+        file.size <= artifactMaxBytes(mime) && typeof file.sha256 === "string" && /^[\da-f]{64}$/.test(file.sha256);
+    });
+}
+module.exports = { ARTIFACT_LIMIT, GLB_MIME, artifactMime, artifactMaxBytes, validArtifactImport };
