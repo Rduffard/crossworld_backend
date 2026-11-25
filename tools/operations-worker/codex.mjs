@@ -58,13 +58,15 @@ const studioBriefingTool = {
 const studioMissionTool = {
   type: "function",
   name: "coordinate_studio_mission",
-  description: "Register an existing owner-authorized mission grant by ID, inspect the current mission, or revise its pending work when the owner enabled delegated planning.",
+  description: "Register or inspect an owner-authorized mission grant by ID. Revise pending work or retry a blocked step only within the owner's recorded delegation.",
   inputSchema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["register", "inspect", "revise"] },
+      action: { type: "string", enum: ["register", "inspect", "revise", "recover"] },
       grantId: { type: "string", description: "Identifier of the owner-authorized mission grant." },
       revision: { type: "integer", minimum: 0 },
+      step: { type: "string", description: "The blocked step key for a delegated recovery." },
+      resolution: { type: "string", maxLength: 800, description: "How to resolve the blocker within the step's existing authority." },
       steps: { type: "array", items: { type: "object" }, maxItems: 20 },
     },
     required: ["action"], additionalProperties: false,

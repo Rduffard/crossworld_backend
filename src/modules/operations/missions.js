@@ -11,6 +11,20 @@ const stepKey = /^[a-z][a-z0-9-]{0,39}$/;
 const windowLimit = 24 * 60 * 60 * 1000;
 const terminal = ["completed", "failed", "interrupted", "cancelled"];
 const outcomes = ["pass", "correct", "blocked"];
+// The owner explicitly authorized recovery of this existing HORIZON execution on 2026-11-25.
+const horizonRecovery = {
+  missionId: "30e3fc4b-4e36-463b-bb39-8668497c5341",
+  jobId: "dfaf1a1a-4cea-618c-f62d-1b2af0ac5a1a",
+  coordinatorId: "d0164a34-4da1-8bc2-890d-2a4539cd32d1",
+  assigneeId: "add4559f-de4c-4f80-acf1-04aac7f8a1a8",
+  expiresAt: new Date("2026-11-26T23:08:00.000Z"),
+  step: "implementation",
+  resolution: "Continue from crossworld_creative commit 0d9a5caa7794a08a15f53fcd20db9c29354d3f15. " +
+    "Apply Palette's findings from assignment be096a3d-2233-da99-c3e5-ef59c3e4f31d: show the selected source's effective permission routes, " +
+    "manage focus on guide entry, cancel and success, and put copy/open-conversation actions on the receipt. " +
+    "Verify keyboard interaction and narrow and wide layouts. The owner has authorized the routine local correction commit. " +
+    "Return its full SHA and test evidence for independent retest. The mission controller handles follow-on dispatch.",
+};
 const fail = (res, status, message) => res.status(status).json({ message });
 const isText = (value, limit) => typeof value === "string" && value.isWellFormed() && value.trim() && value.length <= limit;
 
@@ -123,7 +137,8 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
   });
 
   router.post(["/", "/capability-plans", "/grants"], async (req, res) => {
-    const { id, title, hostId, workspace, effort, endsAt, steps, sourceConversationId, completionStep, delegatePlanning, paused = false } = req.body || {};
+    const { id, title, hostId, workspace, effort, endsAt, steps, sourceConversationId, completionStep, delegatePlanning,
+      delegatedRecoverySteps, paused = false } = req.body || {};
     const end = windowEnd(endsAt);
     const ownerId = owner();
     const requestedAuthorization = req.body?.authorization;
@@ -158,6 +173,12 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     if (delegatePlanning !== undefined && (delegatePlanning !== true || !completionStep || !sourceConversationId)) {
       return fail(res, 400, "Delegated planning requires an inherited authorization and a completion step.");
     }
+    if (delegatedRecoverySteps !== undefined && (!grantOnly || !Array.isArray(normalized) ||
+        !Array.isArray(delegatedRecoverySteps) || !delegatedRecoverySteps.length ||
+        new Set(delegatedRecoverySteps).size !== delegatedRecoverySteps.length ||
+        delegatedRecoverySteps.some(key => !normalized.some(step => step.key === key)))) {
+      return fail(res, 400, "Choose the mission steps First Mate may retry once within the original operating window.");
+    }
     if (![id, hostId].every(value => typeof value === "string" && uuid.test(value)) ||
         !isText(title, 120) || !["development", "workshop"].includes(workspace) || !end || !normalized ||
         typeof paused !== "boolean" || (req.path === "/capability-plans" && !ceiling) ||
@@ -169,6 +190,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       workspace, effort, endsAt: end, steps: normalized, paused, sourceConversationId,
       ...(completionStep !== undefined ? { completionStep } : {}),
       ...(delegatePlanning ? { delegatePlanning: true } : {}),
+      ...(delegatedRecoverySteps ? { delegatedRecoverySteps } : {}),
       ...(coordinatorSessionId ? { coordinatorSessionId } : {}),
       ...(coordinatorActorId ? { coordinatorActorId } : {}),
       ...(ceiling ? { authorization: ceiling } : {}) })).digest("hex");
@@ -187,6 +209,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     const record = { _id: id, ownerId, creationDigest, title: title.trim(), hostId, workspace, effort, endsAt: end, steps: normalized,
       ...(completionStep !== undefined ? { completionStep } : {}),
       ...(delegatePlanning ? { delegatePlanning: true } : {}),
+      ...(delegatedRecoverySteps ? { delegatedRecoverySteps, delegatedRecoveryEndsAt: end } : {}),
       ...(coordinatorSessionId ? { coordinatorSessionId } : {}),
       ...(coordinatorActorId ? { coordinatorActorId } : {}),
       ...(ceiling ? { authorization: ceiling } : {}), ...(sourceConversationId ? { sourceConversationId } : {}),
@@ -202,14 +225,57 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     res.status(201).json(await view(record));
   });
 
-  async function update(req, res, actor) {
+  function coordinator(actor, hostId) {
+    return { ownerId: owner(), hostId, workspace: actor.workspace, coordinatorActorId: actor.studioActor.id };
+  }
+
+  function recoverStep(mission, { step, resolution, end, attribution }) {
+    const previous = Object.hasOwn(mission.results, step) && mission.results[step];
+    const target = mission.steps.find(candidate => candidate.key === step);
+    if (!target || previous?.result !== "blocked" || !isText(resolution, 800)) {
+      return { error: "Select a blocked step and describe the resolution.", status: 400 };
+    }
+    if (!end || end <= new Date()) return { error: "Authorize a new operating window before recovering.", status: 400 };
+    const affected = new Set([step]);
+    for (const candidate of mission.steps) {
+      if (!candidate.after.some(dependency => affected.has(dependency.step))) continue;
+      const outcome = mission.results[candidate.key];
+      if (outcome && outcome.result !== "skipped") {
+        return { error: "The blocked outcome already informed executed dependent work. An owner plan decision is required.", status: 409 };
+      }
+      affected.add(candidate.key);
+    }
+    // Skips are derived from outcomes. Retain every executed result except the one being retried.
+    const results = Object.fromEntries(Object.entries(mission.results)
+      .filter(([key, entry]) => key !== step && entry.result !== "skipped"));
+    if (!readiness({ ...mission, results }).ready.some(candidate => candidate.key === step) ||
+        (target.approval && !mission.approvals[step])) {
+      return { error: "The blocked step must still satisfy its dependencies and approval gate.", status: 409 };
+    }
+    const recovery = { step, previous, resolution: resolution.trim(), authorizedAt: new Date(), ...attribution,
+      jobId: missionJobId(mission._id, step + ":recovery:" + mission.revision) };
+    return { fields: { status: "active", endsAt: end, reason: "", preferred: null, results,
+      recoveries: [...(mission.recoveries ?? []), recovery],
+      current: { step, jobId: recovery.jobId, recoveryJobId: recovery.jobId } } };
+  }
+
+  async function update(req, res, actor, hostId) {
     const { action, revision, endsAt, step } = req.body || {};
-    if (!uuid.test(req.params.id) || !Number.isSafeInteger(revision)) return fail(res, 400, "Invalid mission revision.");
-    const mission = await records().findOne({ _id: req.params.id, ownerId: owner() });
+    if (typeof req.params.id !== "string" || !uuid.test(req.params.id) || !Number.isSafeInteger(revision)) {
+      return fail(res, 400, "Invalid mission revision.");
+    }
+    const mission = await records().findOne({ _id: req.params.id, ownerId: owner(),
+      ...(actor && !actor.missionId ? coordinator(actor, hostId) : {}) });
     if (!mission || mission.revision !== revision) return fail(res, 409, "The mission changed. Refresh before trying again.");
-    if (actor && (action !== "revise" || !mission.delegatePlanning || mission._id !== actor.missionId ||
-        mission.current?.jobId !== actor._id)) {
-      return fail(res, 403, "This turn cannot revise the mission.");
+    if (actor) {
+      const canRevise = action === "revise" && mission.delegatePlanning &&
+        (actor.missionId ? mission._id === actor.missionId && mission.current?.jobId === actor._id &&
+          (!mission.coordinatorActorId || mission.coordinatorActorId === actor.studioActor.id) : !!mission.registration);
+      const canRecover = action === "recover" && !actor.missionId && mission.registration &&
+        endsAt === undefined && mission.delegatedRecoveryEndsAt > new Date() && mission.endsAt <= mission.delegatedRecoveryEndsAt &&
+        mission.delegatedRecoverySteps?.includes(step) &&
+        !mission.recoveries?.some(attempt => attempt.step === step);
+      if (!canRevise && !canRecover) return fail(res, 403, "This turn is outside the mission's delegated authority.");
     }
     let fields;
     if (action === "pause" && mission.status === "active") fields = { status: "paused", reason: "Paused by owner." };
@@ -226,36 +292,12 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
         readiness(mission).ready.some(candidate => candidate.key === step && candidate.approval && !mission.approvals[step])) {
       fields = { ["approvals." + step]: new Date() };
     }
-    if (action === "recover" && !actor && mission.status === "blocked" && !mission.current) {
-      const previous = Object.hasOwn(mission.results, step) && mission.results[step];
-      const target = mission.steps.find(candidate => candidate.key === step);
-      const { resolution } = req.body;
-      if (!target || previous?.result !== "blocked" || !isText(resolution, 800)) {
-        return fail(res, 400, "Select a blocked step and describe the owner's resolution.");
-      }
-      const end = endsAt === undefined ? mission.endsAt : windowEnd(endsAt);
-      if (!end || end <= new Date()) return fail(res, 400, "Authorize a new operating window before recovering.");
-      const affected = new Set([step]);
-      for (const candidate of mission.steps) {
-        if (!candidate.after.some(dependency => affected.has(dependency.step))) continue;
-        const outcome = mission.results[candidate.key];
-        if (outcome && outcome.result !== "skipped") {
-          return fail(res, 409, "The blocked outcome already informed executed dependent work. An owner plan decision is required.");
-        }
-        affected.add(candidate.key);
-      }
-      // Skips are derived from outcomes. Retain every executed result except the one being retried.
-      const results = Object.fromEntries(Object.entries(mission.results)
-        .filter(([key, entry]) => key !== step && entry.result !== "skipped"));
-      if (!readiness({ ...mission, results }).ready.some(candidate => candidate.key === step) ||
-          (target.approval && !mission.approvals[step])) {
-        return fail(res, 409, "The blocked step must still satisfy its dependencies and approval gate.");
-      }
-      const recovery = { step, previous, resolution: resolution.trim(), authorizedAt: new Date(),
-        jobId: missionJobId(mission._id, step + ":recovery:" + mission.revision) };
-      fields = { status: "active", endsAt: end, reason: "", preferred: null, results,
-        recoveries: [...(mission.recoveries ?? []), recovery],
-        current: { step, jobId: recovery.jobId, recoveryJobId: recovery.jobId } };
+    if (action === "recover" && mission.status === "blocked" && !mission.current) {
+      const recovery = recoverStep(mission, { step, resolution: req.body.resolution,
+        end: endsAt === undefined ? mission.endsAt : windowEnd(endsAt),
+        attribution: actor ? { delegatedBy: actor.studioActor.id, sourceTurnId: actor._id } : {} });
+      if (recovery.error) return fail(res, recovery.status, recovery.error);
+      fields = recovery.fields;
     }
     if (action === "revise" && mission.authorization && mission.completionStep &&
         ["active", "paused"].includes(mission.status) && mission.endsAt > new Date()) {
@@ -289,23 +331,28 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }
     if (!fields) return fail(res, 409, "That action is unavailable in the current mission state.");
     if (!(await change(mission, fields)).matchedCount) return fail(res, 409, "The mission changed. Refresh before trying again.");
-    res.json(await view(await records().findOne({ _id: mission._id, ownerId: mission.ownerId })));
+    return res.json(await view(await records().findOne({ _id: mission._id, ownerId: mission.ownerId })));
   }
   router.patch("/:id", (req, res) => update(req, res));
 
-  async function reviseFromTurn(actor, input, res) {
-    return update({ params: { id: actor.missionId }, body: { action: "revise", revision: input.revision, steps: input.steps } }, res, actor);
+  async function reviseFromTurn(actor, hostId, input, res) {
+    return update({ params: { id: actor.missionId || input.grantId }, body: { ...input, action: "revise" } }, res, actor, hostId);
   }
-  async function inspectFromTurn(actor, res) {
-    const mission = await records().findOne({ _id: actor.missionId, ownerId: owner(), "current.jobId": actor._id });
+  async function recoverFromTurn(actor, hostId, input, res) {
+    return update({ params: { id: input.grantId }, body: { ...input, action: "recover" } }, res, actor, hostId);
+  }
+  async function inspectFromTurn(actor, hostId, id, res) {
+    if (!actor.missionId && (typeof id !== "string" || !uuid.test(id))) return fail(res, 400, "Provide a mission grant identifier.");
+    const mission = await records().findOne(actor.missionId
+      ? { _id: actor.missionId, ownerId: owner(), "current.jobId": actor._id }
+      : { _id: id, ...coordinator(actor, hostId) });
     return mission ? res.json(await view(mission)) : fail(res, 409, "The mission step is no longer current.");
   }
   async function registerFromTurn(actor, hostId, id, res) {
     if (actor.missionId || typeof id !== "string" || !uuid.test(id)) return fail(res, 400, "Provide an authorized mission grant identifier.");
-    const query = { _id: id, ownerId: owner(), hostId, coordinatorSessionId: actor.sessionId || actor._id,
-      coordinatorActorId: actor.studioActor.id };
+    const query = { _id: id, ...coordinator(actor, hostId) };
     const grant = await records().findOne(query);
-    if (!grant) return fail(res, 404, "Mission grant unavailable in this First Mate conversation.");
+    if (!grant) return fail(res, 404, "Mission grant unavailable to this First Mate on this relay and workspace.");
     if (grant.registration) return res.json(await view(grant));
     if (grant.status !== "authorized" || grant.endsAt <= new Date()) return fail(res, 409, "The mission grant is no longer available.");
     const saved = await records().findOneAndUpdate({ ...query, revision: grant.revision, status: "authorized",
@@ -360,7 +407,9 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       "Mission: " + mission.title + "\nStep: " + step.title + "\n" + step.prompt,
       ...(recovery ? [
         "Resume the unfinished work for this step. Verify the prior artifacts and reuse completed work. " +
-          "The owner supplied the following resolution for this step within its existing authorization:\n" + recovery.resolution,
+          (recovery.delegatedBy
+            ? "First Mate supplied the following resolution under the owner's delegated recovery authorization:\n"
+            : "The owner supplied the following resolution for this step within its existing authorization:\n") + recovery.resolution,
         priorEvidence,
       ] : []),
       ...(step.candidate ? [
@@ -411,6 +460,9 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
     });
     if (usageHoldUntil(host.usage)) return;
+    if (!missionId && !host.missionOnly && horizonRecovery.expiresAt > new Date()) {
+      await recoverHostedHorizon(scope);
+    }
     const candidates = records().find({ ...activeQuery(scope.ownerId, scope.hostId), ...scope }).sort({ createdAt: 1, _id: 1 });
     for await (let mission of candidates) {
       if (mission.current) {
@@ -488,6 +540,19 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }
   }
 
+  async function recoverHostedHorizon(scope) {
+    const { missionId, jobId, coordinatorId, assigneeId, expiresAt, step, resolution } = horizonRecovery;
+    const mission = await records().findOne({ ...scope, _id: missionId, status: "blocked", current: null,
+      workspace: "development", coordinatorActorId: coordinatorId, "registration.actorId": coordinatorId,
+      endsAt: { $gt: new Date(), $lte: expiresAt }, "results.implementation.jobId": jobId,
+      recoveries: { $not: { $elemMatch: { step } } } });
+    if (!mission?.authorization || !mission.delegatePlanning ||
+        !mission.steps.some(candidate => candidate.key === step && candidate.assignee === assigneeId)) return;
+    const recovery = recoverStep(mission, { step, resolution, end: mission.endsAt,
+      attribution: { authorizationReference: "HORIZON owner recovery decision 2026-11-25" } });
+    if (recovery.fields) await change(mission, recovery.fields);
+  }
+
   async function eligible(ownerId, host, supportsPreflight) {
     const items = await records().find({ ...activeQuery(ownerId, host._id), "current.jobId": { $exists: true } }, {
       projection: { current: 1, authorization: 1, steps: 1, effort: 1 },
@@ -525,7 +590,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }));
   }
 
-  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn };
+  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn };
 }
 
 module.exports = { createMissions };

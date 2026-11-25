@@ -16,7 +16,7 @@ const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, 
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
 function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters,
-  missionBriefing, reviseMission, inspectMission, registerMission, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
+  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -27,7 +27,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, missionId: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, missionId: 1, workspace: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
@@ -76,18 +76,19 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
 
   worker.post("/jobs/:id/studio-mission", async (req, res) => {
     const actor = await directTurn(req);
-    if (!actor?.studioActor?.id || actor.studioActor.role !== "first-mate") {
+    if (!actor?.studioActor?.id || actor.studioActor.role !== "first-mate" || !await workforce().findOne({
+      _id: actor.studioActor.id, ownerId: owner(), kind: "employee", role: "first-mate", status: "available",
+    })) {
       return fail(res, 403, "An active bound First Mate execution is required.");
     }
-    if (req.body.action === "register") {
-      if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Mission registration is unavailable during maintenance.");
-      return registerMission(actor, req.operationsHost._id, req.body.grantId, res);
-    }
-    if (!actor.missionId) return fail(res, 403, "An active First Mate mission step is required.");
-    if (req.body.action === "inspect") return inspectMission(actor, res);
-    if (req.body.action !== "revise") return fail(res, 400, "Choose inspect or revise.");
-    if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Mission revisions are unavailable during maintenance.");
-    return reviseMission(actor, req.body, res);
+    const hostId = req.operationsHost._id;
+    const { action, grantId } = req.body;
+    if (action === "inspect") return inspectMission(actor, hostId, grantId, res);
+    if (!["register", "revise", "recover"].includes(action)) return fail(res, 400, "Choose register, inspect, revise or recover.");
+    if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Mission changes are unavailable during maintenance.");
+    if (action === "register") return registerMission(actor, hostId, grantId, res);
+    if (action === "recover") return recoverMission(actor, hostId, req.body, res);
+    return reviseMission(actor, hostId, req.body, res);
   });
 
   worker.post("/jobs/:id/delegate-operations-review", async (req, res) => {

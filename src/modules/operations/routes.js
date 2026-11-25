@@ -134,6 +134,7 @@ function createRouter({
     proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
+    recoverMission: missions.recoverFromTurn,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
