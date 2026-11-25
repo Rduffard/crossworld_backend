@@ -305,18 +305,6 @@ function createRouter({
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
     });
-    if (workerEnabled && supported.includes("full-access")) {
-      try {
-        const settings = await dispatch().findOne({ _id: owner() });
-        if (!settings?.paused && !maintenanceActive(settings)) {
-          await missions.recoverHostedHorizon({ ...host, ownerId: owner(),
-            usage: usage?.observedAt > (host.usage?.observedAt || 0) ? usage : host.usage });
-        }
-      } catch (error) {
-        // Keep the relay online. A later heartbeat or primary claim retries recovery.
-        reportError(failureDiagnostic(error, "hosted mission recovery"));
-      }
-    }
     res.json({ ok: true, backgroundReviews });
   });
 

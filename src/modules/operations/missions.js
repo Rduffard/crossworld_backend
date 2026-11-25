@@ -11,20 +11,6 @@ const stepKey = /^[a-z][a-z0-9-]{0,39}$/;
 const windowLimit = 24 * 60 * 60 * 1000;
 const terminal = ["completed", "failed", "interrupted", "cancelled"];
 const outcomes = ["pass", "correct", "blocked"];
-// The owner explicitly authorized recovery of this existing HORIZON execution on 2026-11-25.
-const horizonRecovery = {
-  missionId: "30e3fc4b-4e36-463b-bb39-8668497c5341",
-  jobId: "dfaf1a1a-4cea-618c-f62d-1b2af0ac5a1a",
-  coordinatorId: "d0164a34-4da1-8bc2-890d-2a4539cd32d1",
-  assigneeId: "add4559f-de4c-4f80-acf1-04aac7f8a1a8",
-  expiresAt: new Date("2026-11-26T23:08:00.000Z"),
-  step: "implementation",
-  resolution: "Continue from crossworld_creative commit 0d9a5caa7794a08a15f53fcd20db9c29354d3f15. " +
-    "Apply Palette's findings from assignment be096a3d-2233-da99-c3e5-ef59c3e4f31d: show the selected source's effective permission routes, " +
-    "manage focus on guide entry, cancel and success, and put copy/open-conversation actions on the receipt. " +
-    "Verify keyboard interaction and narrow and wide layouts. The owner has authorized the routine local correction commit. " +
-    "Return its full SHA and test evidence for independent retest. The mission controller handles follow-on dispatch.",
-};
 const fail = (res, status, message) => res.status(status).json({ message });
 const isText = (value, limit) => typeof value === "string" && value.isWellFormed() && value.trim() && value.length <= limit;
 
@@ -324,7 +310,11 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       }
       const history = mission.planHistory ?? [];
       if (history.length >= 20) return fail(res, 409, "This mission has reached its revision limit.");
-      fields = { steps: revised, reason: "", planHistory: [...history, {
+      const retainedRecoverySteps = mission.delegatedRecoverySteps?.filter(key =>
+        isDeepStrictEqual(mission.steps.find(step => step.key === key), revised.find(step => step.key === key)));
+      fields = { steps: revised, reason: "",
+        ...(retainedRecoverySteps ? { delegatedRecoverySteps: retainedRecoverySteps } : {}),
+        planHistory: [...history, {
         revision: mission.revision, steps: mission.steps, supersededAt: new Date(),
         ...(actor ? { revisedBy: actor.studioActor.id, sourceTurnId: actor._id } : {}),
       }] };
@@ -460,7 +450,6 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
     });
     if (usageHoldUntil(host.usage)) return;
-    if (!missionId) await recoverHostedHorizon(host);
     const candidates = records().find({ ...activeQuery(scope.ownerId, scope.hostId), ...scope }).sort({ createdAt: 1, _id: 1 });
     for await (let mission of candidates) {
       if (mission.current) {
@@ -538,22 +527,6 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }
   }
 
-  async function recoverHostedHorizon(host) {
-    const { missionId, jobId, coordinatorId, assigneeId, expiresAt, step, resolution } = horizonRecovery;
-    if (host.missionOnly || host.isolatedReviewSnapshot || usageHoldUntil(host.usage) || expiresAt <= new Date()) return;
-    const mission = await records().findOne({ ownerId: host.ownerId, hostId: host._id, _id: missionId, status: "blocked", current: null,
-      workspace: "development", coordinatorActorId: coordinatorId, "registration.actorId": coordinatorId,
-      endsAt: { $gt: new Date(), $lte: expiresAt }, "results.implementation.jobId": jobId,
-      recoveries: { $not: { $elemMatch: { step } } } });
-    if (!mission?.authorization || !mission.delegatePlanning ||
-        !mission.steps.some(candidate => candidate.key === step && candidate.assignee === assigneeId)) return;
-    const recovery = recoverStep(mission, { step, resolution, end: mission.endsAt,
-      attribution: { authorizationReference: "HORIZON owner recovery decision 2026-11-25" } });
-    if (recovery.fields && (await change(mission, recovery.fields)).matchedCount) {
-      await enqueue({ ...mission, ...recovery.fields, revision: mission.revision + 1 }, host);
-    }
-  }
-
   async function eligible(ownerId, host, supportsPreflight) {
     const items = await records().find({ ...activeQuery(ownerId, host._id), "current.jobId": { $exists: true } }, {
       projection: { current: 1, authorization: 1, steps: 1, effort: 1 },
@@ -591,7 +564,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }));
   }
 
-  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn, recoverHostedHorizon };
+  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn };
 }
 
 module.exports = { createMissions };

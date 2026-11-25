@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import missions from "../../src/modules/operations/missions.js";
+import capabilities from "../../src/modules/operations/mission-capabilities.js";
 
 const id = "30e3fc4b-4e36-463b-bb39-8668497c5341";
 const firstMate = { _id: "new-turn", sessionId: "new-session", workspace: "development",
@@ -77,4 +78,21 @@ test("blocked recovery requires recorded delegation and preserves the mission's 
   assert.deepEqual(body.steps[1].after, [{ step: "implementation", result: "pass" }]);
   assert.equal(body.recoveries[0].previous.jobId, "earlier");
   assert.equal(body.recoveries[0].sourceTurnId, firstMate._id);
+});
+
+test("an owner revision retains recovery delegation only for unchanged steps", async () => {
+  const steps = [
+    { key: "implementation", title: "Implement", prompt: "Implement the approved change.", profile: "read-only",
+      after: [], approval: false, requires: ["read"] },
+    { key: "verify", title: "Verify", prompt: "Verify the approved change.", profile: "read-only",
+      after: [{ step: "implementation", result: "pass" }], approval: false, requires: ["read"] },
+  ];
+  const { router } = fixture({ steps, status: "active", completionStep: "verify",
+    authorization: capabilities.inheritedAuthorization("full-access"),
+    delegatedRecoverySteps: ["implementation", "verify"] });
+  const ownerPatch = router.stack.find(layer => layer.route?.methods.patch).route.stack[0].handle;
+  const result = await call(ownerPatch, { params: { id }, body: { action: "revise", revision: 0,
+    steps: [{ ...steps[0], prompt: "Inspect the revised scope." }, steps[1]] } });
+  assert.equal(result.code, 200);
+  assert.deepEqual(result.body.delegatedRecoverySteps, ["verify"]);
 });
