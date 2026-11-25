@@ -45,7 +45,7 @@ export const { redact } = diagnostics;
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
   mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
   relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision,
-  draining = () => false, reportHeartbeat, log = console.log }) {
+  draining = () => false, reportHeartbeat, getMissionPreflights, log = console.log }) {
   const instance = randomUUID();
   const mediaController = new AbortController();
   let mediaDrained = !mediaStorage;
@@ -79,7 +79,8 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     const previous = active.get(lane);
     if (previous) return sync(lane, previous);
     if (draining()) return;
-    const job = await send("/claim", { instance, extendedPrompts: true, artifactImport, lane });
+    const job = await send("/claim", { instance, extendedPrompts: true, artifactImport, lane,
+      ...(getMissionPreflights ? { missionPreflight: true } : {}) });
     if (!job || signal.aborted) return;
     const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
     state.control = turnControl(state.controller.signal, (value) => redact(value, token));
@@ -87,6 +88,19 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
     if (job.status === "cancelling") {
       state.result = { status: "cancelled", error: "" };
       return;
+    }
+    if (job.permissionDiagnostics) {
+      const receipt = job.permissionDiagnostics;
+      const live = (getMissionPreflights?.() ?? []).find(report => report.profile === job.profile);
+      if (!live || receipt.effectiveProfile !== job.profile || live.runtime !== receipt.runtime ||
+          live.scope !== receipt.scope || live.scope !== job.scopedRevision ||
+          live.sandbox !== receipt.sandbox || live.environment !== receipt.environment ||
+          Date.now() - live.observedAt >= 15 * 60_000 ||
+          !receipt.requiredCapabilities.every(value => live.capabilities.includes(value)) ||
+          !live.capabilities.every(value => receipt.authorizedCapabilities.includes(value))) {
+        state.result = { status: "failed", error: "The local mission preflight changed after relay admission." };
+        return;
+      }
     }
     const peer = active.get(lane === "primary" ? "review" : "primary")?.job;
     const primary = lane === "primary" ? job : peer;
@@ -110,6 +124,9 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       }
     };
     record("activity", "Job assigned", "The Windows worker received the job.");
+    if (job.permissionDiagnostics) {
+      record("execution", "Mission preflight confirmed", "The local route matches the authorized relay preflight.");
+    }
     state.execution = Promise.resolve().then(() => execute(job, record, state.controller.signal, state.control, instance))
       .catch(() => ({ status: "failed", error: "Local execution failed." }))
       .then((result) => {
@@ -129,6 +146,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             mediaUsage: mediaStorage?.latestUsage(),
             resources: getResources?.(),
             relayVersion, supervised, isolatedReviewSnapshot, blueprintBranches,
+            ...(getMissionPreflights ? { missionPreflights: getMissionPreflights() } : {}),
             ...(advertisedProfiles?.includes("scoped") ? { scopedRevision } : {}),
           });
           let capabilities;
@@ -136,7 +154,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
             try { capabilities = await announce(); break; }
             catch (error) {
               const optional = ["scoped", "full-access"].find(profile => advertisedProfiles?.includes(profile));
-              if (error.status !== 400 || !optional) throw error;
+              if (error.status !== 400 || !optional || getMissionPreflights) throw error;
               advertisedProfiles = advertisedProfiles.filter(profile => profile !== optional);
               log("Relay did not accept the " + optional + " profile. Retrying with the remaining profiles.");
             }

@@ -321,6 +321,78 @@ try {
       await finish(gate, "MISSION_RESULT: PASS");
       assert.equal(await claim(), null);
       assert.equal(await jobs.countDocuments({ missionId: id, missionStep: "review" }), 1);
+      const scopedId = randomUUID();
+      const scope = "c".repeat(64);
+      const browserCapabilities = ["read", "write", "scratch", "subprocess", "network", "browser", "isolated-review"];
+      const reviewStep = step("browser-review", dep("baseline"), {
+        profile: "scoped", reviewer: director._id, requires: browserCapabilities,
+      });
+      const authorized = {
+        ...body, id: scopedId, title: "Capability authorization fixture",
+        authorization: { routes: [{ profile: "read-only", capabilities: ["read"] },
+          { profile: "scoped", scope, capabilities: browserCapabilities }] },
+        steps: [step("baseline", [], { requires: ["read"] }), reviewStep],
+      };
+      assert.equal((await missionApi("", "POST", { ...authorized, steps: [
+        authorized.steps[0], { ...reviewStep, requires: [...browserCapabilities, "blender"] },
+      ] }))[0], 400);
+      assert.equal((await missionApi("/capability-plans", "POST", body))[0], 400);
+      assert.equal((await missionApi("/capability-plans", "POST", authorized))[0], 201);
+      const scopedClaim = () => send("/claim", { instance, missionPreflight: true });
+      assert.equal(await scopedClaim(), null);
+      const report = (profile, capabilities, extra = {}) => ({
+        profile, capabilities, observedAt: Date.now(), runtime: "a".repeat(64),
+        environment: "windows-sandbox", sandbox: profile === "read-only" ? "read-only" : "workspace-write", ...extra,
+      });
+      const capabilityBeat = capabilities => send("/heartbeat", {
+        instance, efforts: ["low"], profiles: ["read-only", "scoped"], scopedRevision: scope,
+        missionPreflights: [report("read-only", ["read"]), report("scoped", capabilities, { scope })],
+      });
+      await capabilityBeat(browserCapabilities.filter(value => value !== "browser"));
+      assert.equal(await claim(), null, "A worker without the preflight protocol must never receive the job");
+      const scopedBaseline = await scopedClaim();
+      assert.equal(scopedBaseline.permissionDiagnostics.missionId, scopedId);
+      await finish(scopedBaseline, "MISSION_RESULT: PASS");
+      assert.equal(await scopedClaim(), null);
+      const missionSnapshot = async () => (await missionApi(""))[1].find(record => record._id === scopedId);
+      assert.match((await missionSnapshot()).reason, /lacks: browser/);
+      assert.equal(await jobs.countDocuments({ missionId: scopedId, missionStep: "browser-review" }), 0);
+      await capabilityBeat([...browserCapabilities, "cross-drive"]);
+      assert.equal(await scopedClaim(), null);
+      assert.match((await missionSnapshot()).reason, /exceeds the mission ceiling/);
+      await capabilityBeat(browserCapabilities);
+      const scopedReview = await scopedClaim();
+      assert.equal(scopedReview.profile, "scoped");
+      assert.equal(scopedReview.employeeContext.name, director.name);
+      assert.notEqual(scopedReview.studioActions, true);
+      assert.equal(scopedReview.permissionDiagnostics.scope, scope);
+      assert.equal(scopedReview.permissionDiagnostics.sandbox, "workspace-write");
+      assert.deepEqual(scopedReview.permissionDiagnostics.verifiedCapabilities, browserCapabilities.slice().sort());
+      const [reviewStatus, reviewDetail] = await api("/jobs/" + scopedReview._id, { user: foundationOwner });
+      assert.equal(reviewStatus, 200);
+      assert.deepEqual(reviewDetail.permissionDiagnostics, scopedReview.permissionDiagnostics);
+      await finish(scopedReview, "MISSION_RESULT: PASS");
+      assert.equal(await scopedClaim(), null);
+      assert.equal((await missionSnapshot()).status, "completed");
+      const [pilotStatus, pilot] = await api("/hosts/mission-pilot", {
+        user: foundationOwner, method: "POST", body: { label: "Disposable isolated pilot", missionOnly: true },
+      });
+      assert.equal(pilotStatus, 201);
+      const pilotSend = backendClient(base, pilot.token);
+      const pilotInstance = randomUUID();
+      const pilotBeat = profiles => pilotSend("/heartbeat", { instance: pilotInstance, efforts: ["low"], profiles });
+      await assert.rejects(pilotBeat(["read-only", "full-access"]), { status: 409 });
+      await pilotBeat(["read-only"]);
+      assert.equal((await missionApi("", "POST", { ...body, id: randomUUID(), hostId: pilot.id }))[0], 409);
+      assert.equal((await missionApi("", "POST", { ...authorized, id: randomUUID(), hostId: pilot.id, paused: true }))[0], 201);
+      await jobs.insertOne({ _id: randomUUID(), ownerId: foundationOwner, hostId: pilot.id, effort: "low",
+        profile: "read-only", status: "queued", createdAt: new Date(), events: [] });
+      assert.equal(await pilotSend("/claim", { instance: pilotInstance, missionPreflight: true }), null);
+      await jobs.deleteMany({ hostId: pilot.id, ownerId: foundationOwner });
+      await db.db.collection("operations_missions").deleteMany({ hostId: pilot.id, ownerId: foundationOwner });
+      await db.db.collection("operations_hosts").deleteOne({ _id: pilot.id, ownerId: foundationOwner });
+      await jobs.deleteMany({ missionId: scopedId, ownerId: foundationOwner });
+      await db.db.collection("operations_missions").deleteOne({ _id: scopedId, ownerId: foundationOwner });
       await jobs.deleteMany({ missionId: id, ownerId: foundationOwner });
       await db.db.collection("operations_missions").deleteOne({ _id: id, ownerId: foundationOwner });
       await db.db.collection("operations_hosts").deleteOne({ _id: hostId, ownerId: foundationOwner });

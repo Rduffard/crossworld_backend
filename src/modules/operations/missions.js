@@ -3,6 +3,7 @@ const { createHash } = require("node:crypto");
 const { lastResponseLine, precedingResult } = require("./objective-runs");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 const { usageHoldUntil } = require("./usage");
+const { allowsStep, authorization, capabilityList, resolveRoute } = require("./mission-capabilities");
 
 const uuid = /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/;
 const stepKey = /^[a-z][a-z0-9-]{0,39}$/;
@@ -17,7 +18,7 @@ function windowEnd(value, now = Date.now()) {
   return +end > now && +end <= now + windowLimit ? end : null;
 }
 
-function plan(input) {
+function plan(input, ceiling) {
   if (!Array.isArray(input) || !input.length || input.length > 20) return null;
   const earlier = new Set();
   const steps = [];
@@ -25,16 +26,19 @@ function plan(input) {
     if (!step || typeof step.key !== "string" || !stepKey.test(step.key) || earlier.has(step.key) ||
         Object.hasOwn(Object.prototype, step.key) ||
         !isText(step.title, 100) || !isText(step.prompt, 2200) ||
-        !["read-only", "development", "workshop"].includes(step.profile) ||
-        (step.reviewer !== undefined && (typeof step.reviewer !== "string" || !uuid.test(step.reviewer) || step.profile !== "read-only")) ||
+        !(ceiling ? ["read-only", "development", "workshop", "scoped"] : ["read-only", "development", "workshop"]).includes(step.profile) ||
+        (step.reviewer !== undefined && (typeof step.reviewer !== "string" || !uuid.test(step.reviewer) ||
+          (!ceiling && step.profile !== "read-only"))) ||
         (step.approval !== undefined && typeof step.approval !== "boolean") ||
         !Array.isArray(step.after) || step.after.length > 5 ||
         step.after.some(dep => !dep || !earlier.has(dep.step) || !outcomes.includes(dep.result)) ||
         new Set(step.after.map(dep => dep.step)).size !== step.after.length) return null;
+    const requires = ceiling ? capabilityList(step.requires) : undefined;
+    if (ceiling ? !allowsStep(ceiling, { ...step, requires }) : step.requires !== undefined) return null;
     earlier.add(step.key);
     steps.push({ key: step.key, title: step.title.trim(), prompt: step.prompt.trim(), profile: step.profile,
       after: step.after.map(({ step: predecessor, result }) => ({ step: predecessor, result })),
-      ...(step.reviewer ? { reviewer: step.reviewer } : {}), approval: step.approval === true });
+      ...(step.reviewer ? { reviewer: step.reviewer } : {}), ...(requires ? { requires } : {}), approval: step.approval === true });
   }
   return steps;
 }
@@ -99,18 +103,22 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     res.json(await Promise.all([...open, ...recent].map(record => view(record, settings))));
   });
 
-  router.post("/", async (req, res) => {
+  router.post(["/", "/capability-plans"], async (req, res) => {
     const { id, title, hostId, workspace, effort, endsAt, steps, paused = false } = req.body || {};
     const end = windowEnd(endsAt);
-    const normalized = plan(steps);
+    const requestedAuthorization = req.body?.authorization;
+    const ceiling = requestedAuthorization === undefined ? undefined : authorization(requestedAuthorization);
+    const normalized = plan(steps, ceiling);
     if (![id, hostId].every(value => typeof value === "string" && uuid.test(value)) ||
         !isText(title, 120) || !["development", "workshop"].includes(workspace) || !end || !normalized ||
-        typeof paused !== "boolean" || normalized.some(step => step.profile !== "read-only" && step.profile !== workspace)) {
+        typeof paused !== "boolean" || (req.path === "/capability-plans" && !ceiling) ||
+        (requestedAuthorization !== undefined && !ceiling) ||
+        (!ceiling && normalized.some(step => step.profile !== "read-only" && step.profile !== workspace))) {
       return fail(res, 400, "Provide a relay, a valid ordered plan and an operating window ending within 24 hours.");
     }
     const ownerId = owner();
     const creationDigest = createHash("sha256").update(JSON.stringify({ title: title.trim(), hostId,
-      workspace, effort, endsAt: end, steps: normalized, paused })).digest("hex");
+      workspace, effort, endsAt: end, steps: normalized, paused, ...(ceiling ? { authorization: ceiling } : {}) })).digest("hex");
     const existing = () => records().findOne({ _id: id, ownerId });
     const replay = record => record?.creationDigest === creationDigest
       ? view(record).then(result => res.json(result))
@@ -119,10 +127,12 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     if (saved) return replay(saved);
     if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Dispatch is unavailable.");
     const host = await hosts().findOne({ _id: hostId, ownerId, revokedAt: null, isolatedReviewSnapshot: { $ne: true } });
-    if (!host?.efforts?.includes(effort) || normalized.some(step => !host.profiles?.includes(step.profile))) {
+    if (!host || !host.efforts?.includes(effort) ||
+        (!ceiling && (host.missionOnly || normalized.some(step => !host.profiles?.includes(step.profile))))) {
       return fail(res, 409, "The relay does not advertise the requested permissions or reasoning effort.");
     }
     const record = { _id: id, ownerId, creationDigest, title: title.trim(), hostId, workspace, effort, endsAt: end, steps: normalized,
+      ...(ceiling ? { authorization: ceiling } : {}),
       status: paused ? "paused" : "active", reason: paused ? "Paused by owner." : "",
       current: null, results: {}, approvals: {}, revision: 0, createdAt: new Date(), updatedAt: new Date() };
     try {
@@ -161,8 +171,9 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
 
   async function enqueue(mission, host) {
     const step = mission.steps.find(item => item.key === mission.current.step);
-    if (!host.profiles?.includes(step.profile) || !host.efforts?.includes(mission.effort)) {
-      if (mission.reason !== "Relay capabilities changed.") await change(mission, { reason: "Relay capabilities changed." });
+    const { reason, receipt } = resolveRoute(host, mission, step);
+    if (reason) {
+      if (mission.reason !== reason) await change(mission, { reason });
       return;
     }
     const actorQuery = step.reviewer
@@ -202,10 +213,14 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     try {
       await jobs().insertOne({ _id, ownerId: mission.ownerId, hostId: mission.hostId, missionId: mission._id,
         missionStep: step.key, title: mission.title + " · " + step.title, sessionId: _id,
-        parentId: null, codexThreadId: null, workspace: mission.workspace, profile: step.profile,
+        parentId: null, codexThreadId: null,
+        workspace: receipt && ["development", "workshop"].includes(step.profile) ? step.profile : mission.workspace,
+        profile: step.profile,
+        ...(receipt ? { requiresMissionPreflight: true } : {}),
+        ...(receipt?.scope ? { scopedRevision: receipt.scope } : {}),
         model: "gpt-6.2-sol", effort: mission.effort, workerRole: "direct", status: "queued", prompt,
         studioActor: { id: actor._id, name: actor.name, role: actor.role },
-        ...(actor.role === "first-mate" ? { studioTools: true } : {}),
+        ...(actor.role === "first-mate" && !host.missionOnly ? { studioTools: true } : {}),
         ...(prompt.length > LEGACY_PROMPT_LIMIT ? { requiresExtendedPrompt: true } : {}),
         createdAt: new Date(), events: [], eventCount: 0 });
     } catch (error) {
@@ -216,6 +231,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
         } } });
       }
     }
+    if (mission.reason) await change(mission, { reason: "" });
   }
 
   async function reconcile(host) {
@@ -229,7 +245,14 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       if (mission.current) {
         const job = await jobs().findOne(currentJob(mission));
         if (!job) { await enqueue(mission, host); continue; }
-        if (!terminal.includes(job.status)) continue;
+        if (!terminal.includes(job.status)) {
+          const step = mission.steps.find(item => item.key === mission.current.step);
+          if (mission.authorization && job.status === "queued") {
+            const { reason = "" } = resolveRoute(host, mission, step);
+            if (reason !== mission.reason) await change(mission, { reason });
+          }
+          continue;
+        }
         const line = job.status === "completed" && await lastResponseLine(job, eventBatches());
         const verdict = typeof line === "string" && /^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:; NEXT: ([a-z][a-z0-9-]{0,39}))?$/.exec(line);
         const result = verdict ? verdict[1].toLowerCase() : "blocked";
@@ -241,8 +264,14 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       }
       const { ready, outcomesByStep } = readiness(mission);
       const available = ready.filter(step => !step.approval || mission.approvals[step.key]);
-      const next = available.find(step => step.key === mission.preferred) || available[0];
+      const runnable = mission.authorization ? available.filter(step => !resolveRoute(host, mission, step).reason) : available;
+      const next = runnable.find(step => step.key === mission.preferred) || runnable[0];
       if (!next) {
+        if (available.length) {
+          const { reason } = resolveRoute(host, mission, available[0]);
+          if (reason !== mission.reason) await change(mission, { reason });
+          continue;
+        }
         if (ready.length) {
           if (mission.reason !== "Waiting for owner approval.") await change(mission, { reason: "Waiting for owner approval." });
           continue;
@@ -264,19 +293,28 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     }
   }
 
-  async function eligible(ownerId, hostId) {
-    const items = await records().find({ ...activeQuery(ownerId, hostId), "current.jobId": { $exists: true } }, {
-      projection: { "current.jobId": 1 },
+  async function eligible(ownerId, host, supportsPreflight) {
+    const items = await records().find({ ...activeQuery(ownerId, host._id), "current.jobId": { $exists: true } }, {
+      projection: { current: 1, authorization: 1, steps: 1, effort: 1 },
     }).toArray();
-    return items.map(mission => mission.current.jobId);
+    return items.filter(mission => !mission.authorization || (supportsPreflight &&
+      resolveRoute(host, mission, mission.steps.find(step => step.key === mission.current.step)).receipt))
+      .map(mission => mission.current.jobId);
   }
 
   async function admit(job, host) {
     if (usageHoldUntil(host.usage)) return false;
-    const accepted = await records().updateOne({ ownerId: job.ownerId, hostId: job.hostId, _id: job.missionId,
+    const query = { ownerId: job.ownerId, hostId: job.hostId, _id: job.missionId,
       status: "active", $expr: { $gt: ["$endsAt", "$$NOW"] },
-      "current.jobId": job._id, "current.step": job.missionStep }, { $currentDate: { "current.admittedAt": true } });
-    return accepted.matchedCount === 1;
+      "current.jobId": job._id, "current.step": job.missionStep };
+    const mission = await records().findOne(query);
+    if (!mission) return false;
+    const step = mission.steps.find(item => item.key === job.missionStep);
+    const { reason, receipt } = resolveRoute(host, mission, step);
+    if (reason || job.profile !== step.profile || !!receipt !== (job.requiresMissionPreflight === true) ||
+        receipt?.scope !== job.scopedRevision) return false;
+    const accepted = await records().updateOne({ ...query, revision: mission.revision }, { $currentDate: { "current.admittedAt": true } });
+    return accepted.matchedCount === 1 && (receipt || true);
   }
 
   async function briefing(ownerId) {

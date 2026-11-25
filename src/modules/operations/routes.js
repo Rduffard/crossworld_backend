@@ -28,6 +28,7 @@ const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
 const { createMissions } = require("./missions");
+const { observations } = require("./mission-capabilities");
 const { createMedia, mediaObservation } = require("./media");
 const { createFinance } = require("./finance");
 const { createCommunications } = require("./communications");
@@ -233,6 +234,11 @@ function createRouter({
     res.json({ ready: status.ready && status.paused && +status.expiresAt - Date.now() >= 5 * 60_000 });
   });
   worker.use(express.json({ limit: "640kb" }));
+  worker.use((req, res, next) => {
+    if (!req.operationsHost.missionOnly || (req.method === "POST" &&
+        (/^\/(heartbeat|claim)$/.test(req.path) || /^\/jobs\/[a-f\d-]{36}\/sync$/.test(req.path)))) return next();
+    return reject(res, 403, "This device is reserved for capability-authorized mission execution.");
+  });
   const lifecycleRequests = () => db().collection("operations_supervisor_requests");
   const lifecycle = createRemoteLifecycle({ hosts, requests: lifecycleRequests, owner, maintenanceStatus, workerEnabled });
   const lifecycleRunning = () => lifecycleRequests().findOne({ ownerId: owner(), status: "running" }, { projection: { _id: 1 } });
@@ -252,6 +258,15 @@ function createRouter({
         (supported.includes("scoped") && !scopedRevision)) {
       return reject(res, 400, "Invalid worker capabilities.");
     }
+    const missionPreflights = observations(req.body?.missionPreflights ?? [], supported, scopedRevision);
+    if (!missionPreflights || (isolatedReviewSnapshot && missionPreflights.length)) {
+      return reject(res, 400, "Invalid mission capability preflight.");
+    }
+    if (req.operationsHost.missionOnly &&
+        (supported.includes("full-access") || backgroundReviews || isolatedReviewSnapshot ||
+          req.body.media === true || req.body.mediaOutput === true || req.body.artifactImport === true)) {
+      return reject(res, 409, "This device is reserved for capability-authorized missions.");
+    }
     if ((isolatedReviewSnapshot || req.operationsHost._id === isolatedReviewHostId()) &&
         (req.operationsHost._id !== isolatedReviewHostId() || !reviewOnlyHost({ profiles: supported, backgroundReviews, isolatedReviewSnapshot }) ||
           req.body.media === true || req.body.mediaOutput === true || req.body.artifactImport === true)) {
@@ -268,7 +283,7 @@ function createRouter({
       artifactImport: req.body?.artifactImport === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       mediaUsage: req.body?.media === true ? mediaObservation(req.body?.mediaUsage, +now) : null,
       relayVersion, supervised: relayVersion !== null && req.body?.supervised === true,
-      resources, lastSeen: now } }, { returnDocument: "after" });
+      missionPreflights, resources, lastSeen: now } }, { returnDocument: "after" });
     if (!host) return reject(res, 409, "Another worker instance holds this device lease.");
     const usage = rateLimitObservation(req.body?.usage, +now);
     if (usage && usage.observedAt > (host.usage?.observedAt || 0)) {
@@ -377,12 +392,14 @@ function createRouter({
       const sameWorkspaceRestriction = other && (!background || (other.profile && other.profile !== "read-only"));
       const held = usageHoldUntil(req.operationsHost.usage);
       if (background && (held || spansWorkspaces.includes(other?.profile))) return res.json(null);
-      const missionJobs = background || held ? [] : await missions.eligible(scope.ownerId, scope.hostId);
+      const missionJobs = background || held ? [] : await missions.eligible(scope.ownerId, req.operationsHost,
+        req.body.missionPreflight === true);
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
         job = await jobs().findOneAndUpdate({
           ...scope, effort: { $in: req.operationsHost.efforts || [] },
+          ...(req.operationsHost.missionOnly ? { requiresMissionPreflight: true } : {}),
           ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
             ? {} : { requiresExtendedPrompt: { $ne: true } }),
           ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
@@ -424,14 +441,20 @@ function createRouter({
     if (!job) return res.json(null);
     if (job.missionId && !job.runAuthorizedAt && job.status === "running") {
       const pendingMission = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
-      if (!await missions.admit(job, req.operationsHost)) {
+      const authorization = (!job.requiresMissionPreflight || req.body.missionPreflight === true) &&
+        await missions.admit(job, req.operationsHost);
+      if (!authorization) {
         await jobs().updateOne(pendingMission, {
           $set: { status: "queued" }, $unset: { activeHost: "", instance: "", leaseUntil: "", startedAt: "" },
         });
         return res.json(null);
       }
-      const authorized = await jobs().updateOne(pendingMission, { $set: { runAuthorizedAt: new Date() } });
+      const receipt = authorization === true ? undefined : authorization;
+      const authorized = await jobs().updateOne(pendingMission, { $set: {
+        runAuthorizedAt: new Date(), ...(receipt ? { permissionDiagnostics: receipt } : {}),
+      } });
       if (!authorized.matchedCount) return res.json(null);
+      if (receipt) job.permissionDiagnostics = receipt;
     }
     if (job.seriesId && !job.runAuthorizedAt && job.status === "running") {
       const key = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
@@ -514,6 +537,7 @@ function createRouter({
     const decisions = identity ? await approvedDecisions(knowledge, scope.ownerId, projectIds) : [];
     const { _id, prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole } = job;
     res.json({ _id, prompt: job.assignmentContext ? prompt + job.assignmentContext : prompt, model, effort, workspace, profile, codexThreadId, status, eventCount, workerRole,
+      ...(job.permissionDiagnostics ? { permissionDiagnostics: job.permissionDiagnostics } : {}),
       ...(job.scopedRevision ? { scopedRevision: job.scopedRevision } : {}),
       ...(job.blueprintTyped ? { blueprintTyped: true } : {}),
       ...(job.isolatedReview ? { isolatedReview: true } : {}),
@@ -766,7 +790,7 @@ function createRouter({
   });
   router.get("/hosts", async (_req, res) => {
     const records = await hosts().find({ ownerId: owner() }, {
-      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, usage: 1 },
+      projection: { label: 1, lastSeen: 1, revokedAt: 1, efforts: 1, profiles: 1, extendedPrompts: 1, media: 1, mediaOutput: 1, artifactImport: 1, employeeConversations: 1, backgroundReviews: 1, isolatedReviewSnapshot: 1, missionOnly: 1, scopedRevision: 1, missionPreflights: 1, usage: 1 },
     }).sort({ createdAt: -1 }).limit(50).toArray();
     const now = new Date();
     const slots = records.filter(host => !host.revokedAt).flatMap(host => [host._id, host._id + ":review"]);
@@ -790,14 +814,16 @@ function createRouter({
     if (!host) return reject(res, 404, "Relay unavailable.");
     return res.json({ observations: (host.usageHistory || []).map(snapshot => rateLimitObservation(snapshot)).filter(Boolean).reverse() });
   });
-  router.post("/hosts", async (req, res) => {
+  router.post(["/hosts", "/hosts/mission-pilot"], async (req, res) => {
     const label = req.body?.label?.trim?.();
-    if (!label || label.length > 80) return reject(res, 400, "Device name required.");
+    const missionOnly = req.body?.missionOnly ?? false;
+    if (!label || label.length > 80 || typeof missionOnly !== "boolean" ||
+        (req.path === "/hosts/mission-pilot" && !missionOnly)) return reject(res, 400, "Invalid device registration.");
     const id = randomUUID();
     const token = `${id}.${randomBytes(32).toString("hex")}`;
     await hosts().insertOne({
       _id: id, ownerId: owner(), label, digest: deviceHash(token),
-      createdAt: new Date(), lastSeen: null, revokedAt: null,
+      createdAt: new Date(), lastSeen: null, revokedAt: null, ...(missionOnly ? { missionOnly } : {}),
     });
     res.status(201).json({ id, token });
   });
@@ -998,6 +1024,7 @@ function createRouter({
     const [reason, reviewReason] = await Promise.all([queueReason(job), queueReason(delegatedReview)]);
     res.json({
       ...jobView(job), title: root?.title, archivedAt: root?.archivedAt, mediaOutputs, queueReason: reason,
+      ...(job.permissionDiagnostics ? { permissionDiagnostics: job.permissionDiagnostics } : {}),
       delegatedReview: delegatedReview ? { ...jobView(delegatedReview), queueReason: reviewReason } : undefined,
     });
   });
@@ -1138,6 +1165,7 @@ function createRouter({
     }
     const host = await hosts().findOne({ _id: hostId, ownerId: owner(), revokedAt: null });
     if (hostId === isolatedReviewHostId()) return reject(res, 409, "This device is reserved for isolated delegated reviews.");
+    if (host?.missionOnly) return reject(res, 409, "This device is reserved for capability-authorized missions.");
     if (!host || (!queue && scheduledAt === undefined && !online(host)) || !host.efforts?.includes(effort) ||
         !(host.profiles || ["read-only"]).includes(profile)) {
       return reject(res, 409, scheduledAt === undefined
