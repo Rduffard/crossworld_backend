@@ -34,6 +34,7 @@ const { createCreative } = require("./creative");
 const { createEngineering } = require("./engineering");
 const { failureDiagnostic } = require("./diagnostics");
 const { resourceObservation } = require("./resources");
+const { createReleaseStaging } = require("./release-staging");
 
 const { LEGACY_PROMPT_LIMIT, PROMPT_LIMIT } = require("./prompt-limits");
 
@@ -92,6 +93,7 @@ function createRouter({
   isolatedReviewHostId = () => process.env.OPERATIONS_ISOLATED_REVIEW_HOST_ID,
   githubTestAdapter,
   mcpTestAdapter,
+  workerReleaseCandidate,
   repositories = () => (process.env.OPERATIONS_GITHUB_REPOSITORIES || "").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean),
 } = {}) {
   const router = express.Router();
@@ -233,7 +235,11 @@ function createRouter({
   worker.use(express.json({ limit: "640kb" }));
   const lifecycleRequests = () => db().collection("operations_supervisor_requests");
   const lifecycle = createRemoteLifecycle({ hosts, requests: lifecycleRequests, owner, maintenanceStatus, workerEnabled });
+  const staging = createReleaseStaging({
+    hosts, requests: () => db().collection("operations_release_staging"), owner, workerEnabled, candidate: workerReleaseCandidate,
+  });
   const lifecycleRunning = () => lifecycleRequests().findOne({ ownerId: owner(), status: "running" }, { projection: { _id: 1 } });
+  worker.use("/supervisor/staging", staging.worker);
   worker.use("/supervisor", lifecycle.worker);
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
@@ -630,6 +636,7 @@ function createRouter({
     const isBrief = req.method === "POST" && /^\/(?:schedule|recurrence|jobs(?:\/[^/]+\/steer)?)\/?$/i.test(req.path);
     (isBrief ? briefJson : ownerJson)(req, res, next);
   });
+  router.use("/supervisor/staging", staging.browser);
   router.use("/supervisor", lifecycle.browser);
   router.use("/owner-preferences", createOwnerPreferences({ records: () => db().collection("operations_owner_preferences"), owner }));
   router.use("/organization", createOrganization({ workforce, projects, objectives, owner }));

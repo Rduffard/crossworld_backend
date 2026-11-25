@@ -1,22 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseStore } from "./managed-supervisor.mjs";
+import releaseFormat from "../../src/modules/operations/managed-release-format.js";
 
-const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const directory = "tools/operations-worker/";
 const operations = "src/modules/operations/";
-const runtimeFiles = new Set([
-  "codex.mjs", "control.mjs", "media-storage.mjs", "profiles.mjs", "resources.mjs", "windows.mjs", "worker.mjs",
-  "check-permissions.mjs", "supervisor.mjs",
-].map(name => directory + name).concat(
-  ["diagnostics", "media-artifacts", "prompt-limits", "usage"].map(name => operations + name + ".js"),
-));
+const { gitCommit, hash, runtimeFiles } = releaseFormat;
 
 export function prepareManagedRelease({ repository, commit, output }) {
-  if (typeof commit !== "string" || !/^[a-f\d]{40}$/.test(commit)) throw new Error("Provide the full reviewed Git commit SHA.");
+  if (!gitCommit(commit)) throw new Error("Provide the full reviewed Git commit SHA.");
   if (!path.isAbsolute(repository) || !path.isAbsolute(output)) throw new Error("Provide absolute repository and staging paths.");
   const root = realpathSync(output);
   const repo = realpathSync(repository);
@@ -41,30 +35,21 @@ export function prepareManagedRelease({ repository, commit, output }) {
   }
   const missing = [...runtimeFiles].filter(file => !files.has(file));
   if (missing.length) throw new Error("Missing runtime files: " + missing.join(", "));
-  const manifest = Buffer.from(JSON.stringify([...files.keys()].sort().map(file => ({ file, sha256: hash(files.get(file)) }))));
+  const names = [...files.keys()].sort();
+  const manifest = Buffer.from(JSON.stringify(names.map(file => ({ file, sha256: hash(files.get(file)) }))));
   const digest = hash(manifest);
-  const target = path.join(root, digest);
-  const inventory = releaseStore(root);
-  const staged = path.join(root, ".showtime-stage-" + randomUUID());
-  if (!existsSync(target)) {
-    mkdirSync(staged, { mode: 0o700 });
-    try {
-      const pending = path.join(staged, digest);
-      for (const [file, bytes] of files) {
-        const destination = path.join(pending, file);
-        mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-        writeFileSync(destination, bytes, { flag: "wx", mode: 0o600, flush: true });
-      }
-      writeFileSync(path.join(pending, "runtime-manifest.json"), manifest, { flag: "wx", mode: 0o600, flush: true });
-      releaseStore(staged).open(digest);
-      try { renameSync(pending, target); }
-      catch (error) { if (!existsSync(target)) throw error; }
-    } finally {
-      rmSync(staged, { force: true, recursive: true });
-    }
+  const pkg = { version: 1, commit, digest, manifest: manifest.toString("base64"),
+    members: names.map(file => ({ file, content: files.get(file).toString("base64") })) };
+  const verified = releaseStore(root).stage(pkg);
+  const bundle = path.join(root, commit + "-" + digest + ".worker.json");
+  const wire = JSON.stringify(pkg);
+  try { writeFileSync(bundle, wire, { flag: "wx", mode: 0o600, flush: true }); }
+  catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const file = lstatSync(bundle);
+    if (!file.isFile() || file.nlink !== 1 || file.size !== Buffer.byteLength(wire) || readFileSync(bundle, "utf8") !== wire) throw error;
   }
-  const verified = inventory.open(digest);
-  return { commit, digest, relayVersion: verified.version, verified: true, files: files.size };
+  return { commit, digest, relayVersion: verified.version, verified: true, files: files.size, bundle };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

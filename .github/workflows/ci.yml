@@ -81,6 +81,9 @@ jobs:
           node --check src/app.js
           # The VM receives portable JavaScript dependencies from the runner.
           test -z "$(find node_modules -name '*.node' -print -quit)"
+          worker_stage="$(mktemp -d "$RUNNER_TEMP/worker-candidate.XXXXXXXX")"
+          node tools/operations-worker/prepare-managed-release.mjs "$PWD" "$GITHUB_SHA" "$worker_stage"
+          cp "$worker_stage/"*.worker.json src/modules/operations/verified-worker-candidate.json
           tar -czf "$RUNNER_TEMP/backend-runtime.tgz" src node_modules package.json package-lock.json
       - uses: actions/upload-artifact@v6
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

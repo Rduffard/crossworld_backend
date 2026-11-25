@@ -70,7 +70,7 @@ function createRemoteLifecycle({ hosts, requests, owner, maintenanceStatus, work
   });
 
   worker.post("/poll", async (req, res) => {
-    const { active, previous, releases } = req.body || {};
+    const { active, previous, releases, remoteStaging } = req.body || {};
     if (!digest(active) || (previous !== null && !digest(previous)) || !Array.isArray(releases) ||
         releases.length > 16 || !releases.every(digest) || !releases.includes(active) || (previous && !releases.includes(previous))) {
       return fail(res, 400, "Invalid supervisor release inventory.");
@@ -78,7 +78,7 @@ function createRemoteLifecycle({ hosts, requests, owner, maintenanceStatus, work
     const { _id: hostId, ownerId } = req.operationsHost;
     const scope = { ownerId, hostId };
     await hosts().updateOne({ _id: hostId, ownerId, revokedAt: null },
-      { $set: { supervisorControl: { active, previous, releases, observedAt: new Date() } } });
+      { $set: { supervisorControl: { active, previous, releases, observedAt: new Date(), ...(remoteStaging === true ? { remoteStaging: true } : {}) } } });
     if (!workerEnabled) return res.json(null);
     const existing = await requests().findOne({ ...scope, status: "running" });
     if (existing) return res.json(existing);

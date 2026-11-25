@@ -13,6 +13,7 @@ import { backendClient, runWorker } from "./worker.mjs";
 import { acquireWorkerLock } from "./windows.mjs";
 import { protectedDirectories, workspacePaths as workspaces } from "./profiles.mjs";
 import { verifyMedia } from "./media-integration.mjs";
+import releaseFormat from "../../src/modules/operations/managed-release-format.js";
 
 const fullAccessLive = process.argv.includes("--full-access-live");
 const live = process.argv.includes("--live") && !fullAccessLive;
@@ -47,10 +48,17 @@ const db = await mongoose.createConnection(`mongodb://127.0.0.1:${mongoPort}`, {
   dbName: database, serverSelectionTimeoutMS: 4000,
 }).asPromise();
 const app = express();
+const releaseMembers = [...releaseFormat.runtimeFiles].sort().map(file => ({ file, bytes: Buffer.from("Fixture member " + file) }));
+const manifestBytes = Buffer.from(JSON.stringify(releaseMembers.map(({ file, bytes }) => ({ file, sha256: releaseFormat.hash(bytes) }))));
+const workerReleaseCandidate = {
+  version: 1, commit: "1".repeat(40), digest: releaseFormat.hash(manifestBytes), manifest: manifestBytes.toString("base64"),
+  members: releaseMembers.map(({ file, bytes }) => ({ file, content: bytes.toString("base64") })),
+};
 let isolatedReviewHostId;
 app.use("/operations", createRouter({
   db: () => db.db,
   isolatedReviewHostId: () => isolatedReviewHostId,
+  workerReleaseCandidate: () => workerReleaseCandidate,
   reportError: console.error,
 }));
 const server = app.listen(0, "127.0.0.1");
@@ -886,6 +894,32 @@ try {
   assert.equal((await api("/dispatch", { method: "PATCH", body: { paused: false } }))[0], 204);
   assert.equal((await api("/maintenance", { method: "PATCH", body: { minutes: 0 } }))[0], 200);
   console.log("Owner-bound supervisor release intents, protection during handover and durable receipt replay PASS");
+  const stageEndpoint = "/supervisor/staging";
+  const targetCandidate = (await api(stageEndpoint + "/candidate"))[1];
+  assert.equal(targetCandidate.digest, workerReleaseCandidate.digest);
+  assert.equal(targetCandidate.members, undefined);
+  const stageRequest = { id: randomUUID(), hostId: device.id, reviewedDigest: targetCandidate.digest, commit: targetCandidate.commit };
+  assert.equal((await api(stageEndpoint + "/candidate", { user: other }))[0], 403);
+  assert.equal((await api(stageEndpoint, { method: "POST", body: stageRequest }))[0], 409);
+  assert.equal(await send("/supervisor/poll", { ...inventory, remoteStaging: true }), null);
+  assert.equal((await api(stageEndpoint, { method: "POST", body: { ...stageRequest, reviewedDigest: "a".repeat(64) } }))[0], 409);
+  assert.equal((await api(stageEndpoint, { method: "POST", body: stageRequest }))[0], 201);
+  assert.equal((await api(stageEndpoint, { method: "POST", body: stageRequest }))[0], 200);
+  assert.equal((await api(stageEndpoint, { method: "POST", body: { ...stageRequest, id: randomUUID() } }))[0], 409);
+  const pendingStage = await send(stageEndpoint + "/poll", {});
+  assert.equal(pendingStage._id, stageRequest.id);
+  assert.deepEqual(pendingStage.package, workerReleaseCandidate);
+  assert.equal((await api(stageEndpoint))[1][0].package, undefined);
+  const receiptPath = stageEndpoint + "/" + stageRequest.id + "/receipt";
+  await assert.rejects(send(receiptPath, { status: "staged", digest: activeRelease }), { status: 409 });
+  const staged = { status: "staged", digest: targetCandidate.digest };
+  assert.deepEqual(await send(receiptPath, staged), { accepted: true });
+  assert.deepEqual(await send(receiptPath, staged), { accepted: true });
+  assert.equal(await send(stageEndpoint + "/poll", {}), null);
+  assert.equal((await api(stageEndpoint))[1][0].status, "staged");
+  assert.equal((await registeredHosts.findOne({ _id: device.id })).supervisorControl.active, activeRelease);
+  assert.equal((await registeredHosts.findOne({ _id: device.id })).supervisorControl.releases.includes(targetCandidate.digest), false);
+  console.log("Verified candidate staging is owner-authorized, digest-bound and separate from activation PASS");
   let offline = false;
   let launchCount = 0;
   let usageObservation = {

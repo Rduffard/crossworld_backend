@@ -1,12 +1,13 @@
 import { fork } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { acquireWorkerLock, loadCredential } from "./windows.mjs";
 import { backendClient } from "./worker.mjs";
+import releaseFormat from "../../src/modules/operations/managed-release-format.js";
 
 const digest = /^[a-f\d]{64}$/;
 const allowed = /^(?:tools\/operations-worker\/[\w .-]+\.(?:mjs|md|cmd|ps1)|src\/modules\/operations\/(?:diagnostics|media-artifacts|prompt-limits|usage)\.js)$/;
@@ -64,12 +65,39 @@ export function releaseStore(root) {
     }
     return { worker: path.join(directory, entrypoint), version: files.find(item => item.file === entrypoint).sha256.slice(0, 12) };
   }
+  function stage(pkg) {
+    const release = releaseFormat.parsePackage(pkg);
+    if (!release) throw new Error("Invalid reviewed worker package.");
+    const target = path.join(root, release.digest);
+    if (!existsSync(target)) {
+      const staging = path.join(root, ".stage-" + randomUUID());
+      mkdirSync(staging, { mode: 0o700 });
+      try {
+        const pending = path.join(staging, release.digest);
+        for (const [file, bytes] of release.files) {
+          const destination = path.join(pending, file);
+          mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+          writeFileSync(destination, bytes, { flag: "wx", mode: 0o600, flush: true });
+        }
+        writeFileSync(path.join(pending, "runtime-manifest.json"), release.manifest, { flag: "wx", mode: 0o600, flush: true });
+        releaseStore(staging).open(release.digest);
+        try { renameSync(pending, target); }
+        catch (error) { if (!existsSync(target)) throw error; }
+      } finally {
+        rmSync(staging, { force: true, recursive: true });
+      }
+    }
+    return open(release.digest);
+  }
   return {
-    open,
-    list: () => readdirSync(root).filter(name => {
-      if (!digest.test(name)) return false;
-      try { open(name); return true; } catch { return false; }
-    }).slice(0, 16),
+    open, stage,
+    list: () => readdirSync(root).flatMap(name => {
+      if (!digest.test(name)) return [];
+      try {
+        open(name);
+        return [{ name, stagedAt: lstatSync(path.join(root, name)).mtimeMs }];
+      } catch { return []; }
+    }).sort((a, b) => b.stagedAt - a.stagedAt || a.name.localeCompare(b.name)).slice(0, 16).map(item => item.name),
     state: () => read(stateFile),
     save: state => write(stateFile, state),
     journal: () => existsSync(journalFile) ? read(journalFile) : null,
@@ -105,8 +133,13 @@ export function lifecycleController({ store, service, send }) {
       save({ active: state.active, previous: state.previous });
     }
     const releases = [...new Set([state.active, ...(state.previous ? [state.previous] : []), ...store.list()])].slice(0, 16);
-    const intent = await send("/supervisor/poll", { active: state.active, previous: state.previous ?? null, releases });
-    if (!intent) return;
+    const intent = await send("/supervisor/poll", {
+      active: state.active, previous: state.previous ?? null, releases, ...(store.stage ? { remoteStaging: true } : {}),
+    });
+    if (!intent) {
+      if (store.stage) await stagePending();
+      return;
+    }
     if (intent.current !== state.active || !["restart", "update", "rollback"].includes(intent.operation) ||
         (intent.operation === "restart" ? intent.target !== state.active : intent.target === state.active) ||
         (intent.operation === "rollback" && intent.target !== state.previous)) {
@@ -139,6 +172,23 @@ export function lifecycleController({ store, service, send }) {
       await service.start(store.open(intent.current));
       receipt(intent, "rolled-back", intent.current);
     }
+  }
+  async function stagePending() {
+    let request;
+    try { request = await send("/supervisor/staging/poll", {}); }
+    catch (error) {
+      if (error.status !== 404) throw error;
+      return;
+    }
+    if (!request || Date.parse(request.expiresAt) <= Date.now()) return;
+    let status;
+    try {
+      store.stage(request.package);
+      status = "staged";
+    } catch {
+      status = "failed";
+    }
+    await send("/supervisor/staging/" + request._id + "/receipt", { status, digest: request.package?.digest });
   }
   return { recover, poll };
 }
