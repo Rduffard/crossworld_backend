@@ -80,7 +80,13 @@ try {
     if ((Get-Content -LiteralPath (Join-Path $releaseHome 'state.json') -Raw | ConvertFrom-Json).active -ne $fixtureState.knownGood) {
         throw 'The independent controller handover modified the worker pointer.'
     }
-    Write-Output 'Supervisor isolation fixture PASS. Maintenance gate, rollback, separate install and worker pointer preservation.'
+    . (Join-Path $PSScriptRoot 'Supervisor-Runtime.ps1')
+    Set-Content -LiteralPath (Join-Path $expected 'package.json') -Value '{}' -Encoding utf8
+    try {
+        $null = Assert-SupervisorRuntime -Directory $expected -ManifestSha $ManifestSha
+        throw 'Fixture should reject an undeclared runtime file.'
+    } catch { if ($_.Exception.Message -ne 'Unexpected supervisor runtime file.') { throw } }
+    Write-Output 'Supervisor isolation fixture PASS. Maintenance gate, rollback, separate install, worker pointer preservation and undeclared file rejection.'
 } finally {
     $env:LOCALAPPDATA = $priorLocal
 }

@@ -39,6 +39,27 @@ function Assert-SupervisorRuntime {
     $required += @('diagnostics','media-artifacts','prompt-limits','usage') |
         ForEach-Object { "src/modules/operations/$_.js" }
     if (@($required | Where-Object { !$names.Contains($_) }).Count) { throw 'Supervisor runtime is incomplete.' }
+    $directories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $names) {
+        $parent = $name
+        while ($parent.Contains('/')) {
+            $parent = $parent.Substring(0, $parent.LastIndexOf('/'))
+            $null = $directories.Add($parent)
+        }
+    }
+    $null = $names.Add('supervisor-manifest.json')
+    $pending = [Collections.Generic.Queue[string]]::new()
+    $pending.Enqueue($root.FullName)
+    while ($pending.Count) {
+        foreach ($item in Get-ChildItem -LiteralPath ($pending.Dequeue()) -Force) {
+            $relative = $item.FullName.Substring($root.FullName.Length + 1).Replace('\','/')
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Redirected supervisor runtime path.' }
+            if ($item.PSIsContainer) {
+                if (!$directories.Contains($relative)) { throw 'Unexpected supervisor runtime directory.' }
+                $pending.Enqueue($item.FullName)
+            } elseif (!$names.Contains($relative)) { throw 'Unexpected supervisor runtime file.' }
+        }
+    }
     $value
 }
 
@@ -59,7 +80,8 @@ function Install-SupervisorRuntime {
         }
         Copy-Item -LiteralPath (Join-Path $Candidate 'supervisor-manifest.json') -Destination $stage
         $null = Assert-SupervisorRuntime -Directory $stage -ManifestSha $ManifestSha
-        Move-Item -LiteralPath $stage -Destination $target
+        try { [IO.Directory]::Move($stage, $target) }
+        catch [IO.IOException] { if (!(Test-Path -LiteralPath $target)) { throw } }
     }
     $null = Assert-SupervisorRuntime -Directory $target -ManifestSha $ManifestSha
     $target
