@@ -419,6 +419,7 @@ function createRouter({
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
             { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
+            { $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: req.operationsHost.scopedRevision || "" }] },
             ...(background ? [{ $or: [
               { delegatedBy: { $exists: true }, workerRole: "assignment" },
@@ -447,6 +448,16 @@ function createRouter({
       const pendingMission = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
       const authorization = (!job.requiresMissionPreflight || req.body.missionPreflight === true) &&
         await missions.admit(job, req.operationsHost);
+      if (authorization?.candidateRejection) {
+        const { candidateRejection, retryCandidate } = authorization;
+        await jobs().updateOne(pendingMission, {
+          $set: retryCandidate
+            ? { status: "queued", candidateRetryAt: new Date(Date.now() + 60_000), candidateAdmissionError: candidateRejection }
+            : { status: "failed", finishedAt: new Date(), error: candidateRejection, candidateAdmissionError: candidateRejection },
+          $unset: { activeHost: "", instance: "", leaseUntil: "", startedAt: "" },
+        });
+        return res.json(null);
+      }
       if (!authorization) {
         await jobs().updateOne(pendingMission, {
           $set: { status: "queued" }, $unset: { activeHost: "", instance: "", leaseUntil: "", startedAt: "" },
@@ -456,7 +467,7 @@ function createRouter({
       const receipt = authorization === true ? undefined : authorization;
       const authorized = await jobs().updateOne(pendingMission, { $set: {
         runAuthorizedAt: new Date(), ...(receipt ? { permissionDiagnostics: receipt } : {}),
-      } });
+      }, $unset: { candidateRetryAt: "", candidateAdmissionError: "" } });
       if (!authorized.matchedCount) return res.json(null);
       if (receipt) job.permissionDiagnostics = receipt;
     }
