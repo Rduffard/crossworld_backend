@@ -14,8 +14,10 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
   const review = { key: "review", profile: "read-only", reviewer: "trace",
     after: [{ step: "implement", result: "pass" }] };
   const fetch = t.mock.method(globalThis, "fetch", async () => ({ status: 404 }));
-  for (const scenario of ["missing", "unavailable", "full-access", "fallback", "outage", "verified recovery"]) {
+  for (const scenario of ["missing", "unavailable", "full-access", "fallback", "outage", "verified recovery",
+    "explicit unavailable", "explicit verified"]) {
     const recovered = ["full-access", "fallback", "verified recovery"].includes(scenario);
+    const explicit = scenario.startsWith("explicit");
     const before = fetch.mock.callCount();
     if (scenario === "outage") fetch.mock.mockImplementation(async () => ({ status: 503 }));
     if (scenario === "verified recovery") fetch.mock.mockImplementation(async url => {
@@ -23,32 +25,52 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
       assert.ok(url.endsWith("/" + candidate.repository + "/git/commits/" + candidate.commit));
       return { ok: true, json: async () => ({ sha: candidate.commit }) };
     });
+    if (scenario === "explicit unavailable") fetch.mock.mockImplementation(async () => ({ status: 404 }));
+    if (scenario === "explicit verified") fetch.mock.mockImplementation(async () => ({
+      ok: true, json: async () => ({ sha: candidate.commit }),
+    }));
     const attempts = [];
     const jobs = [];
-    const mission = { _id: id, initiativeId: "initiative", title: "ENDURANCE - Test",
+    const mission = { _id: id, initiativeId: "initiative", title: explicit ? "Candidate review" : "ENDURANCE - Test",
+      ...(explicit ? { authorization: { routes: [{ profile: "read-only", capabilities: ["read"] }] } } : {}),
       ownerId: host.ownerId, hostId: host._id, effort: "low", revision: 0, approvals: {},
       current: { step: "review", jobId: "review-job", ...(recovered ? { recoveryJobId: "review-job" } : {}) },
       steps: [implement, { ...review, ...(scenario === "full-access" ? { profile: "full-access" } : {}),
-        ...(scenario === "fallback" ? { allowProfileFallback: true } : {}) }],
+        ...(scenario === "fallback" ? { allowProfileFallback: true } : {}),
+        ...(explicit ? { candidate, requires: ["read"] } : {}) }],
       results: { implement: { result: "pass", ...(["unavailable", "outage"].includes(scenario) ? { candidate } : {}) } },
       recoveries: recovered ? [{ jobId: "review-job", previous: {},
         resolution: `CANDIDATE: ${candidate.repository}@${candidate.commit}\nUse the existing handoff.` }] : [],
     };
     const controller = missions.createMissions({
       records: () => ({
+        findOne: async () => mission,
         updateMany: async () => {},
         find: () => ({ sort: () => [mission] }),
-        updateOne: async (_query, change) => attempts.push(change.$set),
+        updateOne: async (_query, change) => {
+          attempts.push(change.$set);
+          return { matchedCount: 1 };
+        },
       }),
       jobs: () => ({ findOne: async () => null, insertOne: async job => jobs.push(job) }),
       workforce: () => ({ find: () => ({ limit: () => ({ toArray: async () => [{ _id: "trace", role: "qa" }] }) }) }),
     });
-    await controller.reconcile(host, id);
-    if (scenario === "verified recovery") {
+    const relay = explicit ? { ...host, missionPreflights: [{ profile: "read-only", capabilities: ["read"],
+      observedAt: Date.now(), environment: "windows-account", sandbox: "read-only", runtime: "fixture" }] } : host;
+    await controller.reconcile(relay, id);
+    if (scenario === "verified recovery" || scenario === "explicit verified") {
       assert.equal(jobs.length, 1);
       assert.deepEqual(jobs[0].reviewCandidate, candidate);
       assert.equal(jobs[0].profile, "read-only");
       assert.match(jobs[0].prompt, new RegExp(candidate.commit));
+      if (explicit) {
+        assert.equal(jobs[0].requiresMissionPreflight, true);
+        assert.equal(await controller.admit(jobs[0], host), false);
+        assert.equal(await controller.admit({ ...jobs[0], profile: "full-access" }, relay), false);
+        const admission = await controller.admit(jobs[0], relay);
+        assert.deepEqual(admission.authorizedCapabilities, ["read"]);
+        assert.deepEqual(admission.verifiedCapabilities, ["read"]);
+      }
     } else {
       assert.equal(jobs.length, 0);
       assert.equal(attempts[0].results.review.result, "blocked");
@@ -57,7 +79,7 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
       if (["full-access", "fallback"].includes(scenario)) assert.match(reason, /Read Only route/);
     }
   }
-  assert.equal(fetch.mock.callCount(), 5);
+  assert.equal(fetch.mock.callCount(), 7);
 });
 
 function fixture(overrides = {}) {

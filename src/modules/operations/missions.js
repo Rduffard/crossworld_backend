@@ -409,7 +409,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const candidate = recoveryCandidate ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
       : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate);
     let candidateBlock;
-    if (candidateSource) {
+    if (candidateSource || step.candidate) {
       if (step.profile !== "read-only" || step.allowProfileFallback) {
         candidateBlock = "Candidate review requires an approved Read Only route without profile fallback.";
       } else {
