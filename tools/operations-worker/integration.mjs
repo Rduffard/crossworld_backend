@@ -545,7 +545,10 @@ try {
       await missionStore.insertOne({ _id: horizonAnchorId, ownerId: foundationOwner, hostId, workspace: body.workspace,
         status: "completed", completionStep: "close", revision: 14, steps: [], approvals: {},
         results: { close: { result: "pass", jobId: "9d8d10aa-b115-c0bf-1cd1-548be6161434" } } });
-      assert.equal((await missionApi("/grants", "POST", { ...nextPlan, id: horizonNextId, initiativeId: horizonId }))[0], 201);
+      const [horizonGrantStatus, originalHorizonGrant] = await missionApi("/grants", "POST", {
+        ...nextPlan, id: horizonNextId, initiativeId: horizonId,
+      });
+      assert.equal(horizonGrantStatus, 201);
       assert.equal((await missionApi("/initiatives", "POST", {
         id: horizonId, anchorId: horizonAnchorId, title: "HORIZON", blueprintRevision: "2026-11-25", approvePlan: true,
         missions: [{ grantId: horizonNextId, after: [horizonAnchorId] }],
@@ -582,7 +585,7 @@ try {
       }
       const [, renewedInitiative] = await missionApi("/initiatives/" + horizonId);
       assert.equal(renewedInitiative.missions[0].endsAt, persistedWindow);
-      assert.notEqual(renewedInitiative.approvedGrants[0].endsAt, persistedWindow);
+      assert.equal(renewedInitiative.approvedGrants[0].endsAt, originalHorizonGrant.endsAt);
       for (const [status, state] of [["blocked", "needs-attention"], ["terminated", "cannot-continue"]]) {
         await missionStore.updateOne({ _id: horizonAnchorId, ownerId: foundationOwner }, { $set: { status } });
         assert.equal(await scopedClaim(), null);
