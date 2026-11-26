@@ -574,8 +574,22 @@ try {
           ...revision.steps.slice(2)] }), { status: 403 });
       await coordinate(inheritedBaseline, revision);
       await assert.rejects(coordinate(inheritedBaseline, revision), { status: 409 });
-      await finish(inheritedBaseline, "MISSION_RESULT: PASS");
-      const evidenceJob = await scopedClaim();
+      const candidateUrl = `https://api.github.com/repos/Rduffard/${exactCandidate.repository}/git/commits/${exactCandidate.commit}`;
+      let evidenceChecks = 0;
+      let evidenceJob;
+      globalThis.fetch = async (url, ...args) => {
+        if (url !== candidateUrl) return originalFetch(url, ...args);
+        evidenceChecks++;
+        return Response.json({ sha: exactCandidate.commit });
+      };
+      try {
+        await finish(inheritedBaseline, "MISSION_RESULT: PASS");
+        evidenceJob = await scopedClaim();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+      assert.equal(evidenceChecks, 1, "The mission must verify the pinned evidence candidate before admission.");
+      assert.ok(evidenceJob, "The verified evidence step must be claimable.");
       assert.match(evidenceJob.prompt, /Step: evidence/);
       assert(evidenceJob.prompt.includes(exactCandidate.commit));
       assert.equal(evidenceJob.employeeContext.name, director.name);
@@ -602,8 +616,9 @@ try {
       const registeredSuccessor = await nextRecord();
       assert.equal(registeredSuccessor.status, "active");
       assert.equal(registeredSuccessor.registration.initiativeId, initiativeId);
+      assert.equal(registeredSuccessor.reason, "Waiting for owner approval.");
       assert.equal(await scopedClaim(), null);
-      assert.equal((await nextRecord()).revision, registeredSuccessor.revision + 1);
+      assert.equal((await nextRecord()).revision, registeredSuccessor.revision);
       assert.deepEqual((await nextRecord()).awaitingApprovals, ["accept"]);
       assert.equal((await missionApi("/" + nextMissionId, "PATCH", {
         action: "approve", step: "accept", revision: (await nextRecord()).revision,
@@ -618,6 +633,46 @@ try {
       assert.equal((await missionApi("/initiatives", "POST", initiative))[0], 200);
       assert.equal((await missionApi("/initiatives", "POST", { ...initiative, blueprintRevision: "unapproved-change" }))[0], 409);
       assert.equal(await scopedClaim(), null);
+      const enduranceId = randomUUID();
+      const laneTitles = ["Durable Blueprint", "First Mate", "Command Center", "Visual Blueprint", "Knowledge", "Headquarters"];
+      const lanes = laneTitles.map(() => randomUUID());
+      const demo = randomUUID();
+      for (const [index, grantId] of [...lanes, demo].entries()) {
+        assert.equal((await missionApi("/grants", "POST", { ...body, id: grantId, sourceConversationId,
+          title: "ENDURANCE - " + (laneTitles[index] || "Integrated production demonstration"),
+          initiativeId: enduranceId, completionStep: "close", steps: [
+            step("implement", [], { requires: ["read"] }),
+            step("close", dep("implement"), { requires: ["read"], approval: grantId === demo }),
+          ] }))[0], 201);
+      }
+      assert.equal((await missionApi("/initiatives", "POST", {
+        id: enduranceId, anchorId: inheritedId, title: "Operation ENDURANCE", blueprintRevision: "fixture", approvePlan: true,
+        missions: [...lanes.map(grantId => ({ grantId, after: [inheritedId] })), { grantId: demo, after: lanes }],
+      }))[0], 201);
+      const endurance = async () => (await missionApi("/initiatives/" + enduranceId))[1];
+      let completed = 0;
+      for (let index = 0; index < lanes.length * 2; index++) {
+        const execution = await scopedClaim();
+        assert.ok(lanes.includes(execution.missionId));
+        await finish(execution, "MISSION_RESULT: PASS");
+        if (execution.prompt.includes("Step: close")) completed++;
+        assert.equal((await endurance()).completedCount, completed);
+      }
+      assert.equal(completed, lanes.length);
+      const queuedDemo = (await missionApi(""))[1].find(record => record._id === demo);
+      assert.equal(queuedDemo.execution.status, "queued", "The final lane's terminal sync must queue the parent continuation.");
+      const demoJob = await scopedClaim();
+      assert.equal(demoJob._id, queuedDemo.execution._id);
+      await finish(demoJob, "MISSION_RESULT: PASS");
+      assert.equal((await endurance()).completed, false);
+      assert.equal(await scopedClaim(), null);
+      const demoGate = (await missionApi(""))[1].find(record => record._id === demo);
+      assert.deepEqual(demoGate.awaitingApprovals, ["close"]);
+      assert.equal((await missionApi("/" + demo, "PATCH", { action: "approve", revision: demoGate.revision, step: "close" }))[0], 200);
+      await finish(await scopedClaim(), "MISSION_RESULT: PASS");
+      assert.equal((await endurance()).completed, true);
+      assert.equal(await jobs.countDocuments({ missionId: demo, missionStep: "implement" }), 1);
+      console.log("ENDURANCE six-lane terminal sync queues the integrated continuation and preserves owner acceptance PASS");
       console.log("Initiative completion triggers successor registration and preserves the owner gate PASS");
       const completedInherited = (await missionApi(""))[1].find(record => record._id === inheritedId);
       assert.equal(completedInherited.status, "completed");

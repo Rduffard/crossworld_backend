@@ -36,6 +36,22 @@ function selectedReviewCandidate(mission, step, recovery) {
   return step.candidate || (source && mission.results[source]?.candidate);
 }
 
+function readOnlyReviewRevision(mission, approved, approvalId) {
+  const revising = mission.steps.filter(step => enduranceCandidateSource(mission, step) &&
+    (step.profile !== "read-only" || step.allowProfileFallback || step.requires?.some(capability => capability !== "read")));
+  if (!revising.length) return {};
+  if (!approved || (mission.planHistory?.length ?? 0) >= 20 || revising.some(step =>
+    mission.approvals[step.key] || ![undefined, "blocked", "skipped"].includes(mission.results[step.key]?.result) ||
+    !allowsStep(mission.authorization, { ...step, profile: "read-only", requires: ["read"] }))) return null;
+  return {
+    steps: mission.steps.map(step => revising.includes(step)
+      ? { ...step, profile: "read-only", requires: ["read"], allowProfileFallback: false }
+      : step),
+    planHistory: [...(mission.planHistory ?? []),
+      { revision: mission.revision, steps: mission.steps, supersededAt: new Date(), approvalId }],
+  };
+}
+
 async function candidateAvailability(candidate) {
   if (!candidate) return "missing";
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -389,6 +405,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       new Set(entries.map(entry => entry.id)).size !== entries.length) {
       return fail(res, 400, "Provide the six mission revisions, blocked steps and exact candidate commits.");
     }
+    const tighten = req.body.approveReadOnlyReviews === true;
     const candidates = entries.map(entry => {
       const [, repository, commit] = exactCandidatePattern.exec(entry.candidate);
       return { repository, commit };
@@ -403,6 +420,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const ownerId = owner();
     const session = startSession();
     const approvalId = randomUUID();
+    const staleApproval = new Error("The recovery scope changed before approval.");
     try {
       const approved = await session.withTransaction(async () => {
         const selected = await records().find({ ownerId, _id: { $in: entries.map(entry => entry.id) } }, { session }).toArray();
@@ -413,30 +431,45 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
           if (!mission.initiativeId || !mission.title.startsWith("ENDURANCE - ") || !mission.registration ||
               !mission.coordinatorActorId || mission.revision !== entry.revision || mission.status !== "blocked" || mission.current ||
               mission.recoveryApprovalId || mission.endsAt <= new Date()) return false;
-          if (mission.steps.some(step => enduranceCandidateSource(mission, step) &&
-              (step.profile !== "read-only" || step.allowProfileFallback))) return "review-route";
+          const revisionFields = readOnlyReviewRevision(mission, tighten, approvalId);
+          if (!revisionFields) return "review-route";
           const recovery = recoverStep(mission, { step: entry.step, end: mission.endsAt, attribution: { approvalId },
             resolution: "CANDIDATE: " + entry.candidate + "\nReuse and verify this exact committed candidate." });
           if (recovery.error) return false;
-          changes.push({ mission, fields: { ...recovery.fields, recoveryApprovalId: approvalId,
+          changes.push({ mission, fields: { ...recovery.fields, ...revisionFields, recoveryApprovalId: approvalId,
             approvedRecoveryCandidate: candidates[entries.indexOf(entry)],
             delegatedRecoveryEndsAt: mission.endsAt,
             delegatedRecoverySteps: mission.steps.filter(step =>
               ["implement", "review", "correct", "retest"].includes(step.key) && !step.approval).map(step => step.key),
           } });
         }
+        const initiative = await initiatives().findOne({ _id: selected[0].initiativeId, ownerId }, { session });
+        const selectedIds = new Set(entries.map(entry => entry.id));
+        const successor = initiative?.missions.find(entry => !selectedIds.has(entry.grantId) &&
+          entry.after.length === selectedIds.size && entry.after.every(id => selectedIds.has(id)));
+        if (!successor) return false;
+        const demo = await records().findOne({ _id: successor.grantId, ownerId, initiativeId: initiative._id,
+          hostId: initiative.hostId, workspace: initiative.workspace, status: "authorized" }, { session });
+        if (!demo || demo.current || demo.endsAt <= new Date()) return false;
+        const demoRevision = readOnlyReviewRevision(demo, tighten, approvalId);
+        if (!demoRevision) return "review-route";
+        if (demoRevision.steps) changes.push({ mission: demo, fields: demoRevision });
         for (const { mission, fields } of changes) {
-          await records().updateOne(compare(mission), {
+          const saved = await records().updateOne({ ...compare(mission), $expr: { $gt: ["$endsAt", "$$NOW"] } }, {
             $set: { ...fields, updatedAt: new Date() }, $inc: { revision: 1 },
           }, { session });
+          if (!saved.matchedCount) throw staleApproval;
         }
         return true;
       });
       if (approved === "review-route") {
-        return fail(res, 409, "All candidate reviews and retests must have an approved Read Only route without fallback.");
+        return fail(res, 409, "Confirm Read Only review and retest without fallback. Previously approved or completed steps retain their scope.");
       }
       if (!approved) return fail(res, 409, "The six blocked missions must share an initiative and retain their current revisions and live windows.");
       return res.json({ approvalId, missions: entries.map(entry => entry.id) });
+    } catch (error) {
+      if (error === staleApproval) return fail(res, 409, staleApproval.message);
+      throw error;
     } finally {
       await session.endSession();
     }
@@ -674,7 +707,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
         const closed = await change(mission, { results: outcomesByStep, status: blocked ? "blocked" : "completed",
           reason: blocked ? "The plan has unresolved findings or executions without a valid verdict." : "All applicable steps completed." });
         if (closed.matchedCount && !blocked) {
-          await initiativeController.reconcile({ ownerId: host.ownerId, hostId: host._id }, mission._id);
+          const successors = await initiativeController.reconcile({ ownerId: host.ownerId, hostId: host._id }, mission._id);
+          for (const successor of successors) await reconcile(host, successor);
         }
         continue;
       }

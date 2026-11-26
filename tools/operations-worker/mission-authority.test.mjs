@@ -15,15 +15,21 @@ test("consolidated recovery validates every revision before recording one approv
     _id: id.slice(0, -1) + index, ownerId: "owner", initiativeId: "initiative",
     title: "ENDURANCE - Lane " + index, coordinatorActorId: "first-mate", registration: {},
     startsAt: new Date(), endsAt, revision: 3, status: "blocked", approvals: {},
+    authorization: { routes: [{ profile: "read-only", capabilities: ["read"] }] },
     steps: [{ key: "implement", after: [] }, { key: "review", profile: "read-only", reviewer: "trace",
       after: [{ step: "implement", result: "pass" }] },
       { key: "close", approval: true, after: [{ step: "review", result: "pass" }] }],
     results: { implement: { result: "pass" }, review: { result: "blocked" }, close: { result: "skipped" } },
   }));
+  const demo = { ...selected[0], _id: "demo", revision: 0, status: "authorized", results: {},
+    steps: selected[0].steps.map(step => step.key === "review" ? { ...step, profile: "full-access" } : step) };
   const writes = [];
   const session = { withTransaction: async run => run(), endSession: async () => {} };
   const { router } = missions.createMissions({ owner: () => "owner", startSession: () => session,
+    initiatives: () => ({ findOne: async () => ({ _id: "initiative",
+      missions: [{ grantId: demo._id, after: selected.map(item => item._id) }] }) }),
     records: () => ({
+      findOne: async () => demo,
       find: (query, options) => {
         assert.equal(query.ownerId, "owner");
         assert.equal(options.session, session);
@@ -32,6 +38,7 @@ test("consolidated recovery validates every revision before recording one approv
       updateOne: async (query, operation, options) => {
         assert.equal(options.session, session);
         writes.push([query, operation.$set]);
+        return { matchedCount: 1 };
       },
     }),
   });
@@ -44,13 +51,17 @@ test("consolidated recovery validates every revision before recording one approv
   selected[0].steps[1].profile = "full-access";
   const incompatible = await call(approve, { body: { missions: entries } });
   assert.equal(incompatible.code, 409);
-  assert.match(incompatible.body.message, /Read Only route/);
+  assert.match(incompatible.body.message, /Read Only review/);
   assert.equal(writes.length, 0);
-  selected[0].steps[1].profile = "read-only";
-  const approved = await call(approve, { body: { missions: entries } });
+  const approved = await call(approve, { body: { missions: entries, approveReadOnlyReviews: true } });
   assert.equal(approved.code, 200);
-  assert.equal(writes.length, 6);
-  for (const [, fields] of writes) {
+  assert.equal(writes.length, 7);
+  assert.equal(writes[0][1].steps[1].profile, "read-only");
+  assert.deepEqual(writes[0][1].steps[1].requires, ["read"]);
+  assert.equal(writes[0][1].planHistory[0].steps[1].profile, "full-access");
+  assert.equal(writes[6][1].steps[1].profile, "read-only");
+  assert.equal(writes[6][1].status, undefined);
+  for (const [, fields] of writes.slice(0, 6)) {
     assert.equal(fields.recoveryApprovalId, approved.body.approvalId);
     assert.equal(fields.current.step, "review");
     assert.equal(fields.endsAt, endsAt);

@@ -92,11 +92,13 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
           waitingFor: dependencies.filter(dependency => dependency.state !== "passed").map(dependency => dependency.id) };
       });
       delete initiative.ownerId;
-      res.json({ ...initiative, missions, completed: missions.every(({ grantId }) => passed(states.get(grantId))) });
+      const completedCount = missions.filter(({ grantId }) => passed(states.get(grantId))).length;
+      res.json({ ...initiative, missions, completedCount, completed: completedCount === missions.length });
     });
   }
 
   async function reconcile(scope, missionId) {
+    const activated = [];
     const query = missionId ? { "missions.after": missionId } : {
       _id: { $in: await records().distinct("initiativeId", { ...scope, status: "authorized",
         initiativeId: { $exists: true }, endsAt: { $gt: new Date() } }) },
@@ -107,7 +109,7 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
         const grant = states.get(grantId);
         if (grant?.status !== "authorized" || grant.initiativeId !== initiative._id ||
             !after.every(id => passed(states.get(id)))) continue;
-        await records().updateOne({
+        const result = await records().updateOne({
           ...scopeFor(initiative), _id: grantId, revision: grant.revision, status: "authorized", initiativeId: initiative._id,
           $expr: { $gt: ["$endsAt", "$$NOW"] },
         }, {
@@ -115,8 +117,10 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
             registration: { initiativeId: initiative._id, blueprintRevision: initiative.blueprintRevision, registeredAt: new Date() } },
           $inc: { revision: 1 },
         });
+        if (result.matchedCount) activated.push(grantId);
       }
     }
+    return activated;
   }
 
   return { mount, reconcile };
