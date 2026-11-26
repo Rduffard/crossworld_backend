@@ -423,6 +423,69 @@ try {
       await finish(scopedReview, "MISSION_RESULT: PASS");
       assert.equal(await scopedClaim(), null);
       assert.equal((await missionSnapshot()).status, "completed");
+      const missionRecords = db.db.collection("operations_missions");
+      const checkout = { repository: "crossworld_backend", commit: "a".repeat(40) };
+      async function legacyQueue(title, order, candidate) {
+        const missionId = randomUUID();
+        const jobId = randomUUID();
+        const createdAt = new Date(Date.now() + order);
+        const { workspace, effort } = body;
+        await missionRecords.insertOne({ _id: missionId, ownerId: foundationOwner, hostId, title, workspace, effort,
+          status: "active", revision: 1, current: { step: "verify", jobId }, results: {}, approvals: {}, createdAt,
+          endsAt: new Date(Date.now() + 600_000), steps: [step("verify", [], candidate ? { reviewer: director._id, candidate } : {})],
+        });
+        await jobs.insertOne({ _id: jobId, missionId, missionStep: "verify", ownerId: foundationOwner, hostId,
+          title, workspace, effort, sessionId: jobId, profile: "read-only", workerRole: "direct", status: "queued",
+          studioActor: { id: candidate ? director._id : barnaby._id, role: candidate ? "art-director" : "first-mate" },
+          prompt: "Inspect the fixture.", events: [], eventCount: 0, createdAt, ...(candidate ? { reviewCandidate: candidate } : {}),
+        });
+        return { missionId, jobId };
+      }
+      const missingReview = await legacyQueue("Unavailable review", -3000, { ...checkout, commit: "b".repeat(40) });
+      const retryReview = await legacyQueue("Deferred review", -2000, checkout);
+      const nextReview = await legacyQueue("Next ready step", -1000);
+      const originalFetch = globalThis.fetch;
+      let candidateAvailable = false;
+      let verifyAttempts = 0;
+      globalThis.fetch = async (url, ...args) => {
+        if (typeof url !== "string" || !url.startsWith("https://api.github.com/repos/Rduffard/crossworld_backend/git/commits/")) {
+          return originalFetch(url, ...args);
+        }
+        if (!url.endsWith(checkout.commit)) return new Response(null, { status: 404 });
+        verifyAttempts++;
+        return candidateAvailable ? Response.json({ sha: checkout.commit }) : new Response(null, { status: 503 });
+      };
+      try {
+        assert.equal(await scopedClaim(), null);
+        assert.equal((await jobs.findOne({ _id: missingReview.jobId })).status, "failed");
+        assert.equal(await scopedClaim(), null);
+        const deferred = await jobs.findOne({ _id: retryReview.jobId });
+        assert.equal(deferred.status, "queued");
+        assert.ok(deferred.candidateRetryAt > new Date(Date.now() + 50_000));
+        assert.equal(verifyAttempts, 2);
+        const snapshot = (await missionApi(""))[1].find(mission => mission._id === retryReview.missionId);
+        assert.equal(snapshot.execution.candidateRetryAt, deferred.candidateRetryAt.toISOString());
+        assert.match(snapshot.reason, /GitHub candidate verification failed twice/);
+        assert.ok(snapshot.reason.includes(snapshot.execution.candidateRetryAt));
+        const next = await scopedClaim();
+        assert.equal(next._id, nextReview.jobId);
+        await finish(next, "MISSION_RESULT: PASS");
+        assert.equal(await scopedClaim(), null);
+        assert.equal(verifyAttempts, 2);
+        candidateAvailable = true;
+        await jobs.updateOne({ _id: retryReview.jobId }, { $set: { candidateRetryAt: new Date(0) } });
+        const retry = await scopedClaim();
+        assert.equal(retry._id, retryReview.jobId);
+        assert.equal(verifyAttempts, 3);
+        assert.equal((await jobs.findOne({ _id: retry._id })).candidateRetryAt, undefined);
+        await finish(retry, "MISSION_RESULT: PASS");
+        const blocked = (await missionApi(""))[1].find(mission => mission._id === missingReview.missionId);
+        assert.equal(blocked.status, "blocked");
+        assert.match(blocked.results.verify.reason, /unavailable/);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+      console.log("Candidate review failure, relay retry delay, next claim, and mission progress PASS");
       const sourceConversationId = randomUUID();
       const inheritedId = randomUUID();
       await jobs.insertOne({ _id: sourceConversationId, ownerId: foundationOwner, hostId,

@@ -138,8 +138,13 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     delete record.creationDigest;
     const host = await hosts().findOne({ _id: record.hostId, ownerId: mission.ownerId, revokedAt: null });
     const job = record.current && await jobs().findOne(currentJob(mission), {
-      projection: { status: 1, startedAt: 1, finishedAt: 1 },
+      projection: { status: 1, startedAt: 1, finishedAt: 1, candidateRetryAt: 1, candidateAdmissionError: 1 },
     });
+    if (job?.candidateAdmissionError) {
+      record.reason = job.candidateRetryAt
+        ? job.candidateAdmissionError + " Next retry at " + job.candidateRetryAt.toISOString() + "."
+        : job.candidateAdmissionError;
+    }
     const expired = missionStatus(record) === "expired";
     const { ready } = readiness(mission);
     const available = ready.filter(step => !step.approval || record.approvals[step.key]);
