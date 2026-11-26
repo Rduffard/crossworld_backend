@@ -443,6 +443,14 @@ try {
       assert.equal(inheritedStatus, 201);
       assert.equal(inheritedMission.sourceConversationId, sourceConversationId);
       assert.equal(inheritedMission.status, "authorized");
+      const initiativeId = randomUUID();
+      const nextMissionId = randomUUID();
+      const nextPlan = { ...body, id: nextMissionId, sourceConversationId, initiativeId, completionStep: "verify",
+        steps: [step("accept", [], { requires: ["read"], approval: true }),
+          step("verify", dep("accept"), { requires: ["read"] })] };
+      assert.equal((await missionApi("/grants", "POST", nextPlan))[0], 201);
+      const initiative = { id: initiativeId, title: "Initiative integration", blueprintRevision: "fixture-1",
+        anchorId: inheritedId, missions: [{ grantId: nextMissionId, after: [inheritedId] }] };
       const inheritedBeat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only", "full-access"],
         missionPreflights: [report("read-only", ["read"]), report("full-access", inherited.steps[1].requires,
           { environment: "windows-account", sandbox: "danger-full-access" })] });
@@ -452,8 +460,13 @@ try {
       const registration = () => send("/jobs/" + coordinator._id + "/studio-mission", {
         instance, action: "register", grantId: inheritedId,
       });
+      await assert.rejects(send("/jobs/" + coordinator._id + "/studio-mission", {
+        instance, action: "register", grantId: nextMissionId,
+      }), { status: 409 });
       const receipts = await Promise.all([registration(), registration()]);
       assert(receipts.every(receipt => receipt.status === "active" && receipt.registration.actorId === barnaby._id));
+      assert.equal((await missionApi("/initiatives", "POST", initiative, owner))[0], 403);
+      assert.equal((await missionApi("/initiatives", "POST", initiative))[0], 201);
       await finish(coordinator, "Registered the authorized fixture.");
       const inheritedBaseline = await scopedClaim();
       assert.equal(inheritedBaseline.profile, "read-only");
@@ -494,12 +507,54 @@ try {
       await finish(closure, "MISSION_RESULT: PASS");
       const closedBeforeClaim = (await missionApi(""))[1].find(record => record._id === inheritedId);
       assert.equal(closedBeforeClaim.status, "completed");
+      const nextRecord = async () => (await missionApi(""))[1].find(record => record._id === nextMissionId);
+      const registeredSuccessor = await nextRecord();
+      assert.equal(registeredSuccessor.status, "active");
+      assert.equal(registeredSuccessor.registration.initiativeId, initiativeId);
       assert.equal(await scopedClaim(), null);
+      assert.equal((await nextRecord()).revision, registeredSuccessor.revision + 1);
+      assert.deepEqual((await nextRecord()).awaitingApprovals, ["accept"]);
+      assert.equal((await missionApi("/" + nextMissionId, "PATCH", {
+        action: "approve", step: "accept", revision: (await nextRecord()).revision,
+      }))[0], 200);
+      const accepted = await scopedClaim();
+      assert.equal(accepted.missionId, nextMissionId);
+      await finish(accepted, "MISSION_RESULT: PASS");
+      const verified = await scopedClaim();
+      assert.equal(verified.missionId, nextMissionId);
+      await finish(verified, "MISSION_RESULT: PASS");
+      assert.equal((await missionApi("/initiatives/" + initiativeId))[1].completed, true);
+      assert.equal((await missionApi("/initiatives", "POST", initiative))[0], 200);
+      assert.equal((await missionApi("/initiatives", "POST", { ...initiative, blueprintRevision: "unapproved-change" }))[0], 409);
+      assert.equal(await scopedClaim(), null);
+      console.log("Initiative completion triggers successor registration and preserves the owner gate PASS");
       const completedInherited = (await missionApi(""))[1].find(record => record._id === inheritedId);
       assert.equal(completedInherited.status, "completed");
       assert.equal(completedInherited.results["browser-review"].previousJobId, inheritedReview._id);
-      await jobs.deleteMany({ ownerId: foundationOwner, $or: [{ missionId: inheritedId }, { _id: sourceConversationId }] });
-      await db.db.collection("operations_missions").deleteOne({ _id: inheritedId, ownerId: foundationOwner });
+      // Replay the hosted HORIZON completion in the disposable database to exercise enrollment after a missed trigger.
+      const horizonAnchorId = "30e3fc4b-4e36-463b-bb39-8668497c5341";
+      const horizonId = randomUUID();
+      const horizonNextId = randomUUID();
+      const missionStore = db.db.collection("operations_missions");
+      await missionStore.insertOne({ _id: horizonAnchorId, ownerId: foundationOwner, hostId, workspace: body.workspace,
+        status: "completed", completionStep: "close", revision: 14,
+        results: { close: { result: "pass", jobId: "9d8d10aa-b115-c0bf-1cd1-548be6161434" } } });
+      assert.equal((await missionApi("/grants", "POST", { ...nextPlan, id: horizonNextId, initiativeId: horizonId }))[0], 201);
+      assert.equal((await missionApi("/initiatives", "POST", {
+        id: horizonId, anchorId: horizonAnchorId, title: "HORIZON", blueprintRevision: "2026-11-25",
+        missions: [{ grantId: horizonNextId, after: [horizonAnchorId] }],
+      }))[0], 201);
+      assert.equal(await scopedClaim(), null);
+      assert.equal((await missionStore.findOne({ _id: horizonNextId })).registration.initiativeId, horizonId);
+      assert.equal(await scopedClaim(), null);
+      assert.equal(await jobs.countDocuments({ missionId: horizonNextId }), 0);
+      await missionStore.deleteMany({ _id: { $in: [horizonAnchorId, horizonNextId] }, ownerId: foundationOwner });
+      await db.db.collection("operations_mission_initiatives").deleteOne({ _id: horizonId, ownerId: foundationOwner });
+      console.log("HORIZON completed-anchor replay and reconnect deduplication PASS");
+      await jobs.deleteMany({ ownerId: foundationOwner,
+        $or: [{ missionId: { $in: [inheritedId, nextMissionId] } }, { _id: sourceConversationId }] });
+      await db.db.collection("operations_missions").deleteMany({ _id: { $in: [inheritedId, nextMissionId] }, ownerId: foundationOwner });
+      await db.db.collection("operations_mission_initiatives").deleteOne({ _id: initiativeId, ownerId: foundationOwner });
       const [pilotStatus, pilot] = await api("/hosts/mission-pilot", {
         user: foundationOwner, method: "POST", body: { label: "Disposable isolated pilot", missionOnly: true },
       });

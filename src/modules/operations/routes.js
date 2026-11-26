@@ -111,7 +111,8 @@ function createRouter({
   const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled, inMaintenance });
   const recurrence = createRecurrence({ records: series, jobs });
   const missionRecords = () => db().collection("operations_missions");
-  const missions = createMissions({ records: missionRecords, jobs, workforce, hosts, eventBatches,
+  const initiativeRecords = () => db().collection("operations_mission_initiatives");
+  const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
@@ -149,6 +150,7 @@ function createRouter({
       eventBatches().createIndex({ jobId: 1, offset: 1 }, { unique: true }),
       series().createIndex({ ownerId: 1, hostId: 1, state: 1, nextAt: 1 }),
       missionRecords().createIndex({ ownerId: 1, hostId: 1, status: 1, endsAt: 1 }),
+      initiativeRecords().createIndex({ ownerId: 1, hostId: 1, "missions.after": 1 }),
       references().createIndex({ ownerId: 1, createdAt: -1, _id: -1 }),
       knowledge().createIndex({ ownerId: 1, projectId: 1, createdAt: -1 }),
       finance().createIndex({ ownerId: 1, month: 1 }),

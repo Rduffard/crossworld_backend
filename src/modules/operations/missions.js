@@ -4,6 +4,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { lastResponseLine, precedingResult } = require("./objective-runs");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 const { usageHoldUntil } = require("./usage");
+const { createInitiatives } = require("./mission-initiatives");
 const { allowsStep, authorization, capabilityList, inheritedAuthorization, preflightChanged, resolveRoute } = require("./mission-capabilities");
 
 const uuid = /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/;
@@ -81,8 +82,10 @@ function readiness(mission) {
   return { ready, outcomesByStep };
 }
 
-function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatch, owner, online, workerEnabled, inMaintenance }) {
+function createMissions({ records, initiatives, jobs, workforce, hosts, eventBatches, dispatch, owner, online, workerEnabled, inMaintenance }) {
   const router = express.Router();
+  const initiativeController = createInitiatives({ initiatives, records, owner, uuid, fail });
+  initiativeController.mount(router);
   const activeQuery = (ownerId, hostId) => ({ ownerId, hostId, status: "active", endsAt: { $gt: new Date() } });
   const currentJob = mission => ({ _id: mission.current.jobId, ownerId: mission.ownerId, hostId: mission.hostId,
     missionId: mission._id, missionStep: mission.current.step });
@@ -124,11 +127,14 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
 
   router.post(["/", "/capability-plans", "/grants"], async (req, res) => {
     const { id, title, hostId, workspace, effort, endsAt, steps, sourceConversationId, completionStep, delegatePlanning,
-      delegatedRecoverySteps, paused = false } = req.body || {};
+      delegatedRecoverySteps, initiativeId, paused = false } = req.body || {};
     const end = windowEnd(endsAt);
     const ownerId = owner();
     const requestedAuthorization = req.body?.authorization;
     const grantOnly = req.path === "/grants";
+    if (initiativeId !== undefined && (!grantOnly || typeof initiativeId !== "string" || !uuid.test(initiativeId))) {
+      return fail(res, 400, "Only an owner mission grant can be reserved for an initiative.");
+    }
     let coordinatorSessionId;
     let coordinatorActorId;
     let ceiling = requestedAuthorization === undefined ? undefined : authorization(requestedAuthorization);
@@ -176,6 +182,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
       workspace, effort, endsAt: end, steps: normalized, paused, sourceConversationId,
       ...(completionStep !== undefined ? { completionStep } : {}),
       ...(delegatePlanning ? { delegatePlanning: true } : {}),
+      ...(initiativeId ? { initiativeId } : {}),
       ...(delegatedRecoverySteps ? { delegatedRecoverySteps } : {}),
       ...(coordinatorSessionId ? { coordinatorSessionId } : {}),
       ...(coordinatorActorId ? { coordinatorActorId } : {}),
@@ -195,12 +202,14 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     const record = { _id: id, ownerId, creationDigest, title: title.trim(), hostId, workspace, effort, endsAt: end, steps: normalized,
       ...(completionStep !== undefined ? { completionStep } : {}),
       ...(delegatePlanning ? { delegatePlanning: true } : {}),
+      ...(initiativeId ? { initiativeId } : {}),
       ...(delegatedRecoverySteps ? { delegatedRecoverySteps, delegatedRecoveryEndsAt: end } : {}),
       ...(coordinatorSessionId ? { coordinatorSessionId } : {}),
       ...(coordinatorActorId ? { coordinatorActorId } : {}),
       ...(ceiling ? { authorization: ceiling } : {}), ...(sourceConversationId ? { sourceConversationId } : {}),
       status: grantOnly ? "authorized" : paused ? "paused" : "active",
-      reason: grantOnly ? "Authorized for First Mate registration." : paused ? "Paused by owner." : "",
+      reason: initiativeId ? "Waiting for initiative registration." :
+        grantOnly ? "Authorized for First Mate registration." : paused ? "Paused by owner." : "",
       current: null, results: {}, approvals: {}, revision: 0, createdAt: new Date(), updatedAt: new Date() };
     try {
       await records().insertOne(record);
@@ -272,7 +281,9 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
         (mission.status === "active" && mission.endsAt <= new Date()))) {
       const end = endsAt ? windowEnd(endsAt) : mission.endsAt > new Date() && mission.endsAt;
       if (!end) return fail(res, 400, "Authorize a new operating window before resuming.");
-      fields = { status: "active", endsAt: end, reason: "" };
+      fields = mission.initiativeId && !mission.registration
+        ? { status: "authorized", endsAt: end, reason: "Waiting for initiative registration." }
+        : { status: "active", endsAt: end, reason: "" };
     }
     if (action === "approve" && ["active", "paused"].includes(mission.status) &&
         readiness(mission).ready.some(candidate => candidate.key === step && candidate.approval && !mission.approvals[step])) {
@@ -344,6 +355,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
     const grant = await records().findOne(query);
     if (!grant) return fail(res, 404, "Mission grant unavailable to this First Mate on this relay and workspace.");
     if (grant.registration) return res.json(await view(grant));
+    if (grant.initiativeId) return fail(res, 409, "This grant is reserved for registration by the initiative controller.");
     if (grant.status !== "authorized" || grant.endsAt <= new Date()) return fail(res, 409, "The mission grant is no longer available.");
     const saved = await records().findOneAndUpdate({ ...query, revision: grant.revision, status: "authorized",
       $expr: { $gt: ["$endsAt", "$$NOW"] } }, {
@@ -445,6 +457,7 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
 
   async function reconcile(host, missionId) {
     const scope = { ownerId: host.ownerId, hostId: host._id };
+    if (!missionId && !usageHoldUntil(host.usage)) await initiativeController.reconcile(scope);
     if (missionId) scope._id = missionId;
     await records().updateMany({ ...scope, status: { $in: ["authorized", "active", "paused"] }, endsAt: { $lte: new Date() } }, {
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
@@ -515,8 +528,11 @@ function createMissions({ records, jobs, workforce, hosts, eventBatches, dispatc
             return !mission.steps.some(step => outcomesByStep[step.key]?.result === "pass" &&
               step.after.some(dep => dep.step === key && dep.result === entry.result));
           });
-        await change(mission, { results: outcomesByStep, status: blocked ? "blocked" : "completed",
+        const closed = await change(mission, { results: outcomesByStep, status: blocked ? "blocked" : "completed",
           reason: blocked ? "The plan has unresolved findings or executions without a valid verdict." : "All applicable steps completed." });
+        if (closed.matchedCount && !blocked) {
+          await initiativeController.reconcile({ ownerId: host.ownerId, hostId: host._id }, mission._id);
+        }
         continue;
       }
       const current = { step: next.key, jobId: missionJobId(mission._id, next.key) };
