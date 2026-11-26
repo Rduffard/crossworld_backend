@@ -25,7 +25,7 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
       }, { projection: { ...jobFields, "approval.id": 1, "approval.operation": 1, "approval.expiresAt": 1 } })
         .sort({ "approval.expiresAt": 1, _id: 1 }).limit(20).toArray(),
       jobs().find({ ...scope, finishedAt: { $type: "date" } }, {
-        projection: { ...jobFields, finishedAt: 1 },
+        projection: { ...jobFields, createdAt: 1, startedAt: 1, finishedAt: 1, executiveTrigger: 1 },
       }).sort({ finishedAt: -1, _id: 1 }).limit(12).toArray(),
       jobs().find({ ...scope, activeHost: { $type: "string" }, status: { $in: live } }, {
         projection: { ...jobFields, activeHost: 1, leaseUntil: 1, startedAt: 1, "approval.id": 1, "approval.state": 1, "approval.expiresAt": 1, "decision.id": 1 },

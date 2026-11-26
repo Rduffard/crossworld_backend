@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { test } from "node:test";
+import express from "express";
 import { MongoClient } from "mongodb";
 import { startTestMongo } from "../support/mongo-fixture.mjs";
 import { createExecutiveService } from "../../src/modules/operations/executive-service.js";
+import { createRouter } from "../../src/modules/operations/routes.js";
 
 test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisions separate", async t => {
   const fixture = await startTestMongo(t);
@@ -27,6 +31,7 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   const [first] = await runs();
   assert.equal((await runs()).length, 1);
   assert.equal(first.profile, "read-only");
+  assert.equal(first.executiveTrigger, "enrollment");
   assert.equal(first.effort, "low");
   assert.equal((await status()).state, "Working");
 
@@ -51,6 +56,7 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await controller.reconcile(relay);
   const second = (await runs())[1];
   assert.equal(second.sessionId, first.sessionId);
+  assert.equal(second.executiveTrigger, "event");
   assert.match(second.prompt, /Recorded decision from prior review/);
   assert.equal((await status()).state, "Working", "An owner gate does not block an independent review");
   await collections.jobs().updateOne({ _id: second._id }, { $set: { status: "failed", finishedAt: new Date(now) } });
@@ -70,4 +76,62 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal((await runs()).length, 2, "The weekly budget blocks new executive dispatch");
   await controller.reconcile(relay);
   assert.equal((await runs()).length, 3, "The 15-minute standby review survives an owner pause");
+  assert.equal((await runs())[2].executiveTrigger, "interval");
+});
+
+test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {
+  const fixture = await startTestMongo(t);
+  const client = await MongoClient.connect(fixture.uri);
+  t.after(() => client.close());
+  const db = client.db(fixture.database);
+  const ownerId = "a".repeat(24);
+  const actor = { id: "first-mate", role: "first-mate", name: "Barnaby" };
+  await db.collection("operations_workforce").insertOne({
+    _id: actor.id, role: actor.role, name: actor.name, ownerId, kind: "employee",
+    status: "available", workspace: "development",
+  });
+
+  const app = express();
+  app.use(createRouter({ db: () => db, owner: () => ownerId, enabled: () => true, executiveEnabled: true }));
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const jobs = db.collection("operations_jobs");
+  const relays = await Promise.all(["studioActor", "conversationActor"].map(async (actorField, index) => {
+    const hostId = randomUUID();
+    const token = hostId + "." + "a".repeat(64);
+    const instance = randomUUID();
+    const id = randomUUID();
+    await db.collection("operations_hosts").insertOne({
+      _id: hostId, ownerId, instance, revokedAt: null, lastSeen: new Date(),
+      profiles: ["read-only"], efforts: ["low"], employeeConversations: true,
+      digest: createHash("sha256").update(token).digest("hex"),
+    });
+    await jobs.insertOne({
+      _id: id, ownerId, hostId, [actorField]: actor, status: "queued", effort: "low",
+      createdAt: new Date(), eventCount: 0, workspace: "development", profile: "read-only",
+      ...(index === 0 ? { executiveReview: true } : {}),
+    });
+    async function send(operation, fields = {}) {
+      const reply = await fetch("http://127.0.0.1:" + server.address().port + "/worker/" + operation, {
+        method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+        body: JSON.stringify({ instance, ...fields }),
+      });
+      assert.equal(reply.status, 200);
+      return reply.json();
+    }
+    return { id, send };
+  }));
+
+  const claims = await Promise.all(relays.map(({ send }) => send("claim")));
+  assert.equal(claims.filter(Boolean).length, 1);
+  const winner = claims.findIndex(Boolean);
+  const other = relays[1 - winner];
+  assert.equal(await other.send("claim"), null);
+  assert.equal((await jobs.findOne({ _id: relays[winner].id })).status, "running");
+
+  await jobs.updateOne({ _id: relays[winner].id }, { $set: { leaseUntil: new Date(0) } });
+  await other.send("heartbeat", { efforts: ["low"], profiles: ["read-only"], employeeConversations: true });
+  assert.equal((await jobs.findOne({ _id: relays[winner].id })).status, "interrupted");
+  assert.equal((await other.send("claim"))._id, other.id);
 });

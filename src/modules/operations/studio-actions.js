@@ -17,7 +17,7 @@ const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, 
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
 function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters,
-  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, listMissions, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost, executivePaused }) {
+  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, listMissions, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost, executivePaused, executiveView }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -34,7 +34,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
     if (!await directTurn(req)) return fail(res, 409, "An active First Mate turn is required.");
     const ownerId = owner();
-    const [briefing, missions] = await Promise.all([headquarters(ownerId), missionBriefing(ownerId)]);
+    const [briefing, missions, executive] = await Promise.all([headquarters(ownerId), missionBriefing(ownerId), executiveView(ownerId)]);
     const turn = (item) => ({
       id: item._id, title: item.title || item.workspace, workspace: item.workspace, status: item.status,
       url: `/operations?workspace=command&job=${item._id}`,
@@ -43,7 +43,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     return res.json({
       observedAt: briefing.observedAt, paused: briefing.paused, hosts: briefing.hosts,
       turns: briefing.jobs, objectiveStatuses: briefing.objectives,
-      finance: briefing.finance,
+      finance: briefing.finance, executive,
       missions,
       relays: briefing.workforce.slice(0, 12).map(device => ({
         name: device.label, state: device.state, lastSeen: device.lastSeen, usageResumesAt: device.usageResumesAt,
@@ -61,6 +61,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       })),
       recent: briefing.recent.map(item => ({
         ...turn(item), finishedAt: item.finishedAt,
+        ...(item.executiveTrigger ? { executiveTrigger: item.executiveTrigger, createdAt: item.createdAt, startedAt: item.startedAt } : {}),
         ...(["failed", "interrupted"].includes(item.status) ? { read: readKeys.has("incident:" + item._id) } : {}),
       })),
       schedules: briefing.next.map(item => ({ ...turn(item), scheduledAt: item.scheduledAt })),

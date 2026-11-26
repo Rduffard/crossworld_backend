@@ -71,8 +71,12 @@ $taskAction = @{
     Argument = '--env-file="{0}" "{1}" --managed-releases "{2}"' -f $environment,$controller,$releaseHome
 }
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -Disable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1))
-Register-ScheduledTask -TaskName $managed -Action (New-ScheduledTaskAction @taskAction) -Principal $principal -Settings $settings -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $user) | Out-Null
+$settings = New-ScheduledTaskSettingsSet -Disable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun
+$triggers = @(
+    New-ScheduledTaskTrigger -AtLogOn -User $user
+    New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval ([TimeSpan]::FromMinutes(5))
+)
+Register-ScheduledTask -TaskName $managed -Action (New-ScheduledTaskAction @taskAction) -Principal $principal -Settings $settings -Trigger $triggers | Out-Null
 $after = [DateTimeOffset]::UtcNow
 $priorLog = Join-Path $operationsRoot 'Fleetmaster Handover\candidate.jsonl'
 $priorOffset = @(Get-Content -LiteralPath $priorLog).Count

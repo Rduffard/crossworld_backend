@@ -44,6 +44,10 @@ const workspaces = ["development", "workshop"];
 const profiles = ["read-only", ...workspaces, "scoped", "full-access"];
 const spansWorkspaces = ["full-access", "scoped"];
 const terminal = ["completed", "failed", "cancelled", "interrupted"];
+const firstMateIdentity = [
+  { "studioActor.role": "first-mate" },
+  { "conversationActor.role": "first-mate" },
+];
 const leaseMs = 45_000;
 const syncEventLimit = 12;
 const steeringHistoryBudget = 8 * 1024 * 1024;
@@ -140,7 +144,8 @@ function createRouter({
     proposals, jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
-    recoverMission: missions.recoverFromTurn, listMissions: missions.listFromTurn, executivePaused: executive.isPaused,
+    recoverMission: missions.recoverFromTurn, listMissions: missions.listFromTurn,
+    executivePaused: executive.isPaused, executiveView: executive.view,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -167,6 +172,9 @@ function createRouter({
       }),
       jobs().createIndex({ activeHost: 1 }, {
         unique: true, partialFilterExpression: { activeHost: { $type: "string" } },
+      }),
+      jobs().createIndex({ ownerId: 1 }, { name: "one_active_first_mate_per_owner", unique: true,
+        partialFilterExpression: { activeHost: { $type: "string" }, $or: firstMateIdentity },
       }),
       jobs().createIndex({ successorOf: 1 }, {
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
@@ -307,7 +315,10 @@ function createRouter({
       });
     }
     const expired = await jobs().updateMany({
-      ownerId: owner(), activeHost: { $in: [host._id, host._id + ":review"] }, leaseUntil: { $lte: now },
+      ownerId: owner(), leaseUntil: { $lte: now }, $or: [
+        { activeHost: { $in: [host._id, host._id + ":review"] } },
+        { activeHost: { $type: "string" }, $or: firstMateIdentity },
+      ],
     }, {
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
@@ -414,6 +425,9 @@ function createRouter({
       if (background && (held || spansWorkspaces.includes(other?.profile))) return res.json(null);
       const missionJobs = background || held ? [] : await missions.eligible(scope.ownerId, req.operationsHost,
         req.body.missionPreflight === true);
+      const firstMateBusy = await jobs().findOne({
+        ownerId: scope.ownerId, activeHost: { $type: "string" }, $or: firstMateIdentity,
+      }, { projection: { _id: 1 } });
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
@@ -434,6 +448,7 @@ function createRouter({
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            ...(firstMateBusy ? [{ $nor: firstMateIdentity }] : []),
             ...(held || settings?.executivePaused === true || !executiveEnabled ? [{ executiveReview: { $ne: true } }] : []),
             { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
             { $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date() } }] },

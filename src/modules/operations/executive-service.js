@@ -25,7 +25,8 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, pro
     await jobs().updateOne({ _id: reservation.id, ownerId }, { $setOnInsert: {
       _id: reservation.id, ownerId, hostId, sessionId, workspace: reservation.workspace,
       model: reservation.model, effort: reservation.effort, title: "First Mate executive review",
-      studioActor: reservation.actor, studioTools: true, executiveReview: true, workerRole: "direct",
+      studioActor: reservation.actor, studioTools: true, executiveReview: true,
+      executiveTrigger: reservation.trigger, workerRole: "direct",
       profile: "read-only", status: "queued", prompt: reservation.prompt,
       createdAt: reservation.at, events: [], eventCount: 0, codexThreadId: null,
     } }, { upsert: true });
@@ -42,7 +43,11 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, pro
     let previous;
     if (state?.reservation) {
       previous = await jobs().findOne({ _id: state.reservation.id, ownerId, hostId: host._id });
-      if (!previous) return publish(ownerId, state);
+      if (!previous) {
+        try { await publish(ownerId, state); }
+        catch (error) { if (error.code !== 11000) throw error; }
+        return;
+      }
       if (inFlight.includes(previous.status)) return;
     }
     const events = settings?.executiveEvents ?? 0;
@@ -71,7 +76,8 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, pro
     ].filter(Boolean).join("\n\n");
     const id = randomUUID();
     const next = { hostId: host._id, sessionId: state?.sessionId || id, consumedEvents: events, reservation: {
-      id, at: new Date(now), actor: { id: actors[0]._id, name: actors[0].name, role: "first-mate" },
+      id, at: new Date(now), trigger: !state ? "enrollment" : age >= reviewInterval ? "interval" : "event",
+      actor: { id: actors[0]._id, name: actors[0].name, role: "first-mate" },
       model: source.model, workspace: source.workspace, effort: effortFor(host), prompt,
     } };
     try {
@@ -92,7 +98,9 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, pro
     const service = settings?.executiveService;
     const current = service?.reservation;
     const host = service && await hosts().findOne({ _id: service.hostId, ownerId, revokedAt: null });
-    const job = current && await jobs().findOne({ _id: current.id, ownerId }, { projection: { status: 1, leaseUntil: 1, finishedAt: 1 } });
+    const job = current && await jobs().findOne({ _id: current.id, ownerId }, {
+      projection: { status: 1, leaseUntil: 1, startedAt: 1, finishedAt: 1 },
+    });
     const [missionDecision, executionDecision, proposal] = await Promise.all([
       records().findOne({ ownerId, status: "active", reason: "Waiting for owner approval.",
         endsAt: { $gt: new Date(now) } }, { projection: { _id: 1 } }),
@@ -112,6 +120,8 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, pro
     const jobId = state === "Awaiting Decision" ? proposal?.jobId || executionDecision?._id || job?._id : job?._id;
     return { state, paused: settings?.executivePaused === true, reason, jobId,
       lastReviewAt: current?.at,
+      review: current && { id: current.id, trigger: current.trigger, status: job?.status,
+        queuedAt: current.at, startedAt: job?.startedAt, finishedAt: job?.finishedAt },
       nextReviewAt: !isPaused && current && !inFlight.includes(job?.status)
         ? new Date(Math.max(+current.at, +job?.finishedAt || 0) + reviewInterval)
         : undefined };
