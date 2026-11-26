@@ -273,7 +273,7 @@ try {
               if (view === "response") response += value;
             }, AbortSignal.timeout(120_000));
             assert.equal(result.status, "completed", result.error);
-            assert.ok(response.includes(verdict.split(";")[0]), "Live mission execution omitted the expected verdict.");
+            assert.ok(response.includes(verdict.split(";")[0].trimEnd()), "Live mission execution omitted the expected verdict.");
             text = response.slice(-3000).toWellFormed();
           } finally { clearInterval(lease); }
         }
