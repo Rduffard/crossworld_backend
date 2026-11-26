@@ -65,6 +65,9 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.dispatch().updateOne({ _id: relay.ownerId }, { $set: { executivePaused: false } });
   await controller.reconcile({ ...relay, usage: { observedAt: now, primary: { usedPercent: 100, resetsAt: now / 1000 + 1200 } } });
   assert.equal((await runs()).length, 2, "Subscription hold prevents admission");
+  await controller.reconcile({ ...relay, usage: { observedAt: now,
+    secondary: { usedPercent: 66, windowDurationMins: 10080, resetsAt: Math.ceil(now / 1000) + 1200 } } });
+  assert.equal((await runs()).length, 2, "The weekly budget blocks new executive dispatch");
   await controller.reconcile(relay);
   assert.equal((await runs()).length, 3, "The 15-minute standby review survives an owner pause");
 });

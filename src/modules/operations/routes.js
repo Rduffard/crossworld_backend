@@ -26,7 +26,7 @@ const { reconcileParentContinuations } = require("./parent-continuation");
 const { createExecutiveService } = require("./executive-service");
 const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
-const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
+const { rateLimitObservation, usageHoldUntil, shouldSampleUsage, budgetStatus, dispatchStopped } = require("./usage");
 const { createRecurrence, validRepeat } = require("./recurrence");
 const { createMissions } = require("./missions");
 const { observations } = require("./mission-capabilities");
@@ -140,7 +140,7 @@ function createRouter({
     proposals, jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
-    recoverMission: missions.recoverFromTurn, executivePaused: executive.isPaused,
+    recoverMission: missions.recoverFromTurn, listMissions: missions.listFromTurn, executivePaused: executive.isPaused,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -338,6 +338,8 @@ function createRouter({
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
     const activeHost = background ? scope.hostId + ":review" : scope.hostId;
     let job = await jobs().findOne({ ...scope, activeHost, instance });
+    const budget = budgetStatus(req.operationsHost.usage);
+    if (budget.state === "suspended" || (!job && dispatchStopped(budget))) return res.json(null);
     const isolated = scope.hostId === isolatedReviewHostId();
     if (!job && isolated && (!background || !reviewOnlyHost(req.operationsHost))) return res.json(null);
     if (!job && !background) {
@@ -605,7 +607,8 @@ function createRouter({
     });
     if (!current) return reject(res, 404, "Job assignment not found.");
     if (terminal.includes(current.status)) return res.json(current);
-    if (!workerEnabled) {
+    const budgetSuspended = budgetStatus(req.operationsHost.usage).state === "suspended";
+    if (!workerEnabled || budgetSuspended) {
       await jobs().updateOne({ ...query, status: "running" }, { $set: { status: "cancelling" } });
       if (!result) return res.json({ status: "cancelling", eventCount: current.eventCount });
       current.status = "cancelling";
@@ -678,7 +681,7 @@ function createRouter({
       ? current.decision : undefined;
     const instruction = current.instruction?.state === "pending" && current.instruction.id !== steering?.id
       ? current.instruction : undefined;
-    res.json({ ...saved, decision, instruction });
+    res.json({ ...saved, ...(budgetSuspended ? {} : { decision, instruction }) });
   });
   worker.post(["/jobs/:id/github-request", "/jobs/:id/operation-request"], async (req, res) => {
     if (!workerEnabled) return reject(res, 423, "Worker execution is paused.");
@@ -858,7 +861,7 @@ function createRouter({
       const connected = online(host, now);
       const activeSlots = Number(occupied.has(host._id)) + Number(occupied.has(host._id + ":review"));
       const relaySlots = connected ? 1 + Number(host.backgroundReviews === true && host._id !== isolatedReviewHostId()) : 0;
-      return { ...host, usage: rateLimitObservation(host.usage, +now), online: connected, promptLimit: hostLimit(host),
+      return { ...host, usage: rateLimitObservation(host.usage, +now), subscriptionBudget: budgetStatus(host.usage, +now), online: connected, promptLimit: hostLimit(host),
         activeSlots, relaySlots };
     }));
   });

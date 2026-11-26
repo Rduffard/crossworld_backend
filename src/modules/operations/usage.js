@@ -1,3 +1,25 @@
+const subscriptionBudget = Object.freeze({
+  baselineDate: "2026-11-26", baselinePercent: 43,
+  warningPercent: 63, dispatchStopPercent: 66, executionStopPercent: 68,
+});
+
+function budgetStatus(snapshot, now = Date.now()) {
+  const weekly = [snapshot?.primary, snapshot?.secondary].find(window => window?.windowDurationMins === 10080);
+  if (!weekly || (weekly.resetsAt != null && weekly.resetsAt * 1000 <= now)) {
+    return { ...subscriptionBudget, state: "unavailable", usedPercent: null };
+  }
+  const { usedPercent } = weekly;
+  const state = usedPercent >= subscriptionBudget.executionStopPercent ? "suspended" :
+    usedPercent >= subscriptionBudget.dispatchStopPercent ? "dispatch-stopped" :
+      usedPercent >= subscriptionBudget.warningPercent ? "warning" : "normal";
+  return { ...subscriptionBudget, state, usedPercent, observedAt: snapshot.observedAt,
+    resetsAt: weekly.resetsAt == null ? null : weekly.resetsAt * 1000 };
+}
+
+function dispatchStopped(budget) {
+  return budget.state === "dispatch-stopped" || budget.state === "suspended";
+}
+
 function usageWindow(window) {
   if (!window || !Number.isFinite(window.usedPercent) || window.usedPercent < 0 || window.usedPercent > 1000 ||
       (window.windowDurationMins != null && (!Number.isSafeInteger(window.windowDurationMins) || window.windowDurationMins < 1 || window.windowDurationMins > 527_040)) ||
@@ -18,6 +40,8 @@ function rateLimitObservation(snapshot, now = Date.now()) {
 }
 
 function usageHoldUntil(snapshot, now = Date.now()) {
+  const budget = budgetStatus(snapshot, now);
+  if (dispatchStopped(budget)) return budget.resetsAt ?? now + 60_000;
   const expiresAt = (snapshot?.observedAt || 0) + 600_000;
   if (snapshot?.ordinaryUsageAllowed === true || expiresAt <= now) return 0;
   return [snapshot?.primary, snapshot?.secondary].reduce((hold, window) => {
@@ -27,9 +51,10 @@ function usageHoldUntil(snapshot, now = Date.now()) {
 }
 
 function shouldSampleUsage(previous, current) {
-  if (!previous || current.observedAt - previous.observedAt >= 900_000) return true;
+  if (!previous || current.observedAt - previous.observedAt >= 900_000 ||
+      budgetStatus(previous, current.observedAt).state !== budgetStatus(current, current.observedAt).state) return true;
   return ["primary", "secondary"].some(key => previous[key]?.resetsAt !== current[key]?.resetsAt ||
     previous[key]?.windowDurationMins !== current[key]?.windowDurationMins);
 }
 
-module.exports = { rateLimitObservation, usageHoldUntil, shouldSampleUsage };
+module.exports = { rateLimitObservation, usageHoldUntil, shouldSampleUsage, budgetStatus, dispatchStopped };

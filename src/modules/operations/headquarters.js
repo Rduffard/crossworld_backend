@@ -1,4 +1,4 @@
-const { usageHoldUntil } = require("./usage");
+const { usageHoldUntil, budgetStatus } = require("./usage");
 const live = ["running", "cancelling"];
 
 function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts, online }) {
@@ -71,7 +71,14 @@ function createHeadquarters({ hosts, jobs, objectives, projects, finance, dispat
       const usageResumesAt = usageHoldUntil(host.usage, +now) || null;
       let state = connected ? (usageResumesAt ? "usage limited" : "idle") : "offline";
       if (connected && current.length) state = current.some(job => job.state === "approval required") ? "approval required" : current[0].state;
-      return { ...host, online: connected, state, usageResumesAt, job: current[0], jobs: current };
+      const budget = budgetStatus(host.usage, +now);
+      const budgetMessage = {
+        warning: "Weekly subscription warning",
+        "dispatch-stopped": "New dispatch paused",
+        suspended: "Model execution suspended",
+      }[budget.state];
+      if (connected && budgetMessage) state = budgetMessage + " (" + budget.usedPercent + "%)";
+      return { ...host, online: connected, state, usageResumesAt, subscriptionBudget: budget, job: current[0], jobs: current };
     });
 
     const attentionKeys = [

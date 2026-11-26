@@ -58,11 +58,11 @@ const studioBriefingTool = {
 const studioMissionTool = {
   type: "function",
   name: "coordinate_studio_mission",
-  description: "Register or inspect an owner-authorized mission grant by ID. Revise pending work or retry a blocked step only within the owner's recorded delegation.",
+  description: "List scoped grants from an executive review. Inspect or register by grant ID. Revise pending work or retry a blocked step under the recorded delegation, including authorized engineering corrections, retests and release steps. Use release-status to read the enrolled relay release inventory for owner handover.",
   inputSchema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["register", "inspect", "revise", "recover"] },
+      action: { type: "string", enum: ["list", "register", "inspect", "revise", "recover", "release-status"] },
       grantId: { type: "string", description: "Identifier of the owner-authorized mission grant." },
       revision: { type: "integer", minimum: 0 },
       step: { type: "string", description: "The blocked step key for a delegated recovery." },

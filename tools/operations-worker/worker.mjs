@@ -15,7 +15,7 @@ import diagnostics from "../../src/modules/operations/diagnostics.js";
 import { resourceSampler } from "./resources.mjs";
 
 const { PROMPT_LIMIT } = promptLimits;
-const { rateLimitObservation, usageHoldUntil } = usageTools;
+const { rateLimitObservation, budgetStatus, dispatchStopped } = usageTools;
 const interval = 1000;
 const offlineLimit = 15_000;
 
@@ -172,6 +172,8 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
   let heartbeat = 0;
   let disconnected = false;
   let connected = false;
+  let lastBudgetState;
+  const executionBudgetError = "Weekly subscription execution limit reached.";
   async function sync(lane, state) {
     if (!state.batch) {
       const events = state.events.slice(0, 5);
@@ -191,13 +193,17 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
   async function step(lane) {
     const previous = active.get(lane);
     if (previous) return sync(lane, previous);
-    if (draining()) return;
+    if (draining() || dispatchStopped(budgetStatus(getUsage?.()))) return;
     const job = await send("/claim", { instance, extendedPrompts: true, artifactImport, lane,
       ...(getMissionPreflights ? { missionPreflight: true } : {}) });
     if (!job || signal.aborted) return;
     const state = { job, offset: job.eventCount || 0, events: [], controller: new AbortController() };
     state.control = turnControl(state.controller.signal, (value) => redact(value, token));
     active.set(lane, state);
+    if (budgetStatus(getUsage?.()).state === "suspended") {
+      state.result = { status: "interrupted", error: executionBudgetError };
+      return;
+    }
     if (job.status === "cancelling") {
       state.result = { status: "cancelled", error: "" };
       return;
@@ -245,12 +251,27 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
       .then((result) => {
         const status = state.controller.signal.aborted && result.status !== "completed"
           ? state.controller.signal.reason : result.status;
-        state.result = { ...result, status, error: redact(result.error, token).slice(0, 2000) };
+        const error = state.budgetInterrupted && status === "interrupted" ? executionBudgetError : result.error;
+        state.result = { ...result, status, error: redact(error, token).slice(0, 2000) };
       });
   }
   try {
     while (!signal.aborted) {
       try {
+        const budget = budgetStatus(getUsage?.());
+        if (budget.state !== lastBudgetState) {
+          lastBudgetState = budget.state;
+          if (budget.state === "warning" || dispatchStopped(budget)) {
+            log("Weekly Codex subscription usage: " + budget.usedPercent + "% (" + budget.state + ").");
+          }
+        }
+        if (budget.state === "suspended") {
+          for (const state of active.values()) {
+            if (state.result || state.controller.signal.aborted) continue;
+            state.budgetInterrupted = true;
+            state.controller.abort("interrupted");
+          }
+        }
         if (Date.now() - heartbeat >= 5000) {
           const announce = () => send("/heartbeat", {
             instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, backgroundReviews, media: !!mediaStorage, usage: getUsage?.() || undefined,
@@ -504,7 +525,7 @@ async function startWorker(draining = () => false) {
     },
     getResources: process.env.OPERATIONS_RESOURCE_TELEMETRY === "1" ? resourceSampler() : undefined,
     getUsage: () => {
-      if (usageHoldUntil(usage) && Date.now() - lastUsageAttempt >= 120_000) void refreshHeldUsage();
+      if (Date.now() - lastUsageAttempt >= 60_000) void refreshHeldUsage();
       return usage;
     },
     boundedCorrections: true,

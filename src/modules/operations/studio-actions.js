@@ -3,6 +3,7 @@ const { createHash, randomUUID } = require("node:crypto");
 const { objectiveInput, objectiveRecord } = require("./objectives");
 const { resolveAssignment, assignmentFields } = require("./assignments");
 const { studioRecords } = require("./studio-records");
+const { budgetStatus, dispatchStopped } = require("./usage");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 
 const uuid = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
@@ -16,7 +17,7 @@ const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, 
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
 function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters,
-  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost, executivePaused }) {
+  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, listMissions, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost, executivePaused }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -46,7 +47,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       missions,
       relays: briefing.workforce.slice(0, 12).map(device => ({
         name: device.label, state: device.state, lastSeen: device.lastSeen, usageResumesAt: device.usageResumesAt,
-        usage: device.usage || null,
+        usage: device.usage || null, subscriptionBudget: device.subscriptionBudget,
         runs: device.jobs.map(job => ({
           ...turn(job), state: job.state, employee: job.employee, slot: job.slot,
         })),
@@ -83,10 +84,24 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }
     const hostId = req.operationsHost._id;
     const { action, grantId } = req.body;
+    if (action === "list" && actor.executiveReview) return listMissions(actor, hostId, res);
+    if (action === "release-status" && actor.executiveReview) {
+      const control = req.operationsHost.supervisorControl;
+      return res.json({
+        relay: req.operationsHost.label,
+        supervisedRelease: control ? {
+          active: control.active, previous: control.previous, staged: control.releases, observedAt: control.observedAt,
+          online: +control.observedAt > Date.now() - 20_000,
+        } : null,
+        ownerApprovalRequired: true,
+        url: "/operations?workspace=infrastructure",
+      });
+    }
     if (action === "inspect") return inspectMission(actor, hostId, grantId, res);
     if (!["register", "revise", "recover"].includes(action)) return fail(res, 400, "Choose register, inspect, revise or recover.");
     if (actor.executiveReview && await executivePaused(owner())) return fail(res, 423, "First Mate executive changes are paused.");
     if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Mission changes are unavailable during maintenance.");
+    if (dispatchStopped(budgetStatus(req.operationsHost.usage))) return fail(res, 423, "New dispatch is paused by the weekly subscription budget.");
     if (action === "register") return registerMission(actor, hostId, grantId, res);
     if (action === "recover") return recoverMission(actor, hostId, req.body, res);
     return reviseMission(actor, hostId, req.body, res);
@@ -128,6 +143,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     if (await inMaintenance()) return fail(res, 423, "New executions are paused for production maintenance.");
 
     const host = req.operationsHost;
+    if (dispatchStopped(budgetStatus(host.usage))) return fail(res, 423, "New dispatch is paused by the weekly subscription budget.");
     if (!(host.profiles || ["read-only"]).includes("read-only") || !host.efforts?.includes(source.effort)) {
       return fail(res, 409, "The relay does not support the read-only review at this reasoning effort.");
     }

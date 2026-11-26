@@ -336,6 +336,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       const canRecover = action === "recover" && !actor.missionId && mission.registration &&
         endsAt === undefined && mission.delegatedRecoveryEndsAt > new Date() && mission.endsAt <= mission.delegatedRecoveryEndsAt &&
         mission.delegatedRecoverySteps?.includes(step) &&
+        (!actor.executiveReview || !mission.steps.find(candidate => candidate.key === step)?.approval) &&
         !mission.recoveries?.some(attempt => attempt.step === step &&
           (!attempt.approvalId || attempt.approvalId !== mission.recoveryApprovalId));
       if (!canRevise && !canRecover) return fail(res, 403, "This turn is outside the mission's delegated authority.");
@@ -509,6 +510,25 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
   async function recoverFromTurn(actor, hostId, input, res) {
     return update({ params: { id: input.grantId }, body: { ...input, action: "recover" } }, res, actor, hostId);
   }
+  async function listFromTurn(actor, hostId, res) {
+    const now = new Date();
+    const grants = await records().find({
+      ...coordinator(actor, hostId), endsAt: { $gt: now },
+      status: { $in: ["authorized", "active", "blocked", "paused"] },
+    }).sort({ updatedAt: -1, _id: 1 }).limit(12).toArray();
+    return res.json({ grants: await Promise.all(grants.map(async grant => {
+      const mission = await view(grant);
+      return {
+        id: grant._id, revision: grant.revision, title: grant.title, status: mission.status,
+        reason: mission.reason, endsAt: grant.endsAt, current: mission.current,
+        next: mission.next, awaitingApprovals: mission.awaitingApprovals,
+        delegatePlanning: grant.delegatePlanning === true,
+        delegatedRecoverySteps: grant.delegatedRecoveryEndsAt > now ? grant.delegatedRecoverySteps : [],
+        url: "/operations?workspace=command&source=mission&record=" + grant._id,
+      };
+    })) });
+  }
+
   async function inspectFromTurn(actor, hostId, id, res) {
     if (!actor.missionId && (typeof id !== "string" || !uuid.test(id))) return fail(res, 400, "Provide a mission grant identifier.");
     const mission = await records().findOne(actor.missionId
@@ -836,7 +856,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     }));
   }
 
-  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn };
+  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn, listFromTurn };
 }
 
 module.exports = { createMissions };

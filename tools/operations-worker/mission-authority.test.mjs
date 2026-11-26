@@ -219,8 +219,9 @@ test("blocked recovery requires recorded delegation and preserves the mission's 
   const { recoverFromTurn } = fixture({ ...blocked, delegatedRecoverySteps: ["implementation"],
     delegatedRecoveryEndsAt: new Date(Date.now() + 120_000) });
   assert.equal((await call(recoverFromTurn, firstMate, "relay", { ...input, endsAt: new Date().toISOString() })).code, 403);
-  const attempts = await Promise.all([call(recoverFromTurn, firstMate, "relay", input),
-    call(recoverFromTurn, firstMate, "relay", input)]);
+  const executive = { ...firstMate, executiveReview: true };
+  const attempts = await Promise.all([call(recoverFromTurn, executive, "relay", input),
+    call(recoverFromTurn, executive, "relay", input)]);
   assert.deepEqual(attempts.map(attempt => attempt.code).sort(), [200, 409]);
   const { body } = attempts.find(attempt => attempt.code === 200);
   assert.equal(body.current.step, "implementation");
@@ -230,6 +231,13 @@ test("blocked recovery requires recorded delegation and preserves the mission's 
   assert.deepEqual(body.steps[1].after, [{ step: "implementation", result: "pass" }]);
   assert.equal(body.recoveries[0].previous.jobId, "earlier");
   assert.equal(body.recoveries[0].sourceTurnId, firstMate._id);
+
+  const gated = fixture({ ...blocked, steps: body.steps.map(step =>
+    step.key === "implementation" ? { ...step, approval: true } : step),
+  approvals: { implementation: new Date() }, delegatedRecoverySteps: ["implementation"],
+  delegatedRecoveryEndsAt: new Date(Date.now() + 120_000) });
+  assert.equal((await call(gated.recoverFromTurn, executive, "relay", input)).code, 403,
+    "A prior owner approval cannot authorize a new executive retry of an approval-gated step");
 });
 
 test("an owner revision retains recovery delegation only for unchanged steps", async () => {
