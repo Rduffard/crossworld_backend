@@ -867,6 +867,10 @@ function createRouter({
       projection: { _id: 1 },
     }).limit(100).toArray() : [];
     const filter = { ownerId: owner() };
+    if (_req.query.firstMate === "true") Object.assign(filter, {
+      studioTools: true, workerRole: "direct", "studioActor.role": "first-mate", blueprintTyped: { $ne: true },
+      missionId: null, objectiveId: null, seriesId: null, scheduledAt: null, conversationActor: null, delegatedBy: null,
+    });
     if (session) {
       filter.sessionId = session;
     } else if (archive === "true" || archive === "false") {

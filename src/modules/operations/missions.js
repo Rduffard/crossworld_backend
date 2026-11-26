@@ -405,7 +405,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
         "The owner enabled delegated planning for this mission. Use coordinate_studio_mission to inspect and revise pending dependencies or add read-only evidence steps within this mission.",
       ] : []),
       "Report the evidence and end with exactly one line: MISSION_RESULT: PASS, MISSION_RESULT: CORRECT, or MISSION_RESULT: BLOCKED. " +
-        "You may append ; NEXT: followed by an approved step key to recommend a ready action. CORRECT means concrete corrective work is needed.",
+        "To recommend an approved ready step, use the format MISSION_RESULT: PASS; NEXT: step-key. CORRECT means concrete corrective work is needed.",
       "Mission: " + mission.title + "\nStep: " + step.title + "\n" + step.prompt,
       ...(recovery ? [
         "Resume the unfinished work for this step. Verify the prior artifacts and reuse completed work. " +
@@ -497,7 +497,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
           continue;
         }
         const line = job.status === "completed" && await lastResponseLine(job, eventBatches());
-        const verdict = typeof line === "string" && /^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:; NEXT: ([a-z][a-z0-9-]{0,39}))?$/.exec(line);
+        const verdict = typeof line === "string" && /^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?$/.exec(line);
         const result = verdict ? verdict[1].toLowerCase() : "blocked";
         const fields = { current: null, preferred: verdict?.[2] || null, reason: "",
           results: { ...mission.results, [mission.current.step]: { jobId: job._id, result,

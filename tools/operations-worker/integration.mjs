@@ -298,7 +298,7 @@ try {
       assert.match(independent.prompt, /Step: review/);
       assert.equal(independent.employeeContext.name, director.name);
       assert.equal((await claim())._id, independent._id);
-      await finish(independent, "MISSION_RESULT: CORRECT; NEXT: correction");
+      await finish(independent, "MISSION_RESULT: CORRECT ; NEXT: correction");
       const afterReview = await item();
       assert.equal(afterReview.results.review.result, "correct");
       assert.equal(afterReview.current.step, "correction");
@@ -433,9 +433,17 @@ try {
       const inherited = { ...body, id: inheritedId, sourceConversationId,
         steps: [authorized.steps[0], { ...reviewStep, profile: "read-only", allowProfileFallback: true,
           requires: browserCapabilities.filter(value => value !== "isolated-review") }] };
-      assert.equal((await missionApi("/capability-plans", "POST", {
-        ...inherited, steps: [inherited.steps[0], { ...inherited.steps[1], allowProfileFallback: false }],
-      }))[0], 400);
+      const lockedId = randomUUID();
+      const [lockedStatus, lockedFailure] = await missionApi("/capability-plans", "POST", {
+        ...inherited, id: lockedId, steps: [{ ...inherited.steps[1], after: [], allowProfileFallback: false,
+          prompt: "Return a text result. Use no tools and make no changes." }],
+      });
+      assert.equal(lockedStatus, 400);
+      assert.match(lockedFailure.message, /cannot run with its required read-only profile/);
+      const [, availableMissions] = await missionApi("");
+      assert.ok(!availableMissions.some(mission => mission._id === lockedId));
+      assert.equal(await db.db.collection("operations_missions").countDocuments({ _id: lockedId }), 0);
+      assert.equal(await jobs.countDocuments({ missionId: lockedId }), 0);
       const [inheritedStatus, inheritedMission] = await missionApi("/grants", "POST", {
         ...inherited, delegatePlanning: true, completionStep: "close", steps: [...inherited.steps,
           step("close", dep("browser-review"), { requires: ["read"] })],
@@ -2199,6 +2207,23 @@ try {
   await assert.rejects(actionSend(`/jobs/${restrictedJob}/studio-briefing`, { instance }), { status: 409 });
   await jobStore.updateOne({ _id: restrictedJob }, { $set: { status: "completed" }, $unset: { activeHost: "" } });
   await jobStore.insertOne(actionRow);
+  const laterTurns = Array.from({ length: 51 }, (_, offset) => {
+    const id = randomUUID();
+    return { _id: id, sessionId: id, ownerId: owner, workerRole: "direct", status: "completed",
+      createdAt: new Date(+now + offset + 1), prompt: "Unrelated conversation" };
+  });
+  await jobStore.insertMany(laterTurns);
+  try {
+    const filtered = "/jobs?archived=false&compact=true&firstMate=true";
+    assert.ok(!(await api("/jobs?archived=false&compact=true"))[1].some(job => job._id === actionJob));
+    const [status, firstMate] = await api(filtered);
+    assert.equal(status, 200);
+    assert.equal(firstMate[0]._id, actionJob);
+    assert.ok(firstMate.every(job => job.studioTools && job.studioActor?.role === "first-mate" && !job.missionId));
+    assert.equal((await api(filtered, { user: other }))[0], 403);
+  } finally {
+    await jobStore.deleteMany({ ownerId: owner, _id: { $in: laterTurns.map(row => row._id) } });
+  }
   const studioBrief = await actionSend(`/jobs/${actionJob}/studio-briefing`, { instance });
   assert.ok(studioBrief.projects.some(item => item.name === "Action fixture project" && item.url.includes(actionProject)));
   assert.equal(studioBrief.turns.running, 1);
