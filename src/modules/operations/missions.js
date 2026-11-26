@@ -19,6 +19,14 @@ const verdictPattern = new RegExp(
   `^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \\t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?(?:; CANDIDATE: ${candidatePattern})?$`,
 );
 const recoveryCandidatePattern = new RegExp(`^CANDIDATE: ${candidatePattern}(?:\\r?\\n|$)`);
+const enduranceRecovery = [
+  ["49af8686-5469-429b-beec-0b23cb310dec", "review", "crossworld_creative@3c8c4bab6802481633074b1a8c95a631a1c188dc"],
+  ["ff7c3c31-20e8-4428-9869-1e81d3ff0364", "review", "crossworld_creative@e4496a23222f4da758361c571c8bac0b1e1124a7"],
+  ["33ad020f-855a-4907-9b9a-712a5ccf8cf5", "review", "crossworld_creative@8424445d5e6f91dbb1ddb75120971fda51a73c9e"],
+  ["284d5334-304b-4b1a-9ac7-62c6a7043d87", "review", "crossworld_creative@712ca6c0d6709c135d1c5cf5c180bc6cbca8e0a4"],
+  ["c61bb85e-9910-4b26-905e-da9012f9dced", "review", "crossworld_backend@24ffcacff6e368f5a70d44f7d1e2481f4e861c50"],
+  ["07e16a3f-7111-4468-b25b-d8e93f48ead2", "implement", "crossworld_creative@63e881390c8db6ff9d0047a955c7c543a4af27a4"],
+];
 const exactCandidatePattern = new RegExp(`^${candidatePattern}$`);
 
 function enduranceCandidateSource(mission, step) {
@@ -395,6 +403,24 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     return res.json(await view(await records().findOne({ _id: mission._id, ownerId: mission.ownerId })));
   }
   router.patch("/:id", (req, res) => update(req, res));
+
+  router.get("/endurance-recovery", async (_req, res) => {
+    const selected = await records().find({
+      ownerId: owner(), _id: { $in: enduranceRecovery.map(([id]) => id) },
+    }, { projection: { title: 1, initiativeId: 1, revision: 1, status: 1, endsAt: 1, recoveryApprovalId: 1, results: 1 } }).toArray();
+    if (selected.length !== enduranceRecovery.length || !selected[0].initiativeId ||
+        selected.some(mission => mission.initiativeId !== selected[0].initiativeId)) return res.json(null);
+    const approvalId = selected[0].recoveryApprovalId;
+    if (approvalId && selected.every(mission => mission.recoveryApprovalId === approvalId)) return res.json({ approvalId });
+    const now = new Date();
+    const missions = enduranceRecovery.map(([id, step, candidate]) => {
+      const mission = selected.find(item => item._id === id);
+      return { id, step, candidate, title: mission.title, revision: mission.revision, endsAt: mission.endsAt,
+        ready: mission.status === "blocked" && !mission.recoveryApprovalId && mission.endsAt > now &&
+          mission.results[step]?.result === "blocked" };
+    });
+    return res.json({ missions, ready: missions.every(mission => mission.ready) });
+  });
 
   router.post("/endurance-recovery", async (req, res) => {
     const entries = req.body?.missions;

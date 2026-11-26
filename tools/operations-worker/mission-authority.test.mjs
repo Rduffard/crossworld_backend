@@ -42,7 +42,8 @@ test("consolidated recovery validates every revision before recording one approv
       },
     }),
   });
-  const approve = router.stack.find(layer => layer.route?.path === "/endurance-recovery").route.stack[0].handle;
+  const approve = router.stack.find(layer => layer.route?.path === "/endurance-recovery" &&
+    layer.route.methods.post).route.stack[0].handle;
   const entries = selected.map(item => ({ id: item._id, revision: item.revision, step: "review",
     candidate: "crossworld_creative@" + candidate }));
   const stale = entries.map((entry, index) => index ? entry : { ...entry, revision: 2 });
