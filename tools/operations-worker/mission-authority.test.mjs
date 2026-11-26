@@ -248,3 +248,45 @@ test("an owner revision retains recovery delegation only for unchanged steps", a
   assert.equal(result.code, 200);
   assert.deepEqual(result.body.delegatedRecoverySteps, ["verify"]);
 });
+
+test("an owner revision can redirect skipped pending work after a blocked mobile check", async () => {
+  const step = (key, after = [], approval = false) => ({
+    key, title: key, prompt: "Check the disposable mobile fixture.", profile: "read-only",
+    requires: ["read"], after, approval,
+  });
+  const hosted = step("hosted-refresh");
+  const accessibility = step("narrow-layout");
+  const review = step("review", [{ step: hosted.key, result: "pass" }]);
+  const decision = step("candidate-decision", [{ step: review.key, result: "pass" }], true);
+  const close = step("close", [{ step: decision.key, result: "pass" }]);
+  const steps = [hosted, accessibility, review, decision, close];
+  const results = {
+    [hosted.key]: { result: "blocked", jobId: "hosted-fixture" },
+    [accessibility.key]: { result: "pass", jobId: "layout-fixture" },
+    [review.key]: { result: "skipped" },
+    [decision.key]: { result: "skipped" },
+    [close.key]: { result: "skipped" },
+  };
+  const { router } = fixture({ steps, results, status: "active", completionStep: close.key,
+    authorization: capabilities.inheritedAuthorization("full-access") });
+  const ownerPatch = router.stack.find(layer => layer.route?.methods.patch).route.stack[0].handle;
+  const revise = revised => call(ownerPatch, {
+    params: { id }, body: { action: "revise", revision: 0, steps: revised },
+  });
+  const revisedReview = { ...review, after: [{ step: accessibility.key, result: "pass" }] };
+  assert.equal((await revise([{ ...hosted, prompt: "Rewrite executed work." }, accessibility,
+    revisedReview, decision, close])).code, 409);
+  assert.equal((await revise([hosted, accessibility, revisedReview, { ...decision, approval: false }, close])).code, 409);
+  const revised = [hosted, accessibility, revisedReview, decision, close];
+  const response = await revise(revised);
+  assert.equal(response.code, 200);
+  assert.equal(response.body.next, review.key);
+  assert.deepEqual(response.body.awaitingApprovals, []);
+  assert.deepEqual(response.body.approvals, {});
+  assert.deepEqual(response.body.results, {
+    [hosted.key]: results[hosted.key],
+    [accessibility.key]: results[accessibility.key],
+  });
+  assert.deepEqual(response.body.planHistory[0].steps, steps);
+  assert.equal((await revise(revised)).code, 409);
+});

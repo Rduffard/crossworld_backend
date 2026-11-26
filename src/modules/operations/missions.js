@@ -370,7 +370,9 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       if (!Array.isArray(revised) || revised.at(-1)?.key !== mission.completionStep || !revised.at(-1).after.length) {
         return fail(res, 400, "Provide a valid plan within the existing authorization and retain the completion step.");
       }
-      const protectedKeys = new Set([...Object.keys(mission.results), ...Object.keys(mission.approvals), mission.current?.step]);
+      // Dependency skips are derived from the plan and must be recalculated after a revision.
+      const results = Object.fromEntries(Object.entries(mission.results).filter(([, entry]) => entry.result !== "skipped"));
+      const protectedKeys = new Set([...Object.keys(results), ...Object.keys(mission.approvals), mission.current?.step]);
       if (actor && revised.some(step => !mission.steps.some(previous => previous.key === step.key) &&
           (step.profile !== "read-only" || step.allowProfileFallback || step.requires.some(capability => capability !== "read")))) {
         return fail(res, 403, "New delegated steps must use Read Only within the existing mission scope.");
@@ -391,7 +393,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       if (history.length >= 20) return fail(res, 409, "This mission has reached its revision limit.");
       const retainedRecoverySteps = mission.delegatedRecoverySteps?.filter(key =>
         isDeepStrictEqual(mission.steps.find(step => step.key === key), revised.find(step => step.key === key)));
-      fields = { steps: revised, reason: "",
+      fields = { steps: revised, results, reason: "",
         ...(retainedRecoverySteps ? { delegatedRecoverySteps: retainedRecoverySteps } : {}),
         planHistory: [...history, {
         revision: mission.revision, steps: mission.steps, supersededAt: new Date(),
