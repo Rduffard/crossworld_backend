@@ -563,6 +563,26 @@ try {
       assert.equal(renewedGrant.status, "authorized");
       assert.equal(renewedGrant.registration, undefined);
       assert.equal(await jobs.countDocuments({ missionId: horizonNextId }), 0);
+      const standaloneId = randomUUID();
+      assert.equal((await missionApi("/grants", "POST", { ...nextPlan, id: standaloneId, initiativeId: undefined }))[0], 201);
+      await missionStore.updateMany({ _id: { $in: [horizonNextId, standaloneId] }, ownerId: foundationOwner },
+        { $set: { endsAt: new Date(Date.now() - 1) } });
+      assert.equal(await scopedClaim(), null);
+      const persistedWindow = new Date(Date.now() + 180_000).toISOString();
+      for (const id of [horizonNextId, standaloneId]) {
+        const persisted = await missionStore.findOne({ _id: id, ownerId: foundationOwner });
+        assert.equal(persisted.status, "expired");
+        const [status, refreshed] = await missionApi("/" + id, "PATCH", {
+          action: "resume", revision: persisted.revision, endsAt: persistedWindow,
+        });
+        assert.equal(status, 200);
+        assert.equal(refreshed.status, "authorized");
+        assert.equal(refreshed.registration, undefined);
+        assert.equal(await jobs.countDocuments({ missionId: id }), 0);
+      }
+      const [, renewedInitiative] = await missionApi("/initiatives/" + horizonId);
+      assert.equal(renewedInitiative.missions[0].endsAt, persistedWindow);
+      assert.notEqual(renewedInitiative.approvedGrants[0].endsAt, persistedWindow);
       for (const [status, state] of [["blocked", "needs-attention"], ["terminated", "cannot-continue"]]) {
         await missionStore.updateOne({ _id: horizonAnchorId, ownerId: foundationOwner }, { $set: { status } });
         assert.equal(await scopedClaim(), null);
@@ -576,7 +596,7 @@ try {
       assert.equal((await missionStore.findOne({ _id: horizonNextId })).registration.initiativeId, horizonId);
       assert.equal(await scopedClaim(), null);
       assert.equal(await jobs.countDocuments({ missionId: horizonNextId }), 0);
-      await missionStore.deleteMany({ _id: { $in: [horizonAnchorId, horizonNextId] }, ownerId: foundationOwner });
+      await missionStore.deleteMany({ _id: { $in: [horizonAnchorId, horizonNextId, standaloneId] }, ownerId: foundationOwner });
       await db.db.collection("operations_mission_initiatives").deleteOne({ _id: horizonId, ownerId: foundationOwner });
       console.log("HORIZON completed-anchor replay and reconnect deduplication PASS");
       await jobs.deleteMany({ ownerId: foundationOwner,

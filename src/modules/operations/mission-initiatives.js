@@ -88,7 +88,7 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
               ["paused", "expired", "blocked"].includes(status) ? "needs-attention" : "pending";
           return { id, title: predecessor?.title, status, state };
         });
-        return { grantId, after, status: missionStatus(grant, now), dependencies,
+        return { grantId, after, status: missionStatus(grant, now), endsAt: grant?.endsAt ?? null, dependencies,
           waitingFor: dependencies.filter(dependency => dependency.state !== "passed").map(dependency => dependency.id) };
       });
       delete initiative.ownerId;
