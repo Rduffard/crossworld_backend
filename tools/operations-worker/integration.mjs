@@ -679,6 +679,29 @@ try {
       assert.equal((await endurance()).completed, true);
       assert.equal(await jobs.countDocuments({ missionId: demo, missionStep: "implement" }), 1);
       console.log("ENDURANCE six-lane terminal sync queues the integrated continuation and preserves owner acceptance PASS");
+      const repairId = randomUUID();
+      const originalCorrection = randomUUID();
+      const repairEnd = new Date(Date.now() + 600000);
+      const repairStore = db.db.collection("operations_missions");
+      await repairStore.insertOne({ _id: repairId, ownerId: foundationOwner, hostId, workspace: body.workspace, effort: body.effort,
+        title: "ENDURANCE - Stored verdict repair", status: "blocked", current: null, revision: 3, approvals: {},
+        completionStep: "close", createdAt: new Date(), endsAt: repairEnd, recoveryApprovalId: randomUUID(),
+        delegatedRecoverySteps: ["correct"], delegatedRecoveryEndsAt: repairEnd,
+        steps: [step("correct"), step("close", dep("correct"))],
+        results: { correct: { jobId: originalCorrection, result: "blocked", reason: "No valid completion verdict." },
+          close: { result: "skipped" } } });
+      await jobs.insertOne({ _id: originalCorrection, ownerId: foundationOwner, hostId, missionId: repairId, missionStep: "correct",
+        status: "completed", finishedAt: new Date(), eventCount: 1, events: [{ view: "response",
+          text: "MISSION_RESULT: PASS; CANDIDATE: rduffard/crossworld_creative@" + "a".repeat(40) }] });
+      const repairedClose = await scopedClaim();
+      assert.equal(repairedClose.missionId, repairId);
+      assert.match(repairedClose.prompt, /Step: close/);
+      const repaired = await repairStore.findOne({ _id: repairId });
+      assert.equal(repaired.results.correct.result, "pass");
+      assert.equal(repaired.verdictRepairs[0].previous.result, "blocked");
+      await finish(repairedClose, "MISSION_RESULT: PASS");
+      assert.equal(await scopedClaim(), null);
+      assert.equal((await repairStore.findOne({ _id: repairId })).verdictRepairs.length, 1);
       console.log("Initiative completion triggers successor registration and preserves the owner gate PASS");
       const completedInherited = (await missionApi(""))[1].find(record => record._id === inheritedId);
       assert.equal(completedInherited.status, "completed");

@@ -652,9 +652,41 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     if (mission.reason) await change(mission, { reason: "" });
   }
 
+  async function repairQualifiedCorrection(scope) {
+    const now = new Date();
+    const blocked = records().find({ ...scope, title: /^ENDURANCE - /, status: "blocked", current: null,
+      recoveryApprovalId: { $exists: true }, delegatedRecoverySteps: "correct",
+      endsAt: { $gt: now }, delegatedRecoveryEndsAt: { $gt: now },
+      "results.correct.reason": "No valid completion verdict." }).limit(6);
+    for await (const mission of blocked) {
+      const previous = mission.results.correct;
+      if (mission.endsAt > mission.delegatedRecoveryEndsAt ||
+          mission.verdictRepairs?.some(repair => repair.jobId === previous.jobId) ||
+          Object.entries(mission.results).some(([key, result]) =>
+            ["retest", "close", "handoff"].includes(key) && result.result !== "skipped")) continue;
+      const job = await jobs().findOne({ ...scope, _id: previous.jobId, missionId: mission._id, missionStep: "correct",
+        status: "completed" });
+      if (!job) continue;
+      const line = await lastResponseLine(job, eventBatches());
+      const verdict = typeof line === "string" && verdictPattern.exec(line);
+      if (!verdict || verdict[1] !== "PASS" || !/; CANDIDATE: [Rr]duffard\//.test(line) || !verdict[3]) continue;
+      const results = Object.fromEntries(Object.entries(mission.results).filter(([, result]) => result.result !== "skipped"));
+      results.correct = { jobId: job._id, result: "pass", executionStatus: job.status, finishedAt: job.finishedAt,
+        candidate: { repository: verdict[3], commit: verdict[4] } };
+      await records().updateOne({ ...compare(mission), $expr: { $gt: ["$endsAt", "$$NOW"] } }, {
+        $set: { results, status: "active", reason: "", updatedAt: now },
+        $push: { verdictRepairs: { jobId: job._id, previous, repairedAt: now, reason: "Accepted supported repository qualifier." } },
+        $inc: { revision: 1 },
+      });
+    }
+  }
+
   async function reconcile(host, missionId) {
     const scope = { ownerId: host.ownerId, hostId: host._id };
-    if (!missionId && !usageHoldUntil(host.usage)) await initiativeController.reconcile(scope);
+    if (!missionId && !usageHoldUntil(host.usage)) {
+      await repairQualifiedCorrection(scope);
+      await initiativeController.reconcile(scope);
+    }
     if (missionId) scope._id = missionId;
     await records().updateMany({ ...scope, status: { $in: expiringMissionStatuses }, endsAt: { $lte: new Date() } }, {
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },

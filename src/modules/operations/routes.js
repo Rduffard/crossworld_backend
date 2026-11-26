@@ -114,7 +114,8 @@ function createRouter({
   const recurrence = createRecurrence({ records: series, jobs });
   const missionRecords = () => db().collection("operations_missions");
   const initiativeRecords = () => db().collection("operations_mission_initiatives");
-  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords,
+  const proposals = () => db().collection("operations_action_proposals");
+  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals,
     eventBatches, online, enabled: workerEnabled && executiveEnabled });
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
@@ -136,7 +137,7 @@ function createRouter({
       hostLimit(host) >= length && !usageHoldUntil(host.usage) ? host : null;
   }
   const studioActions = createStudioActions({
-    proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references,
+    proposals, jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
     recoverMission: missions.recoverFromTurn, executivePaused: executive.isPaused,
@@ -305,13 +306,17 @@ function createRouter({
           : {}),
       });
     }
-    await jobs().updateMany({
+    const expired = await jobs().updateMany({
       ownerId: owner(), activeHost: { $in: [host._id, host._id + ":review"] }, leaseUntil: { $lte: now },
     }, {
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
     });
     try {
+      if (executiveEnabled && expired.modifiedCount && await jobs().findOne({
+        ownerId: host.ownerId, hostId: host._id, status: "interrupted", finishedAt: now,
+        $or: [{ missionId: { $exists: true } }, { workerRole: { $in: ["assignment", "qa", "correction", "air"] } }],
+      }, { projection: { _id: 1 } })) await executive.signal(host.ownerId);
       await executive.reconcile({ ...host, usage: usage && usage.observedAt > (host.usage?.observedAt || 0) ? usage : host.usage });
     } catch (error) {
       reportError(failureDiagnostic(error, "executive service heartbeat"));

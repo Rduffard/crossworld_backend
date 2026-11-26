@@ -6,7 +6,7 @@ const reviewInterval = 15 * 60_000;
 const wakeInterval = 2 * 60_000;
 const inFlight = ["queued", "running", "cancelling"];
 
-function createExecutiveService({ dispatch, jobs, hosts, workforce, records, eventBatches, online, enabled, clock = Date.now }) {
+function createExecutiveService({ dispatch, jobs, hosts, workforce, records, proposals, eventBatches, online, enabled, clock = Date.now }) {
   const paused = (settings, now) => settings?.executivePaused === true || settings?.paused === true ||
     +settings?.maintenanceUntil > now;
   const effortFor = host => ["low", "minimal", "none"].find(effort => host?.efforts?.includes(effort));
@@ -92,13 +92,14 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, eve
     const current = service?.reservation;
     const host = service && await hosts().findOne({ _id: service.hostId, ownerId, revokedAt: null });
     const job = current && await jobs().findOne({ _id: current.id, ownerId }, { projection: { status: 1, leaseUntil: 1, finishedAt: 1 } });
-    const [missionDecision, executionDecision] = await Promise.all([
+    const [missionDecision, executionDecision, proposal] = await Promise.all([
       records().findOne({ ownerId, status: "active", reason: "Waiting for owner approval.",
         endsAt: { $gt: new Date(now) } }, { projection: { _id: 1 } }),
       jobs().findOne({ ownerId, status: "running", "approval.state": "pending", "approval.expiresAt": { $gt: now },
         $expr: { $ne: ["$approval.id", { $ifNull: ["$decision.id", null] }] } }, { projection: { _id: 1 } }),
+      service && proposals().findOne({ ownerId, sessionId: service.sessionId, state: "pending" }, { projection: { jobId: 1 } }),
     ]);
-    const decision = missionDecision || executionDecision;
+    const decision = missionDecision || executionDecision || proposal;
     const running = ["running", "cancelling"].includes(job?.status) && +job.leaseUntil > now;
     const runnable = host && online(host) && compatible(host) && !hold(host, now);
     const isPaused = !enabled || paused(settings, now);
@@ -107,7 +108,8 @@ function createExecutiveService({ dispatch, jobs, hosts, workforce, records, eve
     const reason = !enabled ? "Executive dispatch is unavailable." : settings?.executivePaused ? "Paused by owner." :
       isPaused ? "Studio dispatch is paused or in maintenance." : host && hold(host, now) ? "Waiting for subscription capacity." :
         service && !runnable ? "Waiting for the enrolled relay." : decision && state === "Awaiting Decision" ? "Operations requires an owner decision." : undefined;
-    return { state, paused: settings?.executivePaused === true, reason, jobId: job?._id,
+    const jobId = state === "Awaiting Decision" ? proposal?.jobId || executionDecision?._id || job?._id : job?._id;
+    return { state, paused: settings?.executivePaused === true, reason, jobId,
       lastReviewAt: current?.at,
       nextReviewAt: !isPaused && current && !inFlight.includes(job?.status)
         ? new Date(Math.max(+current.at, +job?.finishedAt || 0) + reviewInterval)

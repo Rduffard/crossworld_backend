@@ -9,7 +9,7 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   const client = await MongoClient.connect(fixture.uri);
   t.after(() => client.close());
   const db = client.db(fixture.database);
-  const collections = Object.fromEntries(["dispatch", "jobs", "hosts", "workforce", "records", "eventBatches"]
+  const collections = Object.fromEntries(["dispatch", "jobs", "hosts", "workforce", "records", "proposals", "eventBatches"]
     .map(name => [name, () => db.collection(name)]));
   const relay = { _id: "relay", ownerId: "owner", revokedAt: null, profiles: ["read-only", "full-access"], efforts: ["low", "high"] };
   await collections.hosts().insertOne(relay);
@@ -37,6 +37,9 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.jobs().updateOne({ _id: first._id }, { $set: { status: "completed", finishedAt: new Date(now),
     eventCount: 1, events: [{ view: "response", text: "Recorded decision from prior review" }] } });
   assert.equal((await status()).state, "Standing By");
+  await collections.proposals().insertOne({ ownerId: relay.ownerId, state: "pending", jobId: first._id, sessionId: first.sessionId });
+  assert.equal((await status()).state, "Awaiting Decision");
+  assert.equal((await status()).jobId, first._id);
   await collections.records().insertOne({ _id: "gate", ownerId: relay.ownerId, status: "active",
     endsAt: new Date(now + 3600_000), reason: "Waiting for owner approval." });
   assert.equal((await status()).state, "Awaiting Decision");

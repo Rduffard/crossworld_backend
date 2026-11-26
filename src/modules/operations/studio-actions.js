@@ -217,6 +217,12 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }).limit(2).toArray();
     if (candidates.length !== 1) return fail(res, 409, "Specify the exact name of one active project.");
     const [target] = candidates;
+    const executiveProposalKey = job.executiveReview ? fingerprint([target._id, target.revision, input]) : undefined;
+    if (executiveProposalKey) {
+      const prior = await proposals().findOne({ ownerId, sessionId: job.sessionId, projectId: target._id,
+        $or: [{ state: { $in: ["pending", "authorized"] } }, { executiveProposalKey }] });
+      if (prior) return res.json({ state: prior.state, jobId: prior.jobId, project: target.name });
+    }
     const action = {
       action: "objective.create", authorization: "owner-approval-required", validation: "validated",
       ownerId, jobId: job._id, sessionId: job.sessionId || job._id,
@@ -227,7 +233,8 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     // One objective proposal per turn keeps a worker from flooding the owner inbox.
     const _id = job._id;
     const stored = await proposals().findOneAndUpdate({ _id, ownerId }, {
-      $setOnInsert: { ...action, digest, callId, objectiveId: randomUUID(), state: "pending", createdAt: new Date() },
+      $setOnInsert: { ...action, ...(executiveProposalKey ? { executiveProposalKey } : {}),
+        digest, callId, objectiveId: randomUUID(), state: "pending", createdAt: new Date() },
     }, { upsert: true, returnDocument: "after" });
     if (stored.digest !== digest || stored.callId !== callId) {
       return fail(res, 409, "This turn already has an objective proposal.");
