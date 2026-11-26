@@ -458,15 +458,29 @@ try {
       try {
         assert.equal(await scopedClaim(), null);
         assert.equal((await jobs.findOne({ _id: missingReview.jobId })).status, "failed");
+        const claimStartedAt = Date.now();
         assert.equal(await scopedClaim(), null);
+        const claimFinishedAt = Date.now();
         const deferred = await jobs.findOne({ _id: retryReview.jobId });
         assert.equal(deferred.status, "queued");
-        assert.ok(deferred.candidateRetryAt > new Date(Date.now() + 50_000));
+        assert.ok(+deferred.candidateRetryAt >= claimStartedAt + 60_000);
+        assert.ok(+deferred.candidateRetryAt <= claimFinishedAt + 60_000);
         assert.equal(verifyAttempts, 2);
         const snapshot = (await missionApi(""))[1].find(mission => mission._id === retryReview.missionId);
         assert.equal(snapshot.execution.candidateRetryAt, deferred.candidateRetryAt.toISOString());
         assert.match(snapshot.reason, /GitHub candidate verification failed twice/);
         assert.ok(snapshot.reason.includes(snapshot.execution.candidateRetryAt));
+        const [pauseStatus, paused] = await missionApi("/" + retryReview.missionId, "PATCH", {
+          action: "pause", revision: snapshot.revision,
+        });
+        assert.equal(pauseStatus, 200);
+        assert.equal(paused.status, "paused");
+        assert.equal(paused.reason, "Paused by owner.");
+        assert.equal(paused.execution.candidateRetryAt, deferred.candidateRetryAt.toISOString());
+        assert.match(paused.execution.candidateAdmissionError, /GitHub candidate verification failed twice/);
+        assert.equal((await missionApi("/" + retryReview.missionId, "PATCH", {
+          action: "resume", revision: paused.revision,
+        }))[0], 200);
         const next = await scopedClaim();
         assert.equal(next._id, nextReview.jobId);
         await finish(next, "MISSION_RESULT: PASS");
