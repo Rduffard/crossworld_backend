@@ -113,7 +113,7 @@ function createRouter({
   const missionRecords = () => db().collection("operations_missions");
   const initiativeRecords = () => db().collection("operations_mission_initiatives");
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
-    dispatch, owner, online, workerEnabled, inMaintenance });
+    dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
   const blueprintDefinitions = () => db().collection("operations_blueprints");

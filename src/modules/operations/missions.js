@@ -1,5 +1,5 @@
 const express = require("express");
-const { createHash } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { lastResponseLine, precedingResult } = require("./objective-runs");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
@@ -19,6 +19,7 @@ const verdictPattern = new RegExp(
   `^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \\t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?(?:; CANDIDATE: ${candidatePattern})?$`,
 );
 const recoveryCandidatePattern = new RegExp(`^CANDIDATE: ${candidatePattern}(?:\\r?\\n|$)`);
+const exactCandidatePattern = new RegExp(`^${candidatePattern}$`);
 
 function enduranceCandidateSource(mission, step) {
   if (!mission.initiativeId || !mission.title?.startsWith("ENDURANCE - ") || !step.reviewer) return null;
@@ -106,7 +107,7 @@ function readiness(mission) {
   return { ready, outcomesByStep };
 }
 
-function createMissions({ records, initiatives, jobs, workforce, hosts, eventBatches, dispatch, owner, online, workerEnabled, inMaintenance }) {
+function createMissions({ records, initiatives, jobs, workforce, hosts, eventBatches, dispatch, owner, online, workerEnabled, inMaintenance, startSession }) {
   const router = express.Router();
   const initiativeController = createInitiatives({ initiatives, records, owner, uuid, fail });
   initiativeController.mount(router);
@@ -293,7 +294,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       const canRecover = action === "recover" && !actor.missionId && mission.registration &&
         endsAt === undefined && mission.delegatedRecoveryEndsAt > new Date() && mission.endsAt <= mission.delegatedRecoveryEndsAt &&
         mission.delegatedRecoverySteps?.includes(step) &&
-        !mission.recoveries?.some(attempt => attempt.step === step);
+        !mission.recoveries?.some(attempt => attempt.step === step &&
+          (!attempt.approvalId || attempt.approvalId !== mission.recoveryApprovalId));
       if (!canRevise && !canRecover) return fail(res, 403, "This turn is outside the mission's delegated authority.");
     }
     let fields;
@@ -360,6 +362,59 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
   }
   router.patch("/:id", (req, res) => update(req, res));
 
+  router.post("/endurance-recovery", async (req, res) => {
+    const entries = req.body?.missions;
+    if (!Array.isArray(entries) || entries.length !== 6 || entries.some(entry =>
+      !entry || typeof entry.id !== "string" || !uuid.test(entry.id) || !Number.isSafeInteger(entry.revision) ||
+      !["implement", "review"].includes(entry.step) || typeof entry.candidate !== "string" ||
+      !exactCandidatePattern.test(entry.candidate) || entry.candidate.length !== entry.candidate.trim().length) ||
+      new Set(entries.map(entry => entry.id)).size !== entries.length) {
+      return fail(res, 400, "Provide the six mission revisions, blocked steps and exact candidate commits.");
+    }
+    const candidates = entries.map(entry => {
+      const [, repository, commit] = exactCandidatePattern.exec(entry.candidate);
+      return { repository, commit };
+    });
+    if (!(await Promise.all(candidates.map(accessibleCandidate))).every(Boolean)) {
+      return fail(res, 409, "Each candidate must resolve from its Crossworld GitHub repository.");
+    }
+    const ownerId = owner();
+    const session = startSession();
+    const approvalId = randomUUID();
+    try {
+      const approved = await session.withTransaction(async () => {
+        const selected = await records().find({ ownerId, _id: { $in: entries.map(entry => entry.id) } }, { session }).toArray();
+        if (selected.length !== entries.length || new Set(selected.map(item => item.initiativeId)).size !== 1) return false;
+        const changes = [];
+        for (const entry of entries) {
+          const mission = selected.find(item => item._id === entry.id);
+          if (!mission.initiativeId || !mission.title.startsWith("ENDURANCE - ") || !mission.registration ||
+              !mission.coordinatorActorId || mission.revision !== entry.revision || mission.status !== "blocked" || mission.current ||
+              mission.recoveryApprovalId || mission.endsAt <= new Date()) return false;
+          const recovery = recoverStep(mission, { step: entry.step, end: mission.endsAt, attribution: { approvalId },
+            resolution: "CANDIDATE: " + entry.candidate + "\nReuse and verify this exact committed candidate." });
+          if (recovery.error) return false;
+          changes.push({ mission, fields: { ...recovery.fields, recoveryApprovalId: approvalId,
+            approvedRecoveryCandidate: candidates[entries.indexOf(entry)],
+            delegatedRecoveryEndsAt: mission.endsAt,
+            delegatedRecoverySteps: mission.steps.filter(step =>
+              ["implement", "review", "correct", "retest"].includes(step.key) && !step.approval).map(step => step.key),
+          } });
+        }
+        for (const { mission, fields } of changes) {
+          await records().updateOne(compare(mission), {
+            $set: { ...fields, updatedAt: new Date() }, $inc: { revision: 1 },
+          }, { session });
+        }
+        return true;
+      });
+      if (!approved) return fail(res, 409, "The six blocked missions must share an initiative and retain their current revisions and live windows.");
+      return res.json({ approvalId, missions: entries.map(entry => entry.id) });
+    } finally {
+      await session.endSession();
+    }
+  });
+
   async function reviseFromTurn(actor, hostId, input, res) {
     return update({ params: { id: actor.missionId || input.grantId }, body: { ...input, action: "revise" } }, res, actor, hostId);
   }
@@ -402,8 +457,10 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
     const candidateSource = enduranceCandidateSource(mission, step);
     const recoveryCandidate = candidateSource && recoveryCandidatePattern.exec(recovery?.resolution ?? "");
-    const candidate = recoveryCandidate ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
-      : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate);
+    const approvedReviewCandidate = candidateSource === "implement" && mission.approvedRecoveryCandidate;
+    const candidate = approvedReviewCandidate || (recoveryCandidate && !mission.recoveryApprovalId
+      ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
+      : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate));
     if (candidateSource && !await accessibleCandidate(candidate)) {
       await change(mission, { current: null, results: { ...mission.results, [step.key]: {
         result: "blocked", reason: "Provide a full candidate commit accessible from its Crossworld GitHub repository before review.",
@@ -445,6 +502,9 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
         "Before returning PASS, commit the validated changes and ensure the full commit resolves from the Crossworld GitHub repository. " +
           "End with MISSION_RESULT: PASS; CANDIDATE: repository@full-commit-sha. " +
           "If you include NEXT, place it before CANDIDATE. For an unchanged correction, reuse the verified commit.",
+      ] : []),
+      ...(step.key === "implement" && mission.approvedRecoveryCandidate ? [
+        `Reuse the owner-approved candidate ${mission.approvedRecoveryCandidate.repository}@${mission.approvedRecoveryCandidate.commit}.`,
       ] : []),
       "Mission: " + mission.title + "\nStep: " + step.title + "\n" + step.prompt,
       ...(recovery ? [
@@ -539,11 +599,15 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
         const line = job.status === "completed" && await lastResponseLine(job, eventBatches());
         const verdict = typeof line === "string" && verdictPattern.exec(line);
         const result = verdict ? verdict[1].toLowerCase() : "blocked";
+        const approvedCandidate = failedStep.key === "implement" && mission.approvedRecoveryCandidate;
+        const mismatch = result === "pass" && approvedCandidate &&
+          (verdict[3] !== approvedCandidate.repository || verdict[4] !== approvedCandidate.commit);
         const fields = { current: null, preferred: verdict?.[2] || null, reason: "",
-          results: { ...mission.results, [mission.current.step]: { jobId: job._id, result,
+          results: { ...mission.results, [mission.current.step]: { jobId: job._id, result: mismatch ? "blocked" : result,
             executionStatus: job.status, finishedAt: job.finishedAt,
-            ...(result === "pass" && verdict[3] ? { candidate: { repository: verdict[3], commit: verdict[4] } } : {}),
+            ...(result === "pass" && !mismatch && verdict[3] ? { candidate: { repository: verdict[3], commit: verdict[4] } } : {}),
             ...(job.reviewCandidate ? { reviewCandidate: job.reviewCandidate } : {}),
+            ...(mismatch ? { reason: "Implementation must report the exact owner-approved recovery candidate." } : {}),
             ...(mission.current.previousJobId ? { previousJobId: mission.current.previousJobId } : {}),
             ...(verdict ? {} : { reason: job.error === preflightChanged ? preflightChanged : "No valid completion verdict." }) } } };
         if (!(await change(mission, fields)).matchedCount) continue;

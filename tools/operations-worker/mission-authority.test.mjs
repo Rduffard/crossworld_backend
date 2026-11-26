@@ -7,6 +7,54 @@ const id = "30e3fc4b-4e36-463b-bb39-8668497c5341";
 const firstMate = { _id: "new-turn", sessionId: "new-session", workspace: "development",
   studioActor: { id: "first-mate" } };
 
+test("consolidated recovery validates every revision before recording one approval", async t => {
+  const endsAt = new Date(Date.now() + 60_000);
+  const candidate = "a".repeat(40);
+  t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: async () => ({ sha: candidate }) }));
+  const selected = Array.from({ length: 6 }, (_, index) => ({
+    _id: id.slice(0, -1) + index, ownerId: "owner", initiativeId: "initiative",
+    title: "ENDURANCE - Lane " + index, coordinatorActorId: "first-mate", registration: {},
+    startsAt: new Date(), endsAt, revision: 3, status: "blocked", approvals: {},
+    steps: [{ key: "implement", after: [] }, { key: "review", after: [{ step: "implement", result: "pass" }] },
+      { key: "close", approval: true, after: [{ step: "review", result: "pass" }] }],
+    results: { implement: { result: "pass" }, review: { result: "blocked" }, close: { result: "skipped" } },
+  }));
+  const writes = [];
+  const session = { withTransaction: async run => run(), endSession: async () => {} };
+  const { router } = missions.createMissions({ owner: () => "owner", startSession: () => session,
+    records: () => ({
+      find: (query, options) => {
+        assert.equal(query.ownerId, "owner");
+        assert.equal(options.session, session);
+        return { toArray: async () => selected };
+      },
+      updateOne: async (query, operation, options) => {
+        assert.equal(options.session, session);
+        writes.push([query, operation.$set]);
+      },
+    }),
+  });
+  const approve = router.stack.find(layer => layer.route?.path === "/endurance-recovery").route.stack[0].handle;
+  const entries = selected.map(item => ({ id: item._id, revision: item.revision, step: "review",
+    candidate: "crossworld_creative@" + candidate }));
+  const stale = entries.map((entry, index) => index ? entry : { ...entry, revision: 2 });
+  assert.equal((await call(approve, { body: { missions: stale } })).code, 409);
+  assert.equal(writes.length, 0);
+  const approved = await call(approve, { body: { missions: entries } });
+  assert.equal(approved.code, 200);
+  assert.equal(writes.length, 6);
+  for (const [, fields] of writes) {
+    assert.equal(fields.recoveryApprovalId, approved.body.approvalId);
+    assert.equal(fields.current.step, "review");
+    assert.equal(fields.endsAt, endsAt);
+    assert.equal(fields.delegatedRecoveryEndsAt, endsAt);
+    assert.deepEqual(fields.delegatedRecoverySteps, ["implement", "review"]);
+    assert.equal(fields.approvedRecoveryCandidate.commit, candidate);
+    assert.equal(fields.recoveries[0].previous.result, "blocked");
+    assert.equal(Object.hasOwn(fields, "approvals"), false);
+  }
+});
+
 test("ENDURANCE only queues independent review for a repository-resolvable commit", async t => {
   const candidate = { repository: "crossworld_creative", commit: "a".repeat(40) };
   const host = { _id: "relay", ownerId: "owner", profiles: ["full-access"], efforts: ["low"] };
