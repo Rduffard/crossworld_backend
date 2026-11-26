@@ -654,7 +654,13 @@ try {
       for (let index = 0; index < lanes.length * 2; index++) {
         const execution = await scopedClaim();
         assert.ok(lanes.includes(execution.missionId));
-        await finish(execution, "MISSION_RESULT: PASS");
+        await finish(execution, index === 0
+          ? "MISSION_RESULT: PASS; CANDIDATE: rduffard/crossworld_creative@" + "a".repeat(40)
+          : "MISSION_RESULT: PASS");
+        if (index === 0) {
+          const lane = (await missionApi(""))[1].find(record => record._id === execution.missionId);
+          assert.deepEqual(lane.results.implement.candidate, { repository: "crossworld_creative", commit: "a".repeat(40) });
+        }
         if (execution.prompt.includes("Step: close")) completed++;
         assert.equal((await endurance()).completedCount, completed);
       }

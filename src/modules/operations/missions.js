@@ -16,7 +16,7 @@ const fail = (res, status, message) => res.status(status).json({ message });
 const isText = (value, limit) => typeof value === "string" && value.isWellFormed() && value.trim() && value.length <= limit;
 const candidatePattern = "(crossworld_backend|crossworld_creative)@([a-f0-9]{40})";
 const verdictPattern = new RegExp(
-  `^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \\t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?(?:; CANDIDATE: ${candidatePattern})?$`,
+  `^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \\t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?(?:; CANDIDATE: (?:[Rr]duffard/)?${candidatePattern})?$`,
 );
 const recoveryCandidatePattern = new RegExp(`^CANDIDATE: ${candidatePattern}(?:\\r?\\n|$)`);
 const enduranceRecovery = [

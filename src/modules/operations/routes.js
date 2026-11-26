@@ -23,6 +23,7 @@ const { employeeContext } = require("./employee-context");
 const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
 const { reconcileParentContinuations } = require("./parent-continuation");
+const { createExecutiveService } = require("./executive-service");
 const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage } = require("./usage");
@@ -87,6 +88,7 @@ function createRouter({
   authenticate = auth,
   reportError = () => {},
   workerEnabled = true,
+  executiveEnabled = false,
   isolatedReviewHostId = () => process.env.OPERATIONS_ISOLATED_REVIEW_HOST_ID,
   githubTestAdapter,
   mcpTestAdapter,
@@ -112,6 +114,8 @@ function createRouter({
   const recurrence = createRecurrence({ records: series, jobs });
   const missionRecords = () => db().collection("operations_missions");
   const initiativeRecords = () => db().collection("operations_mission_initiatives");
+  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords,
+    eventBatches, online, enabled: workerEnabled && executiveEnabled });
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
@@ -135,7 +139,7 @@ function createRouter({
     proposals: () => db().collection("operations_action_proposals"), jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
-    recoverMission: missions.recoverFromTurn,
+    recoverMission: missions.recoverFromTurn, executivePaused: executive.isPaused,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -307,6 +311,11 @@ function createRouter({
       $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
       $unset: { activeHost: "" },
     });
+    try {
+      await executive.reconcile({ ...host, usage: usage && usage.observedAt > (host.usage?.observedAt || 0) ? usage : host.usage });
+    } catch (error) {
+      reportError(failureDiagnostic(error, "executive service heartbeat"));
+    }
     res.json({ ok: true, backgroundReviews });
   });
 
@@ -418,6 +427,7 @@ function createRouter({
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
           ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            ...(held || settings?.executivePaused === true || !executiveEnabled ? [{ executiveReview: { $ne: true } }] : []),
             { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
             { $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date() } }] },
             { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: req.operationsHost.scopedRevision || "" }] },
@@ -529,7 +539,7 @@ function createRouter({
       _id: actorId, ownerId: scope.ownerId, kind: "employee", status: "available",
       ...(job.conversationActor ? { workspace: job.workspace, role: job.conversationActor.role } : {}),
     }) : null;
-    if ((job.conversationActor && !actor) || (job.resumedFrom && actor?.role !== "first-mate") ||
+    if ((job.conversationActor && !actor) || ((job.resumedFrom || job.executiveReview) && actor?.role !== "first-mate") ||
         (job.missionId && actor?.role !== job.studioActor.role)) {
       await jobs().updateOne({ _id: job._id, ...scope, instance, status: "running" }, {
         $set: { status: "interrupted", finishedAt: new Date(), error: "The recipient is no longer available in this workspace and role." },
@@ -586,7 +596,7 @@ function createRouter({
     }
     const query = { _id: req.params.id, ownerId: owner(), hostId: req.operationsHost._id, instance };
     const current = await jobs().findOne(query, {
-      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1, missionId: 1 },
+      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1, missionId: 1, workerRole: 1, approval: 1 },
     });
     if (!current) return reject(res, 404, "Job assignment not found.");
     if (terminal.includes(current.status)) return res.json(current);
@@ -640,6 +650,14 @@ function createRouter({
       leaseUntil: { $gt: new Date() },
     }, update, { projection: { status: 1, eventCount: 1 }, returnDocument: "after" });
     if (!saved) return reject(res, 409, "Job lease or status changed. Retry sync.");
+    if ((result && (current.missionId || ["assignment", "qa", "correction", "air"].includes(current.workerRole))) ||
+        (approval?.state === "pending" && approval.id !== current.approval?.id)) {
+      try {
+        await executive.signal(query.ownerId);
+      } catch (error) {
+        reportError(failureDiagnostic(error, "executive service wake"));
+      }
+    }
     if (result && current.missionId && workerEnabled) {
       try {
         const settings = await dispatch().findOne({ _id: query.ownerId });
@@ -790,6 +808,12 @@ function createRouter({
     res.sendStatus(204);
   });
   router.get("/headquarters", async (_req, res) => res.json(await headquarters(owner())));
+  router.get("/executive-service", async (_req, res) => res.json(await executive.view(owner())));
+  router.patch("/executive-service", async (req, res) => {
+    if (typeof req.body?.paused !== "boolean") return reject(res, 400, "Set whether First Mate is paused.");
+    await dispatch().updateOne({ _id: owner() }, { $set: { executivePaused: req.body.paused } }, { upsert: true });
+    res.json(await executive.view(owner()));
+  });
   router.post("/headquarters/attention", async (req, res) => {
     const { kind, id } = req.body || {};
     if (!["approval", "incident"].includes(kind) || !uuid(id)) return reject(res, 400, "Invalid attention item.");
@@ -879,7 +903,7 @@ function createRouter({
     }).limit(100).toArray() : [];
     const filter = { ownerId: owner() };
     if (_req.query.firstMate === "true") Object.assign(filter, {
-      studioTools: true, workerRole: "direct", "studioActor.role": "first-mate", blueprintTyped: { $ne: true },
+      studioTools: true, workerRole: "direct", "studioActor.role": "first-mate", blueprintTyped: { $ne: true }, executiveReview: { $ne: true },
       missionId: null, objectiveId: null, seriesId: null, scheduledAt: null, conversationActor: null, delegatedBy: null,
     });
     if (session) {
@@ -1270,6 +1294,7 @@ function createRouter({
     }
     if (parent?.blueprintTyped) return reject(res, 409, "Run a Blueprint revision to execute typed Blueprint steps.");
     if (parent?.missionId) return reject(res, 409, "Use the mission controls to continue a mission step.");
+    if (parent?.executiveReview) return reject(res, 409, "Use a First Mate conversation to send instructions. Executive reviews follow the service schedule.");
     if (parent && profile === "scoped" && parent.scopedRevision !== scopedRevision) {
       return reject(res, 409, "The scoped permissions changed. Start a new conversation to use them.");
     }
@@ -1344,5 +1369,5 @@ function createRouter({
   return router;
 }
 
-module.exports = createRouter();
+module.exports = createRouter({ executiveEnabled: true });
 module.exports.createRouter = createRouter;

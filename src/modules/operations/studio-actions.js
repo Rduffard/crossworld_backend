@@ -16,7 +16,7 @@ const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, 
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
 function createStudioActions({ proposals, jobs, projects, objectives, workforce, knowledge, references, owner, online, headquarters,
-  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost }) {
+  missionBriefing, reviseMission, inspectMission, registerMission, recoverMission, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost, executivePaused }) {
   const browser = express.Router();
   const worker = express.Router();
   async function directTurn(req) {
@@ -27,7 +27,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: req.params.id, ownerId: owner(), activeHost: host._id, hostId: host._id, instance,
       status: "running", leaseUntil: { $gt: new Date() }, workerRole: { $in: [null, "direct"] },
       objectiveId: null, employeeId: null, studioTools: true,
-    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, missionId: 1, workspace: 1 } });
+    }, { projection: { sessionId: 1, studioActor: 1, model: 1, effort: 1, mediaInputs: 1, profile: 1, missionId: 1, workspace: 1, executiveReview: 1 } });
   }
 
   worker.post("/jobs/:id/studio-briefing", async (req, res) => {
@@ -85,6 +85,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const { action, grantId } = req.body;
     if (action === "inspect") return inspectMission(actor, hostId, grantId, res);
     if (!["register", "revise", "recover"].includes(action)) return fail(res, 400, "Choose register, inspect, revise or recover.");
+    if (actor.executiveReview && await executivePaused(owner())) return fail(res, 423, "First Mate executive changes are paused.");
     if (!workerEnabled || await inMaintenance()) return fail(res, 423, "Mission changes are unavailable during maintenance.");
     if (action === "register") return registerMission(actor, hostId, grantId, res);
     if (action === "recover") return recoverMission(actor, hostId, req.body, res);
@@ -104,6 +105,8 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const source = await directTurn(req);
     if (!source?.studioActor?.id || !workerEnabled) return fail(res, 409, "An active, bound First Mate is required.");
     if (source.missionId) return fail(res, 409, "The mission controller owns this step’s follow-on dispatch.");
+    if (source.executiveReview && await executivePaused(owner())) return fail(res, 423, "First Mate executive changes are paused.");
+    if (source.executiveReview && !candidate) return fail(res, 400, "An executive review delegation requires an exact candidate.");
     const ownerId = owner();
     const id = operationsReviewId(source._id);
     const key = { _id: id, ownerId, "delegatedBy.sourceTurnId": source._id };
@@ -117,6 +120,11 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
         job.delegatedBy.candidate?.repository === candidate?.repository && job.delegatedBy.candidate?.commit === candidate?.commit
       ? res.json(receipt(job)) : fail(res, 409, "This turn already delegated an Operations review.");
     if (existing) return replay(existing);
+    if (source.executiveReview) {
+      const prior = await jobs().findOne({ ownerId, "delegatedBy.sessionId": source.sessionId,
+        "delegatedBy.candidate.repository": candidate.repository, "delegatedBy.candidate.commit": candidate.commit });
+      if (prior) return res.json(receipt(prior));
+    }
     if (await inMaintenance()) return fail(res, 423, "New executions are paused for production maintenance.");
 
     const host = req.operationsHost;
@@ -169,7 +177,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       _id: id, ownerId, ...assignment, title: "Read-only Operations interface review", prompt,
       hostId: isolated?._id || host._id, workspace: project.workspace, profile: "read-only", model: source.model, effort: source.effort,
       ...(isolated ? { isolatedReview: true } : {}),
-      resumeParent: { id: source._id, hostId: host._id },
+      ...(source.executiveReview ? {} : { resumeParent: { id: source._id, hostId: host._id } }),
       workerRole: "assignment", sessionId: id, parentId: null, codexThreadId: null, status: "queued",
       ...(source.mediaInputs?.length ? { mediaInputs: source.mediaInputs } : {}),
       delegatedBy: {
@@ -202,6 +210,7 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }
     const job = await directTurn(req);
     if (!job) return fail(res, 409, "An active First Mate turn is required.");
+    if (job.executiveReview && await executivePaused(ownerId)) return fail(res, 423, "First Mate executive changes are paused.");
     if (job.missionId) return fail(res, 409, "Mission steps can read records. Use the owner’s mission controls to change the plan.");
     const candidates = await projects().find({ ownerId, status: "active", name: sameName(project.trim()) }, {
       projection: { name: 1, revision: 1 },
