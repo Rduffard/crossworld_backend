@@ -574,8 +574,22 @@ try {
           ...revision.steps.slice(2)] }), { status: 403 });
       await coordinate(inheritedBaseline, revision);
       await assert.rejects(coordinate(inheritedBaseline, revision), { status: 409 });
-      await finish(inheritedBaseline, "MISSION_RESULT: PASS");
-      const evidenceJob = await scopedClaim();
+      const candidateUrl = `https://api.github.com/repos/Rduffard/${exactCandidate.repository}/git/commits/${exactCandidate.commit}`;
+      let evidenceChecks = 0;
+      let evidenceJob;
+      globalThis.fetch = async (url, ...args) => {
+        if (url !== candidateUrl) return originalFetch(url, ...args);
+        evidenceChecks++;
+        return Response.json({ sha: exactCandidate.commit });
+      };
+      try {
+        await finish(inheritedBaseline, "MISSION_RESULT: PASS");
+        evidenceJob = await scopedClaim();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+      assert.equal(evidenceChecks, 1, "The mission must verify the pinned evidence candidate before admission.");
+      assert.ok(evidenceJob, "The verified evidence step must be claimable.");
       assert.match(evidenceJob.prompt, /Step: evidence/);
       assert(evidenceJob.prompt.includes(exactCandidate.commit));
       assert.equal(evidenceJob.employeeContext.name, director.name);
