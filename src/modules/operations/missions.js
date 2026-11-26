@@ -14,6 +14,30 @@ const terminal = ["completed", "failed", "interrupted", "cancelled"];
 const outcomes = ["pass", "correct", "blocked"];
 const fail = (res, status, message) => res.status(status).json({ message });
 const isText = (value, limit) => typeof value === "string" && value.isWellFormed() && value.trim() && value.length <= limit;
+const candidatePattern = "(crossworld_backend|crossworld_creative)@([a-f0-9]{40})";
+const verdictPattern = new RegExp(
+  `^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \\t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?(?:; CANDIDATE: ${candidatePattern})?$`,
+);
+const recoveryCandidatePattern = new RegExp(`^CANDIDATE: ${candidatePattern}(?:\\r?\\n|$)`);
+
+function enduranceCandidateSource(mission, step) {
+  if (!mission.initiativeId || !mission.title?.startsWith("ENDURANCE - ") || !step.reviewer) return null;
+  const source = { review: "implement", retest: "correct" }[step.key];
+  return step.after.some(dep => dep.step === source && dep.result === "pass") ? source : null;
+}
+
+async function accessibleCandidate(candidate) {
+  if (!candidate) return false;
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/Rduffard/${candidate.repository}/git/commits/${candidate.commit}`,
+      { signal: AbortSignal.timeout(5000), redirect: "error" },
+    );
+    return response.ok && (await response.json()).sha === candidate.commit;
+  } catch {
+    return false;
+  }
+}
 
 function windowEnd(value, now = Date.now()) {
   const end = new Date(typeof value === "string" ? value : NaN);
@@ -375,6 +399,17 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       if (mission.reason !== reason) await change(mission, { reason });
       return;
     }
+    const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
+    const candidateSource = enduranceCandidateSource(mission, step);
+    const recoveryCandidate = candidateSource && recoveryCandidatePattern.exec(recovery?.resolution ?? "");
+    const candidate = recoveryCandidate ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
+      : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate);
+    if (candidateSource && !await accessibleCandidate(candidate)) {
+      await change(mission, { current: null, results: { ...mission.results, [step.key]: {
+        result: "blocked", reason: "Provide a full candidate commit accessible from its Crossworld GitHub repository before review.",
+      } } });
+      return;
+    }
     const actorQuery = step.reviewer
       ? { _id: step.reviewer, role: { $in: ["qa", "art-director"] } }
       : step.assignee ? { _id: step.assignee, role: { $in: ["worker", "lead", "art-director"] } }
@@ -393,7 +428,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       const job = previous?.jobId && await jobs().findOne({ _id: previous.jobId, ownerId: mission.ownerId });
       return job ? precedingResult(job, eventBatches(), { limit: 1000 }) : "";
     }));
-    const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
+    const producesCandidate = mission.steps.some(item => enduranceCandidateSource(mission, item) === step.key);
     const priorJob = recovery?.previous.jobId && await jobs().findOne({
       ...currentJob(mission), _id: recovery.previous.jobId,
     });
@@ -406,6 +441,11 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       ] : []),
       "Report the evidence and end with exactly one line: MISSION_RESULT: PASS, MISSION_RESULT: CORRECT, or MISSION_RESULT: BLOCKED. " +
         "To recommend an approved ready step, use the format MISSION_RESULT: PASS; NEXT: step-key. CORRECT means concrete corrective work is needed.",
+      ...(producesCandidate ? [
+        "Before returning PASS, commit the validated changes and ensure the full commit resolves from the Crossworld GitHub repository. " +
+          "End with MISSION_RESULT: PASS; CANDIDATE: repository@full-commit-sha. " +
+          "If you include NEXT, place it before CANDIDATE. For an unchanged correction, reuse the verified commit.",
+      ] : []),
       "Mission: " + mission.title + "\nStep: " + step.title + "\n" + step.prompt,
       ...(recovery ? [
         "Resume the unfinished work for this step. Verify the prior artifacts and reuse completed work. " +
@@ -414,8 +454,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
             : "The owner supplied the following resolution for this step within its existing authorization:\n") + recovery.resolution,
         priorEvidence,
       ] : []),
-      ...(step.candidate ? [
-        `Review target: ${step.candidate.repository} commit ${step.candidate.commit}. Resolve the full commit with read-only Git commands. Report the observed commit and block if it is unavailable.`,
+      ...(candidate ? [
+        `Review target: ${candidate.repository} commit ${candidate.commit}. Resolve the full commit with read-only Git commands. Report the observed commit and block if it is unavailable.`,
       ] : []),
       "Approved mission steps and recorded outcomes: " + JSON.stringify(mission.steps.map(item =>
         [item.key, item.title, mission.results[item.key]?.result || "outstanding"])),
@@ -432,7 +472,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     try {
       await jobs().insertOne({ _id, ownerId: mission.ownerId, hostId: mission.hostId, missionId: mission._id,
         missionStep: step.key, title: mission.title + " · " + step.title, sessionId: _id,
-        ...(step.candidate ? { reviewCandidate: step.candidate } : {}),
+        ...(candidate ? { reviewCandidate: candidate } : {}),
         parentId: null, codexThreadId: null,
         workspace: receipt && ["development", "workshop"].includes(profile) ? profile : mission.workspace,
         profile,
@@ -497,11 +537,13 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
           continue;
         }
         const line = job.status === "completed" && await lastResponseLine(job, eventBatches());
-        const verdict = typeof line === "string" && /^MISSION_RESULT: (PASS|CORRECT|BLOCKED)(?:[ \t]*; NEXT: ([a-z][a-z0-9-]{0,39}))?$/.exec(line);
+        const verdict = typeof line === "string" && verdictPattern.exec(line);
         const result = verdict ? verdict[1].toLowerCase() : "blocked";
         const fields = { current: null, preferred: verdict?.[2] || null, reason: "",
           results: { ...mission.results, [mission.current.step]: { jobId: job._id, result,
             executionStatus: job.status, finishedAt: job.finishedAt,
+            ...(result === "pass" && verdict[3] ? { candidate: { repository: verdict[3], commit: verdict[4] } } : {}),
+            ...(job.reviewCandidate ? { reviewCandidate: job.reviewCandidate } : {}),
             ...(mission.current.previousJobId ? { previousJobId: mission.current.previousJobId } : {}),
             ...(verdict ? {} : { reason: job.error === preflightChanged ? preflightChanged : "No valid completion verdict." }) } } };
         if (!(await change(mission, fields)).matchedCount) continue;

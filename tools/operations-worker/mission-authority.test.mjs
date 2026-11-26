@@ -7,6 +7,51 @@ const id = "30e3fc4b-4e36-463b-bb39-8668497c5341";
 const firstMate = { _id: "new-turn", sessionId: "new-session", workspace: "development",
   studioActor: { id: "first-mate" } };
 
+test("ENDURANCE only queues independent review for a repository-resolvable commit", async t => {
+  const candidate = { repository: "crossworld_creative", commit: "a".repeat(40) };
+  const host = { _id: "relay", ownerId: "owner", profiles: ["full-access"], efforts: ["low"] };
+  const implement = { key: "implement", profile: "full-access", after: [] };
+  const review = { key: "review", profile: "full-access", reviewer: "trace",
+    after: [{ step: "implement", result: "pass" }] };
+  const fetch = t.mock.method(globalThis, "fetch", async () => ({ ok: false }));
+  for (const scenario of ["missing", "unavailable", "verified recovery"]) {
+    const recovered = scenario === "verified recovery";
+    if (recovered) fetch.mock.mockImplementation(async url => ({
+      ok: url.endsWith("/" + candidate.repository + "/git/commits/" + candidate.commit),
+      json: async () => ({ sha: candidate.commit }),
+    }));
+    const attempts = [];
+    const jobs = [];
+    const mission = { _id: id, initiativeId: "initiative", title: "ENDURANCE - Test",
+      ownerId: host.ownerId, hostId: host._id, effort: "low", revision: 0, approvals: {},
+      current: { step: "review", jobId: "review-job", ...(recovered ? { recoveryJobId: "review-job" } : {}) },
+      steps: [implement, review],
+      results: { implement: { result: "pass", ...(scenario === "unavailable" ? { candidate } : {}) } },
+      recoveries: recovered ? [{ jobId: "review-job", previous: {},
+        resolution: `CANDIDATE: ${candidate.repository}@${candidate.commit}\nUse the existing handoff.` }] : [],
+    };
+    const controller = missions.createMissions({
+      records: () => ({
+        updateMany: async () => {},
+        find: () => ({ sort: () => [mission] }),
+        updateOne: async (_query, change) => attempts.push(change.$set),
+      }),
+      jobs: () => ({ findOne: async () => null, insertOne: async job => jobs.push(job) }),
+      workforce: () => ({ find: () => ({ limit: () => ({ toArray: async () => [{ _id: "trace", role: "qa" }] }) }) }),
+    });
+    await controller.reconcile(host, id);
+    if (recovered) {
+      assert.equal(jobs.length, 1);
+      assert.deepEqual(jobs[0].reviewCandidate, candidate);
+      assert.match(jobs[0].prompt, new RegExp(candidate.commit));
+    } else {
+      assert.equal(jobs.length, 0);
+      assert.equal(attempts[0].results.review.result, "blocked");
+    }
+  }
+  assert.equal(fetch.mock.callCount(), 2);
+});
+
 function fixture(overrides = {}) {
   const end = new Date(Date.now() + 60_000);
   let record = { _id: id, ownerId: "owner", hostId: "relay", workspace: "development",
