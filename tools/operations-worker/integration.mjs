@@ -449,7 +449,7 @@ try {
         steps: [step("accept", [], { requires: ["read"], approval: true }),
           step("verify", dep("accept"), { requires: ["read"] })] };
       assert.equal((await missionApi("/grants", "POST", nextPlan))[0], 201);
-      const initiative = { id: initiativeId, title: "Initiative integration", blueprintRevision: "fixture-1",
+      const initiative = { id: initiativeId, title: "Initiative integration", blueprintRevision: "fixture-1", approvePlan: true,
         anchorId: inheritedId, missions: [{ grantId: nextMissionId, after: [inheritedId] }] };
       const inheritedBeat = () => send("/heartbeat", { instance, efforts: ["low"], profiles: ["read-only", "full-access"],
         missionPreflights: [report("read-only", ["read"]), report("full-access", inherited.steps[1].requires,
@@ -466,7 +466,13 @@ try {
       const receipts = await Promise.all([registration(), registration()]);
       assert(receipts.every(receipt => receipt.status === "active" && receipt.registration.actorId === barnaby._id));
       assert.equal((await missionApi("/initiatives", "POST", initiative, owner))[0], 403);
-      assert.equal((await missionApi("/initiatives", "POST", initiative))[0], 201);
+      assert.equal((await missionApi("/initiatives", "POST", { ...initiative, approvePlan: false }))[0], 400);
+      const [enrolled, receipt] = await missionApi("/initiatives", "POST", initiative);
+      assert.equal(enrolled, 201);
+      assert.equal(receipt.approvalSource, "authenticated-owner-enrollment");
+      const [pending] = (await missionApi("/initiatives/" + initiativeId))[1].missions;
+      assert.equal(pending.dependencies[0].status, "active");
+      assert.equal(pending.dependencies[0].state, "pending");
       await finish(coordinator, "Registered the authorized fixture.");
       const inheritedBaseline = await scopedClaim();
       assert.equal(inheritedBaseline.profile, "read-only");
@@ -541,9 +547,18 @@ try {
         results: { close: { result: "pass", jobId: "9d8d10aa-b115-c0bf-1cd1-548be6161434" } } });
       assert.equal((await missionApi("/grants", "POST", { ...nextPlan, id: horizonNextId, initiativeId: horizonId }))[0], 201);
       assert.equal((await missionApi("/initiatives", "POST", {
-        id: horizonId, anchorId: horizonAnchorId, title: "HORIZON", blueprintRevision: "2026-11-25",
+        id: horizonId, anchorId: horizonAnchorId, title: "HORIZON", blueprintRevision: "2026-11-25", approvePlan: true,
         missions: [{ grantId: horizonNextId, after: [horizonAnchorId] }],
       }))[0], 201);
+      for (const [status, state] of [["blocked", "needs-attention"], ["terminated", "cannot-continue"]]) {
+        await missionStore.updateOne({ _id: horizonAnchorId, ownerId: foundationOwner }, { $set: { status } });
+        assert.equal(await scopedClaim(), null);
+        const [waiting] = (await missionApi("/initiatives/" + horizonId))[1].missions;
+        assert.equal(waiting.status, "authorized");
+        assert.equal(waiting.dependencies[0].status, status);
+        assert.equal(waiting.dependencies[0].state, state);
+      }
+      await missionStore.updateOne({ _id: horizonAnchorId, ownerId: foundationOwner }, { $set: { status: "completed" } });
       assert.equal(await scopedClaim(), null);
       assert.equal((await missionStore.findOne({ _id: horizonNextId })).registration.initiativeId, horizonId);
       assert.equal(await scopedClaim(), null);
