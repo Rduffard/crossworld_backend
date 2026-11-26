@@ -558,7 +558,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     try {
       await jobs().insertOne({ _id, ownerId: mission.ownerId, hostId: mission.hostId, missionId: mission._id,
         missionStep: step.key, title: mission.title + " · " + step.title, sessionId: _id,
-        ...(candidate ? { reviewCandidate: candidate } : {}),
+        ...(candidate ? { reviewCandidate: candidate, reviewCandidateVerified: true } : {}),
         parentId: null, codexThreadId: null,
         workspace: receipt && ["development", "workshop"].includes(profile) ? profile : mission.workspace,
         profile,
@@ -695,6 +695,12 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const { reason, receipt } = resolveRoute(host, mission, step);
     if (reason || job.profile !== (receipt?.effectiveProfile ?? step.profile) || !!receipt !== (job.requiresMissionPreflight === true) ||
         receipt?.scope !== job.scopedRevision) return false;
+    if (step.candidate || enduranceCandidateSource(mission, step)) {
+      if (job.profile !== "read-only" || step.allowProfileFallback || !job.reviewCandidate ||
+          (step.candidate && !isDeepStrictEqual(job.reviewCandidate, step.candidate))) return false;
+      if (job.reviewCandidateVerified !== true &&
+          await candidateAvailability(job.reviewCandidate) !== "verified") return false;
+    }
     const accepted = await records().updateOne({ ...query, revision: mission.revision }, { $currentDate: { "current.admittedAt": true } });
     return accepted.matchedCount === 1 && (receipt || true);
   }
