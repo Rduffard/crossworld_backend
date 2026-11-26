@@ -4,7 +4,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { lastResponseLine, precedingResult } = require("./objective-runs");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 const { usageHoldUntil } = require("./usage");
-const { createInitiatives } = require("./mission-initiatives");
+const { createInitiatives, missionStatus, expiringMissionStatuses } = require("./mission-initiatives");
 const { allowsStep, authorization, capabilityList, inheritedAuthorization, preflightChanged, resolveRoute } = require("./mission-capabilities");
 
 const uuid = /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/;
@@ -102,7 +102,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const job = record.current && await jobs().findOne(currentJob(mission), {
       projection: { status: 1, startedAt: 1, finishedAt: 1 },
     });
-    const expired = ["active", "paused"].includes(record.status) && record.endsAt <= new Date();
+    const expired = missionStatus(record) === "expired";
     const { ready } = readiness(mission);
     const available = ready.filter(step => !step.approval || record.approvals[step.key]);
     return { ...record, ...(expired ? { status: "expired", reason: "Authorized operating window ended." } : {}),
@@ -277,12 +277,12 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     if (action === "terminate" && ["authorized", "active", "paused", "expired", "blocked"].includes(mission.status)) {
       fields = { status: "terminated", reason: "Terminated by owner." };
     }
-    if (action === "resume" && (["paused", "expired"].includes(mission.status) ||
-        (mission.status === "active" && mission.endsAt <= new Date()))) {
+    if (action === "resume" && ["paused", "expired"].includes(missionStatus(mission))) {
       const end = endsAt ? windowEnd(endsAt) : mission.endsAt > new Date() && mission.endsAt;
       if (!end) return fail(res, 400, "Authorize a new operating window before resuming.");
-      fields = mission.initiativeId && !mission.registration
-        ? { status: "authorized", endsAt: end, reason: "Waiting for initiative registration." }
+      fields = mission.coordinatorActorId && !mission.registration
+        ? { status: "authorized", endsAt: end, reason: mission.initiativeId ?
+          "Waiting for initiative registration." : "Authorized for First Mate registration." }
         : { status: "active", endsAt: end, reason: "" };
     }
     if (action === "approve" && ["active", "paused"].includes(mission.status) &&
@@ -459,7 +459,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const scope = { ownerId: host.ownerId, hostId: host._id };
     if (!missionId && !usageHoldUntil(host.usage)) await initiativeController.reconcile(scope);
     if (missionId) scope._id = missionId;
-    await records().updateMany({ ...scope, status: { $in: ["authorized", "active", "paused"] }, endsAt: { $lte: new Date() } }, {
+    await records().updateMany({ ...scope, status: { $in: expiringMissionStatuses }, endsAt: { $lte: new Date() } }, {
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
     });
     if (usageHoldUntil(host.usage)) return;

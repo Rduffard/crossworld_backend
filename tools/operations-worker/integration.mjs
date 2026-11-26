@@ -543,13 +543,26 @@ try {
       const horizonNextId = randomUUID();
       const missionStore = db.db.collection("operations_missions");
       await missionStore.insertOne({ _id: horizonAnchorId, ownerId: foundationOwner, hostId, workspace: body.workspace,
-        status: "completed", completionStep: "close", revision: 14,
+        status: "completed", completionStep: "close", revision: 14, steps: [], approvals: {},
         results: { close: { result: "pass", jobId: "9d8d10aa-b115-c0bf-1cd1-548be6161434" } } });
       assert.equal((await missionApi("/grants", "POST", { ...nextPlan, id: horizonNextId, initiativeId: horizonId }))[0], 201);
       assert.equal((await missionApi("/initiatives", "POST", {
         id: horizonId, anchorId: horizonAnchorId, title: "HORIZON", blueprintRevision: "2026-11-25", approvePlan: true,
         missions: [{ grantId: horizonNextId, after: [horizonAnchorId] }],
       }))[0], 201);
+      await missionStore.updateOne({ _id: horizonNextId, ownerId: foundationOwner },
+        { $set: { endsAt: new Date(Date.now() - 1) } });
+      const elapsed = (await missionApi(""))[1].find(record => record._id === horizonNextId);
+      assert.equal((await missionStore.findOne({ _id: horizonNextId })).status, "authorized");
+      assert.equal(elapsed.status, "expired");
+      assert.equal((await missionApi("/initiatives/" + horizonId))[1].missions[0].status, "expired");
+      const renewal = { action: "resume", revision: elapsed.revision, endsAt: new Date(Date.now() + 120_000).toISOString() };
+      assert.equal((await missionApi("/" + horizonNextId, "PATCH", renewal, owner))[0], 403);
+      const [renewed, renewedGrant] = await missionApi("/" + horizonNextId, "PATCH", renewal);
+      assert.equal(renewed, 200);
+      assert.equal(renewedGrant.status, "authorized");
+      assert.equal(renewedGrant.registration, undefined);
+      assert.equal(await jobs.countDocuments({ missionId: horizonNextId }), 0);
       for (const [status, state] of [["blocked", "needs-attention"], ["terminated", "cannot-continue"]]) {
         await missionStore.updateOne({ _id: horizonAnchorId, ownerId: foundationOwner }, { $set: { status } });
         assert.equal(await scopedClaim(), null);

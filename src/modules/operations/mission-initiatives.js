@@ -1,11 +1,12 @@
 const { isDeepStrictEqual } = require("node:util");
+const expiringMissionStatuses = ["authorized", "active", "paused"];
+const missionStatus = (mission, now = new Date()) => !mission ? "unavailable" :
+  expiringMissionStatuses.includes(mission.status) && mission.endsAt <= now ? "expired" : mission.status;
 
 function createInitiatives({ initiatives, records, owner, uuid, fail }) {
   const scopeFor = initiative => ({ ownerId: initiative.ownerId, hostId: initiative.hostId, workspace: initiative.workspace });
   const passed = mission => mission?.status === "completed" && mission.completionStep &&
     mission.results?.[mission.completionStep]?.result === "pass";
-  const statusOf = (mission, now) => !mission ? "unavailable" :
-    ["authorized", "active", "paused"].includes(mission.status) && mission.endsAt <= now ? "expired" : mission.status;
 
   async function missionStates(initiative) {
     const ids = [...new Set(initiative.missions.flatMap(({ grantId, after }) => [grantId, ...after]))];
@@ -81,13 +82,13 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
         const grant = states.get(grantId);
         const dependencies = after.map(id => {
           const predecessor = states.get(id);
-          const status = statusOf(predecessor, now);
+          const status = missionStatus(predecessor, now);
           const state = passed(predecessor) ? "passed" :
             ["terminated", "unavailable", "completed"].includes(status) ? "cannot-continue" :
               ["paused", "expired", "blocked"].includes(status) ? "needs-attention" : "pending";
           return { id, title: predecessor?.title, status, state };
         });
-        return { grantId, after, status: statusOf(grant, now), dependencies,
+        return { grantId, after, status: missionStatus(grant, now), dependencies,
           waitingFor: dependencies.filter(dependency => dependency.state !== "passed").map(dependency => dependency.id) };
       });
       delete initiative.ownerId;
@@ -121,4 +122,4 @@ function createInitiatives({ initiatives, records, owner, uuid, fail }) {
   return { mount, reconcile };
 }
 
-module.exports = { createInitiatives };
+module.exports = { createInitiatives, missionStatus, expiringMissionStatuses };
