@@ -9,24 +9,28 @@ const firstMate = { _id: "new-turn", sessionId: "new-session", workspace: "devel
 
 test("ENDURANCE only queues independent review for a repository-resolvable commit", async t => {
   const candidate = { repository: "crossworld_creative", commit: "a".repeat(40) };
-  const host = { _id: "relay", ownerId: "owner", profiles: ["full-access"], efforts: ["low"] };
+  const host = { _id: "relay", ownerId: "owner", profiles: ["full-access", "read-only"], efforts: ["low"] };
   const implement = { key: "implement", profile: "full-access", after: [] };
-  const review = { key: "review", profile: "full-access", reviewer: "trace",
+  const review = { key: "review", profile: "read-only", reviewer: "trace",
     after: [{ step: "implement", result: "pass" }] };
-  const fetch = t.mock.method(globalThis, "fetch", async () => ({ ok: false }));
-  for (const scenario of ["missing", "unavailable", "verified recovery"]) {
-    const recovered = scenario === "verified recovery";
-    if (recovered) fetch.mock.mockImplementation(async url => ({
-      ok: url.endsWith("/" + candidate.repository + "/git/commits/" + candidate.commit),
-      json: async () => ({ sha: candidate.commit }),
-    }));
+  const fetch = t.mock.method(globalThis, "fetch", async () => ({ status: 404 }));
+  for (const scenario of ["missing", "unavailable", "full-access", "fallback", "outage", "verified recovery"]) {
+    const recovered = ["full-access", "fallback", "verified recovery"].includes(scenario);
+    const before = fetch.mock.callCount();
+    if (scenario === "outage") fetch.mock.mockImplementation(async () => ({ status: 503 }));
+    if (scenario === "verified recovery") fetch.mock.mockImplementation(async url => {
+      if (fetch.mock.callCount() === before) return { status: 429 };
+      assert.ok(url.endsWith("/" + candidate.repository + "/git/commits/" + candidate.commit));
+      return { ok: true, json: async () => ({ sha: candidate.commit }) };
+    });
     const attempts = [];
     const jobs = [];
     const mission = { _id: id, initiativeId: "initiative", title: "ENDURANCE - Test",
       ownerId: host.ownerId, hostId: host._id, effort: "low", revision: 0, approvals: {},
       current: { step: "review", jobId: "review-job", ...(recovered ? { recoveryJobId: "review-job" } : {}) },
-      steps: [implement, review],
-      results: { implement: { result: "pass", ...(scenario === "unavailable" ? { candidate } : {}) } },
+      steps: [implement, { ...review, ...(scenario === "full-access" ? { profile: "full-access" } : {}),
+        ...(scenario === "fallback" ? { allowProfileFallback: true } : {}) }],
+      results: { implement: { result: "pass", ...(["unavailable", "outage"].includes(scenario) ? { candidate } : {}) } },
       recoveries: recovered ? [{ jobId: "review-job", previous: {},
         resolution: `CANDIDATE: ${candidate.repository}@${candidate.commit}\nUse the existing handoff.` }] : [],
     };
@@ -40,16 +44,20 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
       workforce: () => ({ find: () => ({ limit: () => ({ toArray: async () => [{ _id: "trace", role: "qa" }] }) }) }),
     });
     await controller.reconcile(host, id);
-    if (recovered) {
+    if (scenario === "verified recovery") {
       assert.equal(jobs.length, 1);
       assert.deepEqual(jobs[0].reviewCandidate, candidate);
+      assert.equal(jobs[0].profile, "read-only");
       assert.match(jobs[0].prompt, new RegExp(candidate.commit));
     } else {
       assert.equal(jobs.length, 0);
       assert.equal(attempts[0].results.review.result, "blocked");
+      const reason = attempts[0].results.review.reason;
+      if (scenario === "outage") assert.match(reason, /verification failed twice/);
+      if (["full-access", "fallback"].includes(scenario)) assert.match(reason, /Read Only route/);
     }
   }
-  assert.equal(fetch.mock.callCount(), 2);
+  assert.equal(fetch.mock.callCount(), 5);
 });
 
 function fixture(overrides = {}) {

@@ -26,17 +26,21 @@ function enduranceCandidateSource(mission, step) {
   return step.after.some(dep => dep.step === source && dep.result === "pass") ? source : null;
 }
 
-async function accessibleCandidate(candidate) {
-  if (!candidate) return false;
-  try {
-    const response = await fetch(
-      `https://api.github.com/repos/Rduffard/${candidate.repository}/git/commits/${candidate.commit}`,
-      { signal: AbortSignal.timeout(5000), redirect: "error" },
-    );
-    return response.ok && (await response.json()).sha === candidate.commit;
-  } catch {
-    return false;
+async function candidateAvailability(candidate) {
+  if (!candidate) return "missing";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/Rduffard/${candidate.repository}/git/commits/${candidate.commit}`,
+        { signal: AbortSignal.timeout(5000), redirect: "error" },
+      );
+      if (response.ok) return (await response.json()).sha === candidate.commit ? "verified" : "missing";
+      if ([404, 422].includes(response.status)) return "missing";
+    } catch {
+      // Retry a failed verification once.
+    }
   }
+  return "unverified";
 }
 
 function windowEnd(value, now = Date.now()) {
@@ -404,9 +408,22 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const recoveryCandidate = candidateSource && recoveryCandidatePattern.exec(recovery?.resolution ?? "");
     const candidate = recoveryCandidate ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
       : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate);
-    if (candidateSource && !await accessibleCandidate(candidate)) {
+    let candidateBlock;
+    if (candidateSource) {
+      if (step.profile !== "read-only" || step.allowProfileFallback) {
+        candidateBlock = "Candidate review requires an approved Read Only route without profile fallback.";
+      } else {
+        const availability = await candidateAvailability(candidate);
+        if (availability === "missing") {
+          candidateBlock = "Provide a full candidate commit accessible from its Crossworld GitHub repository before review.";
+        } else if (availability === "unverified") {
+          candidateBlock = "GitHub candidate verification failed twice. Retry verification with the same commit.";
+        }
+      }
+    }
+    if (candidateBlock) {
       await change(mission, { current: null, results: { ...mission.results, [step.key]: {
-        result: "blocked", reason: "Provide a full candidate commit accessible from its Crossworld GitHub repository before review.",
+        result: "blocked", reason: candidateBlock,
       } } });
       return;
     }
