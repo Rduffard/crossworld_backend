@@ -27,6 +27,15 @@ function enduranceCandidateSource(mission, step) {
   return step.after.some(dep => dep.step === source && dep.result === "pass") ? source : null;
 }
 
+function selectedReviewCandidate(mission, step, recovery) {
+  const source = enduranceCandidateSource(mission, step);
+  const override = source && recoveryCandidatePattern.exec(recovery?.resolution ?? "");
+  const approved = source === "implement" && mission.approvedRecoveryCandidate;
+  if (approved) return approved;
+  if (override && !mission.recoveryApprovalId) return { repository: override[1], commit: override[2] };
+  return step.candidate || (source && mission.results[source]?.candidate);
+}
+
 async function candidateAvailability(candidate) {
   if (!candidate) return "missing";
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -469,11 +478,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     }
     const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
     const candidateSource = enduranceCandidateSource(mission, step);
-    const recoveryCandidate = candidateSource && recoveryCandidatePattern.exec(recovery?.resolution ?? "");
-    const approvedReviewCandidate = candidateSource === "implement" && mission.approvedRecoveryCandidate;
-    const candidate = approvedReviewCandidate || (recoveryCandidate && !mission.recoveryApprovalId
-      ? { repository: recoveryCandidate[1], commit: recoveryCandidate[2] }
-      : step.candidate || (candidateSource && mission.results[candidateSource]?.candidate));
+    const candidate = selectedReviewCandidate(mission, step, recovery);
     let candidateBlock;
     if (candidateSource || step.candidate) {
       if (step.profile !== "read-only" || step.allowProfileFallback) {
@@ -635,7 +640,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
             ...(job.reviewCandidate ? { reviewCandidate: job.reviewCandidate } : {}),
             ...(mismatch ? { reason: "Implementation must report the exact owner-approved recovery candidate." } : {}),
             ...(mission.current.previousJobId ? { previousJobId: mission.current.previousJobId } : {}),
-            ...(verdict ? {} : { reason: job.error === preflightChanged ? preflightChanged : "No valid completion verdict." }) } } };
+            ...(verdict ? {} : { reason: job.candidateAdmissionError ||
+              (job.error === preflightChanged ? preflightChanged : "No valid completion verdict.") }) } } };
         if (!(await change(mission, fields)).matchedCount) continue;
         mission = { ...mission, ...fields, revision: mission.revision + 1 };
       }
@@ -696,10 +702,23 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     if (reason || job.profile !== (receipt?.effectiveProfile ?? step.profile) || !!receipt !== (job.requiresMissionPreflight === true) ||
         receipt?.scope !== job.scopedRevision) return false;
     if (step.candidate || enduranceCandidateSource(mission, step)) {
-      if (job.profile !== "read-only" || step.allowProfileFallback || !job.reviewCandidate ||
-          (step.candidate && !isDeepStrictEqual(job.reviewCandidate, step.candidate))) return false;
-      if (job.reviewCandidateVerified !== true &&
-          await candidateAvailability(job.reviewCandidate) !== "verified") return false;
+      if (job.profile !== "read-only" || step.allowProfileFallback) {
+        return { candidateRejection: "Candidate review requires an approved Read Only route without profile fallback." };
+      }
+      const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
+      const candidate = selectedReviewCandidate(mission, step, recovery);
+      if (!candidate || !isDeepStrictEqual(job.reviewCandidate, candidate)) {
+        return { candidateRejection: "Queued review candidate differs from the mission handoff. Resume review with the exact selected commit." };
+      }
+      if (job.reviewCandidateVerified !== true) {
+        const availability = await candidateAvailability(candidate);
+        if (availability === "missing") {
+          return { candidateRejection: "Queued review commit is unavailable in its Crossworld GitHub repository." };
+        }
+        if (availability === "unverified") {
+          return { candidateRejection: "GitHub candidate verification failed twice. Verification will retry.", retryCandidate: true };
+        }
+      }
     }
     const accepted = await records().updateOne({ ...query, revision: mission.revision }, { $currentDate: { "current.admittedAt": true } });
     return accepted.matchedCount === 1 && (receipt || true);

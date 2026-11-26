@@ -118,6 +118,8 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
       assert.deepEqual(jobs[0].reviewCandidate, candidate);
       assert.equal(jobs[0].profile, "read-only");
       assert.match(jobs[0].prompt, new RegExp(candidate.commit));
+      const stale = { ...jobs[0], reviewCandidate: { ...candidate, commit: "b".repeat(40) } };
+      assert.match((await controller.admit(stale, relay)).candidateRejection, /differs from the mission handoff/);
       if (explicit) {
         assert.equal(jobs[0].requiresMissionPreflight, true);
         assert.equal(await controller.admit(jobs[0], host), false);
@@ -127,9 +129,10 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
         assert.deepEqual(admission.verifiedCapabilities, ["read"]);
         const legacy = { ...jobs[0] };
         delete legacy.reviewCandidateVerified;
-        assert.equal(await controller.admit({ ...legacy, reviewCandidate: { ...candidate, commit: "b".repeat(40) } }, relay), false);
         fetch.mock.mockImplementation(async () => ({ status: 404 }));
-        assert.equal(await controller.admit(legacy, relay), false);
+        assert.match((await controller.admit(legacy, relay)).candidateRejection, /unavailable/);
+        fetch.mock.mockImplementation(async () => ({ status: 503 }));
+        assert.equal((await controller.admit(legacy, relay)).retryCandidate, true);
         fetch.mock.mockImplementation(async () => ({ ok: true, json: async () => ({ sha: candidate.commit }) }));
         assert.deepEqual((await controller.admit(legacy, relay)).verifiedCapabilities, ["read"]);
       }
@@ -141,7 +144,7 @@ test("ENDURANCE only queues independent review for a repository-resolvable commi
       if (["full-access", "fallback"].includes(scenario)) assert.match(reason, /Read Only route/);
     }
   }
-  assert.equal(fetch.mock.callCount(), 9);
+  assert.equal(fetch.mock.callCount(), 11);
 });
 
 function fixture(overrides = {}) {
