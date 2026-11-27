@@ -3,6 +3,7 @@ const { precedingResult } = require("./objective-runs");
 const { budgetStatus, usageHoldUntil } = require("./usage");
 const { actionableGrants, conditionHeading, executiveEvents } = require("./executive-events");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
+const { relayJobCapabilities } = require("./relay-claims");
 
 const wakeInterval = 2 * 60_000;
 const defaultReconcileInterval = 5 * 60_000;
@@ -257,37 +258,38 @@ function createExecutiveService({
     const jobId = state === "Awaiting Decision" ? decisionJobId : job?._id;
     const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
     const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
-    const compatibleQueued = host && await jobs().countDocuments({
-      ownerId, hostId: host._id, status: "queued", effort: { $in: host.efforts ?? [] },
-      $and: [
-        { $or: [{ profile: { $exists: false } }, { profile: { $in: host.profiles ?? ["read-only"] } }] },
-        { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: host.scopedRevision || "" }] },
-        { $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date(now) } }] },
-      ],
-      ...(host.extendedPrompts === true ? {} : { requiresExtendedPrompt: { $ne: true } }),
+    const queue = host && {
+      ownerId, hostId: host._id, status: "queued", ...relayJobCapabilities(host),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
-    });
+    };
+    const [compatibleQueued, retry] = queue ? await Promise.all([
+      jobs().countDocuments({ ...queue, $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date(now) } }] }),
+      jobs().findOne({ ...queue, candidateRetryAt: { $gt: new Date(now) } },
+        { sort: { candidateRetryAt: 1 }, projection: { candidateRetryAt: 1 } }),
+    ]) : [];
     const activity = isPaused ? "paused" :
       decision ? "awaiting-owner-approval" :
       !host || !online(host, now) || !compatible(host) ? "relay-unavailable" :
       activeRuns.length ? "executing" :
       hold(host, now) ? "subscription-limit" :
       job?.status === "failed" || job?.status === "interrupted" ? "orchestration-failure" :
-      compatibleQueued || grants?.length || operations.missions.some(mission => mission.status === "active" && !mission.reason)
-        ? "awaiting-dispatch" : operations.queued.length ? "blocked" :
+      compatibleQueued || grants?.length ? "awaiting-dispatch" :
+      retry ? "awaiting-retry" : operations.queued.length ? "blocked" :
+      operations.missions.some(mission => mission.status === "active" && !mission.reason) ? "awaiting-dispatch" :
         operations.missions.some(mission => mission.status === "blocked" || mission.status === "active")
           ? "blocked" : "no-authorized-actionable-work";
     const activityReason = {
       "relay-unavailable": "Waiting for the enrolled relay.",
       executing: atCapacity ? "Work is running. All relay slots are occupied." : "Work is running.",
       "awaiting-dispatch": "Authorized work is awaiting dispatch.",
+      "awaiting-retry": "Waiting for the automatic candidate verification retry.",
       "orchestration-failure": "The latest First Mate activation failed. Open the execution for details.",
       "awaiting-owner-approval": "Operations requires an owner decision.",
       blocked: operations?.missions.find(mission => mission.reason)?.reason ||
         (operations?.queued.length ? "Queued work requires a compatible relay configuration." : "A mission dependency is blocked."),
       "no-authorized-actionable-work": "No authorized actionable work remains on this relay.",
     }[activity];
-    return { state, activity, capacity: operations?.capacity, compatibleQueued, decision,
+    return { state, activity, capacity: operations?.capacity, compatibleQueued, retryAt: retry?.candidateRetryAt, decision,
       ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true,
       reason: controlReason || activityReason, jobId,
       lastReviewAt: current?.at,

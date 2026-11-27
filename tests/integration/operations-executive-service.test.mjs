@@ -219,6 +219,18 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.hosts().updateOne({ _id: relay._id }, { $set: { profiles: ["read-only", "scoped"], scopedRevision: "current" } });
   await collections.jobs().updateMany({ _id: { $regex: "^unsupported-" } }, { $set: { scopedRevision: "stale" } });
   assert.equal((await status()).compatibleQueued, 1, "Stale scoped jobs are excluded even when the relay advertises scoped work");
+  await collections.records().deleteMany({ status: "authorized" });
+  await collections.jobs().updateMany({ status: "queued", executiveReview: true }, { $set: { status: "completed" } });
+  await collections.jobs().insertMany([
+    { _id: "media-only", mediaInputs: [{}] },
+    { _id: "backoff", candidateRetryAt: new Date(now + 60_000) },
+  ].map(job => ({ ...job, ownerId: relay.ownerId, hostId: relay._id, status: "queued", profile: "read-only", effort: "low" })));
+  const waiting = await status();
+  assert.equal(waiting.compatibleQueued, 0);
+  assert.equal(waiting.activity, "awaiting-retry");
+  assert.equal(+waiting.retryAt, now + 60_000);
+  now += 60_000;
+  assert.equal((await status()).compatibleQueued, 1, "The retry becomes ready while media still requires relay support");
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {

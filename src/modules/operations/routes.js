@@ -24,6 +24,7 @@ const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
 const { reconcileParentContinuations } = require("./parent-continuation");
 const { createExecutiveService } = require("./executive-service");
+const { relayJobCapabilities } = require("./relay-claims");
 const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
 const { rateLimitObservation, usageHoldUntil, shouldSampleUsage, budgetStatus, dispatchStopped } = require("./usage");
@@ -466,28 +467,22 @@ function createRouter({
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
+        const { $and: capabilities, ...relayFilters } = relayJobCapabilities(req.operationsHost, {
+          extendedPrompts: req.body.extendedPrompts === true, artifactImport: req.body.artifactImport === true,
+        });
         job = await jobs().findOneAndUpdate({
-          ...scope, effort: { $in: req.operationsHost.efforts || [] },
-          ...(req.operationsHost.missionOnly ? { requiresMissionPreflight: true } : {}),
-          ...(req.body.extendedPrompts === true && req.operationsHost.extendedPrompts === true
-            ? {} : { requiresExtendedPrompt: { $ne: true } }),
-          ...(!background && req.operationsHost.boundedCorrections !== true ? { workerRole: { $ne: "correction" } } : {}),
-          ...(req.operationsHost.blueprintBranches === true ? {} : { blueprintTyped: { $ne: true } }),
-          ...(req.operationsHost.media === true ? {} : { mediaInputs: { $exists: false } }),
-          ...(req.operationsHost.mediaOutput === true ? {} : { outputMedia: { $ne: true } }),
-          ...(req.operationsHost.artifactImport === true && req.body.artifactImport === true ? {} : { artifactImport: { $exists: false } }),
+          ...scope, ...relayFilters,
           ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false }, blueprintRunId: { $exists: false } } : {}),
           ...(held || !continuationEnabled ? { resumedFrom: { $exists: false } } : {}),
           ...(isolated ? { isolatedReview: true } : { isolatedReview: { $ne: true } }),
           ...(background ? { profile: "read-only" }
             : allocated || held ? { delegatedBy: { $exists: false } } : {}),
-          ...(req.operationsHost.employeeConversations === true ? {} : { "conversationActor.id": { $exists: false } }),
           $and: [
+            ...capabilities,
             ...(firstMateBusy ? [{ $nor: firstMateIdentity }] : []),
             ...(held || settings?.executivePaused === true || !executiveEnabled ? [{ executiveReview: { $ne: true } }] : []),
             { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
             { $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date() } }] },
-            { $or: [{ profile: { $ne: "scoped" } }, { scopedRevision: req.operationsHost.scopedRevision || "" }] },
             ...(background ? [{ $or: [
               { delegatedBy: { $exists: true }, workerRole: "assignment" },
               ...(!other?.profile || other.profile === "read-only" ? [{ blueprintTyped: true, workerRole: "qa" }] : []),
@@ -497,7 +492,6 @@ function createRouter({
               $or: [{ workspace: { $ne: other.workspace }, profile: { $nin: spansWorkspaces } }, { profile: { $in: [null, "read-only"] } }],
             }] : []),
             { $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date() } }] },
-            { $or: [{ profile: { $exists: false } }, { profile: { $in: req.operationsHost.profiles || ["read-only"] } }] },
           ],
         }, { $set: {
           status: "running", instance, activeHost,
