@@ -6,6 +6,7 @@ import express from "express";
 import { MongoClient } from "mongodb";
 import { startTestMongo } from "../support/mongo-fixture.mjs";
 import { createExecutiveService } from "../../src/modules/operations/executive-service.js";
+import { createMissions } from "../../src/modules/operations/missions.js";
 import { createRouter } from "../../src/modules/operations/routes.js";
 
 test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisions separate", async t => {
@@ -23,7 +24,9 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
     studioTools: true, studioActor: { id: actor._id, role: actor.role }, workspace: "development", model: "fixture", profile: "full-access" });
 
   let now = Date.now();
-  const create = () => createExecutiveService({ ...collections, online: () => true, enabled: true, clock: () => now });
+  const missions = createMissions(collections);
+  const create = () => createExecutiveService({ ...collections, eligibleMissionJobs: missions.eligible,
+    online: () => true, enabled: true, clock: () => now });
   let controller = create();
   const runs = () => collections.jobs().find({ executiveReview: true }).sort({ createdAt: 1 }).toArray();
   const status = () => controller.view(relay.ownerId);
@@ -231,7 +234,15 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(+waiting.retryAt, now + 60_000);
   await collections.records().insertOne({ _id: "independent-ready", ownerId: relay.ownerId, hostId: relay._id,
     status: "active", reason: "", endsAt: new Date(now + 3600_000) });
-  assert.equal((await status()).activity, "awaiting-dispatch", "Independent mission work takes priority over the retry");
+  assert.equal((await status()).activity, "awaiting-retry", "An active record alone does not establish eligibility");
+  await collections.records().updateOne({ _id: "independent-ready" }, { $set: { current: { step: "review", jobId: "mission-review" } } });
+  await collections.jobs().insertOne({ _id: "mission-review", ownerId: relay.ownerId, hostId: relay._id,
+    missionId: "independent-ready", status: "queued", profile: "read-only", effort: "low", requiresMissionPreflight: true });
+  assert.equal((await status()).activity, "awaiting-retry", "A mission poll must support preflight");
+  await collections.hosts().updateOne({ _id: relay._id }, { $set: { instance: "current",
+    primaryClaimOptions: { instance: "current", missionPreflight: true } } });
+  assert.equal((await status()).activity, "awaiting-dispatch", "An eligible independent mission takes priority over the retry");
+  await collections.jobs().deleteOne({ _id: "mission-review" });
   await collections.records().deleteOne({ _id: "independent-ready" });
   await collections.hosts().updateOne({ _id: relay._id }, { $set: { instance: "current", extendedPrompts: true, artifactImport: true,
     primaryClaimOptions: { instance: "prior", extendedPrompts: true, artifactImport: true } } });

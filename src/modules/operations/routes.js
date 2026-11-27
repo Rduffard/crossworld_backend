@@ -121,10 +121,11 @@ function createRouter({
   const missionRecords = () => db().collection("operations_missions");
   const initiativeRecords = () => db().collection("operations_mission_initiatives");
   const proposals = () => db().collection("operations_action_proposals");
-  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals, objectives,
-    eventBatches, online, enabled: workerEnabled && executiveEnabled, reconcileInterval: executiveReconcileInterval });
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
+  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals, objectives,
+    eligibleMissionJobs: missions.eligible, eventBatches, online, enabled: workerEnabled && executiveEnabled,
+    reconcileInterval: executiveReconcileInterval });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });
   const blueprintDefinitions = () => db().collection("operations_blueprints");
@@ -381,10 +382,12 @@ function createRouter({
     if (lane !== "primary" && (!background || req.operationsHost.backgroundReviews !== true)) {
       return reject(res, 409, "This relay has no background review slot.");
     }
-    const claimOptions = { extendedPrompts: req.body.extendedPrompts === true, artifactImport: req.body.artifactImport === true };
+    const claimOptions = { extendedPrompts: req.body.extendedPrompts === true, artifactImport: req.body.artifactImport === true,
+      missionPreflight: req.body.missionPreflight === true };
     const observed = req.operationsHost.primaryClaimOptions;
     if (!background && (observed?.instance !== instance ||
-        observed.extendedPrompts !== claimOptions.extendedPrompts || observed.artifactImport !== claimOptions.artifactImport)) {
+        observed.extendedPrompts !== claimOptions.extendedPrompts || observed.artifactImport !== claimOptions.artifactImport ||
+        observed.missionPreflight !== claimOptions.missionPreflight)) {
       await hosts().updateOne({ _id: req.operationsHost._id, ownerId: owner(), instance, revokedAt: null },
         { $set: { primaryClaimOptions: { instance, ...claimOptions } } });
     }

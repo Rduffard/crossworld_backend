@@ -28,7 +28,7 @@ function boundedSnapshot(snapshot, budget) {
 }
 
 function createExecutiveService({
-  dispatch, jobs, hosts, workforce, records, proposals, objectives, eventBatches, online, enabled, clock = Date.now,
+  dispatch, jobs, hosts, workforce, records, proposals, objectives, eligibleMissionJobs, eventBatches, online, enabled, clock = Date.now,
   reconcileInterval = defaultReconcileInterval,
 }) {
   const paused = (settings, now) => settings?.executivePaused === true || settings?.paused === true ||
@@ -260,11 +260,16 @@ function createExecutiveService({
     const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
     const observed = host?.primaryClaimOptions;
     const currentPoll = Boolean(observed && observed.instance === host.instance);
+    const supportsPreflight = currentPoll && observed.missionPreflight === true;
+    const missionJobs = host && await eligibleMissionJobs?.(ownerId, host, supportsPreflight);
+    const { $and: capabilities, ...filters } = host ? relayJobCapabilities(host, {
+      extendedPrompts: currentPoll && observed.extendedPrompts === true,
+      artifactImport: currentPoll && observed.artifactImport === true,
+    }) : {};
     const queue = host && {
-      ownerId, hostId: host._id, status: "queued", ...relayJobCapabilities(host, {
-        extendedPrompts: currentPoll && observed.extendedPrompts === true,
-        artifactImport: currentPoll && observed.artifactImport === true,
-      }),
+      ownerId, hostId: host._id, status: "queued", ...filters,
+      $and: [...capabilities, { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs ?? [] } }] }],
+      ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
     };
     const [compatibleQueued, retry] = queue ? await Promise.all([
@@ -272,14 +277,13 @@ function createExecutiveService({
       jobs().findOne({ ...queue, candidateRetryAt: { $gt: new Date(now) } },
         { sort: { candidateRetryAt: 1 }, projection: { candidateRetryAt: 1 } }),
     ]) : [];
-    const missionReady = operations?.missions.some(mission => mission.status === "active" && !mission.reason && !mission.current?.step);
     const activity = isPaused ? "paused" :
       decision ? "awaiting-owner-approval" :
       !host || !online(host, now) || !compatible(host) ? "relay-unavailable" :
       activeRuns.length ? "executing" :
       hold(host, now) ? "subscription-limit" :
       job?.status === "failed" || job?.status === "interrupted" ? "orchestration-failure" :
-      compatibleQueued || grants?.length || missionReady ? "awaiting-dispatch" :
+      compatibleQueued || grants?.length ? "awaiting-dispatch" :
       retry ? "awaiting-retry" : operations.queued.length ? "blocked" :
         operations.missions.some(mission => mission.status === "blocked" || mission.status === "active")
           ? "blocked" : "no-authorized-actionable-work";
