@@ -6,7 +6,7 @@ import express from "express";
 import { createStudioActions } from "../../src/modules/operations/studio-actions.js";
 import { backendClient } from "./worker.mjs";
 
-test("Run assignment admission ignores stale grant IDs and explains conflicts without duplicating work", async t => {
+test("Run assignment admission ignores stale grant IDs and returns existing work without duplicating it", async t => {
   const [ownerId, actorId, turnId, employeeId, projectId, objectiveId, instance] =
     Array.from({ length: 7 }, () => randomUUID());
   const studioActor = { id: actorId, role: "first-mate" };
@@ -60,12 +60,19 @@ test("Run assignment admission ignores stale grant IDs and explains conflicts wi
   assert.equal(queued.get(receipt.assignmentId).delegatedBy.grantId, undefined);
   assert.deepEqual(await submit(), receipt);
   queued.get(receipt.assignmentId).status = "running";
-  await assert.rejects(submit({ assignmentKey: "another-key", instruction: "Different work." }), error => {
-    assert.equal(error.status, 409);
-    assert.match(error.message, /HTTP 409: An assignment of type implementation already exists/);
-    assert.ok(error.message.includes(`Existing assignment state is running. Open ${receipt.url}.`));
-    return true;
-  });
+  assert.deepEqual(await submit({ assignmentKey: "another-key", instruction: "Different work." }),
+    { ...receipt, state: "running", reused: true });
+  assert.equal(queued.size, 1);
+
+  host.profiles = ["read-only"];
+  await assert.rejects(submit(), { status: 403, message: /required assignment profile/ });
+  host.profiles = ["development", "read-only"];
+  host.efforts = [];
+  await assert.rejects(submit(), { status: 403, message: /selected effort level/ });
+  host.efforts = ["low"];
+  host.boundedCorrections = false;
+  await assert.rejects(submit(), { status: 403, message: /implementation assignment type/ });
+  host.boundedCorrections = true;
   assert.equal(queued.size, 1);
 
   unrelatedDuplicate = true;

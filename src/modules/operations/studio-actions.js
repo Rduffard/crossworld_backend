@@ -163,24 +163,34 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     if (!autonomous && !grant) {
       return fail(res, 403, "An active, registered mission grant with commissioning authority is required for this assignment.");
     }
-    if (!selection?.project ||
-        (autonomous ? !await reportsTo(workforce, ownerId, selection.employee, actor.studioActor.id) :
-          mandate?.projectId !== selection.project._id || selection.employee.supervisorId !== actor.studioActor.id) ||
-        ![selection.employee.revision, selection.project.revision, selection.objective.revision].every(Number.isSafeInteger) ||
-        (browserVerification && (!host.browserVerification || (!autonomous && !grant.executiveAuthority.browserVerification))) ||
-        !host.profiles?.includes(profile) || !host.efforts?.includes(actor.effort) ||
-        (implementation && (!host.boundedCorrections || (assignmentType === "art" ? workspace !== "workshop" :
-          !correction && workspace !== "development"))) ||
-        (!autonomous && !grant.authorization.routes.some(route => route.profile === profile &&
-          ["read", ...(implementation ? ["write"] : [])].every(capability => route.capabilities.includes(capability))))) {
-      return fail(res, 403, autonomous
-        ? "The objective, employee reporting chain or relay capabilities do not authorize this assignment."
-        : "The grant, relay, objective or employee mandate does not authorize this assignment.");
+    if (!selection?.project) return fail(res, 403,
+      "The selected objective, project or employee is not eligible for this assignment's workspace and role.");
+    if (autonomous ? !await reportsTo(workforce, ownerId, selection.employee, actor.studioActor.id) :
+      mandate?.projectId !== selection.project._id || selection.employee.supervisorId !== actor.studioActor.id) {
+      return fail(res, 403, "The employee is outside the authorized reporting chain or assignment mandate.");
+    }
+    if (![selection.employee.revision, selection.project.revision, selection.objective.revision].every(Number.isSafeInteger)) {
+      return fail(res, 403, "The selected employee, project or objective is missing a valid revision.");
+    }
+    if (browserVerification && (!host.browserVerification || (!autonomous && !grant.executiveAuthority.browserVerification))) {
+      return fail(res, 403, "Browser verification is not authorized for this assignment.");
+    }
+    if (!host.profiles?.includes(profile)) return fail(res, 403, "The relay does not advertise the required assignment profile.");
+    if (!host.efforts?.includes(actor.effort)) return fail(res, 403, "The relay does not advertise the selected effort level.");
+    if (implementation && (!host.boundedCorrections || (assignmentType === "art" ? workspace !== "workshop" :
+      !correction && workspace !== "development"))) {
+      return fail(res, 403, "The relay or workspace does not authorize this implementation assignment type.");
+    }
+    if (!autonomous && !grant.authorization.routes.some(route => route.profile === profile &&
+      ["read", ...(implementation ? ["write"] : [])].every(capability => route.capabilities.includes(capability)))) {
+      return fail(res, 403, "The mission grant does not authorize the required assignment profile and capabilities.");
     }
     let source;
     if (autonomous) {
       if (selection.objective.autonomousDelivery?.objectiveRevision === selection.objective.revision) {
-        return fail(res, 409, "This objective revision already has an independently verified deliverable.");
+        const { qaJobId, sourceJobId: deliverableId } = selection.objective.autonomousDelivery;
+        return res.json({ state: "verified", assignmentId: qaJobId, sourceJobId: deliverableId,
+          url: "/operations?workspace=command&job=" + qaJobId });
       }
       const restricted = await workforce().findOne({ ownerId, kind: "project-assignment", employeeId,
         projectId: selection.project._id, objectiveId, status: { $ne: "assigned" },
@@ -198,8 +208,12 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
         ...(correction ? { executiveAssignmentType: "qa", "delegatedBy.scope": autonomousScope } :
           { assignedRole: { $nin: ["qa", "first-mate"] }, executiveAssignmentType: { $nin: ["qa", "browser"] } }),
       });
-      if (!source?.employeeId || (correction && !await responseMarker(source, eventBatches(), "QA_VERDICT: FAIL"))) {
-        return fail(res, 403, "Use independent QA on completed work or a concrete failed independent QA verdict for correction.");
+      if (!source?.employeeId) {
+        return fail(res, 403, "Choose a completed assignment on this objective in its workspace, performed by a different employee. Historical mission results can be supplied as evidence in the instruction.");
+      }
+      if (correction && !await responseMarker(source, eventBatches(), "QA_VERDICT: FAIL") &&
+          !await responseMarker(source, eventBatches(), "QA_VERDICT: UNVERIFIED")) {
+        return fail(res, 403, "Correction requires independent QA that ended in FAIL or UNVERIFIED.");
       }
     }
     const assignment = assignmentFields(selection);
@@ -215,8 +229,11 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const length = prompt.length + assignment.assignmentContext.length;
     if (length > hostLimit(host)) return fail(res, 400, "The assignment exceeds the relay prompt limit.");
     const generation = runGeneration(settings);
-    const id = autonomous ? stableId([ownerId, autonomousScope, generation, objectiveId, selection.objective.revision,
-      assignmentType, review ? sourceJobId : null]) :
+    const slot = [ownerId, autonomousScope, generation, objectiveId, selection.objective.revision, assignmentType];
+    const legacyCorrection = correction && await jobs().findOne({
+      _id: stableId([...slot, null]), ownerId, "autonomous.sourceJobId": sourceJobId,
+    });
+    const id = autonomous ? legacyCorrection?._id || stableId([...slot, review || correction ? sourceJobId : null]) :
       operationsReviewId(fingerprint([ownerId, grantId, objectiveId, assignmentKey]));
     const digest = fingerprint([employeeId, instruction.trim(), assignmentType, sourceJobId]);
     const job = { _id: id, ownerId, ...assignment, prompt, hostId: host._id, workspace,
@@ -233,8 +250,11 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     };
     let saved;
     try {
-      await jobs().insertOne(job);
-      saved = job;
+      if (legacyCorrection) saved = legacyCorrection;
+      else {
+        await jobs().insertOne(job);
+        saved = job;
+      }
     } catch (error) {
       if (error.code !== 11000) throw error;
       saved = await jobs().findOne({ _id: id, ownerId });
@@ -242,9 +262,8 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     }
     const receipt = { assignmentId: id, state: saved.status, url: "/operations?workspace=command&job=" + id };
     if (saved?.delegatedBy?.digest === digest) return res.json(receipt);
-    return fail(res, 409, autonomous
-      ? `An assignment of type ${assignmentType} already exists for this objective revision and Run generation${review ? " and source" : ""} (${id}). Continue from the existing assignment.`
-      : "This assignment key already identifies different work.", receipt);
+    if (autonomous) return res.json({ ...receipt, reused: true });
+    return fail(res, 409, "This assignment key already identifies different work.", receipt);
   }
 
   worker.post("/jobs/:id/delegate-operations-review", async (req, res) => {
