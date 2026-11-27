@@ -36,7 +36,13 @@ The owner-only API, per-device authentication, single-use command approvals, and
 
 On November 25, 2026, the owner authorized direct pushes to `main` for independently validated, routine Crossworld Operations improvements within Operation FOUNDRY. This covers the SHOWTIME frontend batches and routine compatible application improvements during FOUNDRY. Coordinate concurrent changes, validate the exact candidate independently before publication, use the established Push → Test → Deploy workflow, then verify the hosted application and health. Correct or safely revert failed releases.
 
-Existing approvals still apply to production art promotion, supervisor replacement, sensitive infrastructure changes, destructive operations, security policy changes, and financial commitments. The authorization is scoped to FOUNDRY. Commit and publication authority outside FOUNDRY follows the normal owner instruction policy.
+Existing approvals still apply to production art promotion, supervisor replacement, sensitive infrastructure changes, destructive operations, security policy changes, and financial commitments.
+
+## Standing authorization during Run
+
+On November 27, 2026, the owner authorized routine Crossworld Operations commits, pushes and deployments while autonomous Run mode is active. Prepare the candidate locally, get independent verification of the exact candidate, and use the existing branch and deployment workflow. Verify the production deployment and fresh dispatch. This authority continues across Run turns without a new owner decision for each routine release.
+
+Use the existing execution profiles and authorization checks. Relay activation requires an owner decision for the exact device and release digest. Production art promotion, consequential changes, security changes, and final owner acceptance retain their existing approval requirements. This authority does not permit package or release publication or enabling publishing workflows.
 
 ## Blender, Unity, and Aseprite
 

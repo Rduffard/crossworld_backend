@@ -58,12 +58,12 @@ const studioBriefingTool = {
 const studioMissionTool = {
   type: "function",
   name: "coordinate_studio_mission",
-  description: "List scoped grants from an executive review. Inspect or register by grant ID. Revise pending work or retry a blocked step under the recorded delegation, including authorized engineering corrections, retests and release steps. Use assign for standalone implementation, research, or independent QA on objectives explicitly listed in the grant. Use renew within recorded standing authority. Use revise to commission named work and request-approval to record a decision needed at a ready owner gate. Use release-status to read the enrolled relay release inventory for owner handover.",
+  description: "In autonomous Run mode, use assign for routine work on active project objectives and omit grantId. Use sourceJobId for independent review or correction. For explicit mission actions, inspect the grant, use its recorded authority for recovery, revision or renewal, and request-approval at a ready owner gate. Use release-status for the relay release inventory.",
   inputSchema: {
     type: "object",
     properties: {
       action: { type: "string", enum: ["list", "register", "inspect", "revise", "recover", "assign", "renew", "request-approval", "release-status"] },
-      grantId: { type: "string", description: "Identifier of the owner-authorized mission grant." },
+      grantId: { type: "string", description: "Owner-authorized mission grant identifier. Omit for routine Run assignments." },
       revision: { type: "integer", minimum: 0 },
       objectiveId: { type: "string" },
       employeeId: { type: "string" },

@@ -14,7 +14,7 @@ const fingerprint = data => createHash("sha256").update(JSON.stringify(data)).di
 const operationsReviewId = sourceId => fingerprint(["operations-review", sourceId]).slice(0, 32).replace(
   /^(........)(....)(....)(....)(............)$/, "$1-$2-$3-$4-$5",
 );
-const fail = (res, status, message) => res.status(status).json({ message });
+const fail = (res, status, message, details) => res.status(status).json({ message, ...details });
 const sameName = value => new RegExp("^" + value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
 const safe = ({ ownerId: _ownerId, ...details }) => details;
 
@@ -121,8 +121,11 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
 
   async function assign(actor, host, input, res, settings) {
     const { grantId, objectiveId, employeeId, assignmentKey, instruction, assignmentType: requestedType, sourceJobId } = input;
-    const autonomous = grantId == null && operatingMode(settings) === "run" &&
-      actor.operatingGeneration === runGeneration(settings);
+    const mode = operatingMode(settings);
+    const autonomous = mode === "run" && actor.operatingGeneration === runGeneration(settings);
+    if ((mode || actor.operatingGeneration !== undefined) && !autonomous) {
+      return fail(res, 409, "This executive turn is no longer part of the active Run generation.");
+    }
     if (![...(autonomous ? [] : [grantId]), objectiveId, employeeId].every(value => typeof value === "string" && uuid.test(value)) ||
         typeof assignmentKey !== "string" || !/^[a-z0-9-]{1,80}$/.test(assignmentKey) ||
         typeof instruction !== "string" || !instruction.isWellFormed() || !instruction.trim() || instruction.length > 2200 ||
@@ -133,6 +136,9 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
     const ownerId = owner();
     const objective = autonomous && await objectives().findOne({ _id: objectiveId, ownerId, status: "active" });
     const project = objective?.projectId && await projects().findOne({ _id: objective.projectId, ownerId, status: "active" });
+    if (autonomous && (!objective || !project)) {
+      return fail(res, 409, "Select an active objective linked to an active project.");
+    }
     const workspace = autonomous ? project?.workspace : actor.workspace;
     if (!["development", "workshop"].includes(workspace)) return fail(res, 400, "Choose a company workspace.");
     const assignmentType = autonomous && requestedType === "implementation"
@@ -151,10 +157,13 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
         "executiveAuthority.objectiveIds": objectiveId }),
       resolveAssignment({ objectives, workforce, projects }, { ownerId, objectiveId, employeeId,
         workspace, roles }),
-      workforce().findOne({ ownerId, kind: "project-assignment", employeeId, objectiveId,
+      !autonomous && workforce().findOne({ ownerId, kind: "project-assignment", employeeId, objectiveId,
         supervisorId: actor.studioActor.id, status: "assigned" }),
     ]);
-    if ((!autonomous && !grant) || !selection?.project ||
+    if (!autonomous && !grant) {
+      return fail(res, 403, "An active, registered mission grant with commissioning authority is required for this assignment.");
+    }
+    if (!selection?.project ||
         (autonomous ? !await reportsTo(workforce, ownerId, selection.employee, actor.studioActor.id) :
           mandate?.projectId !== selection.project._id || selection.employee.supervisorId !== actor.studioActor.id) ||
         ![selection.employee.revision, selection.project.revision, selection.objective.revision].every(Number.isSafeInteger) ||
@@ -164,7 +173,9 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
           !correction && workspace !== "development"))) ||
         (!autonomous && !grant.authorization.routes.some(route => route.profile === profile &&
           ["read", ...(implementation ? ["write"] : [])].every(capability => route.capabilities.includes(capability))))) {
-      return fail(res, 403, "The grant, relay, objective or employee mandate does not authorize this assignment.");
+      return fail(res, 403, autonomous
+        ? "The objective, employee reporting chain or relay capabilities do not authorize this assignment."
+        : "The grant, relay, objective or employee mandate does not authorize this assignment.");
     }
     let source;
     if (autonomous) {
@@ -217,13 +228,16 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
       ...(autonomous ? { autonomous: { generation, attempt: 0, sourceJobId: source?._id },
         dispatchPriority: { high: -3, normal: -2, low: -1 }[selection.objective.priority] ?? -2 } : {}),
       delegatedBy: { employeeId: actor.studioActor.id, sourceTurnId: actor._id, sessionId: actor.sessionId,
-        scope: autonomous ? autonomousScope : "executive-assignment", ...(grantId ? { grantId } : {}), digest, projectRevision: selection.project.revision,
+        scope: autonomous ? autonomousScope : "executive-assignment", ...(!autonomous ? { grantId } : {}), digest, projectRevision: selection.project.revision,
         objectiveRevision: selection.objective.revision, employeeRevision: selection.employee.revision },
     };
     try { await jobs().insertOne(job); } catch (error) { if (error.code !== 11000) throw error; }
-    const saved = await jobs().findOne({ _id: id, ownerId, "delegatedBy.digest": digest });
-    return saved ? res.json({ assignmentId: id, state: saved.status, url: "/operations?workspace=command&job=" + id }) :
-      fail(res, 409, "This assignment key already identifies different work.");
+    const saved = await jobs().findOne({ _id: id, ownerId });
+    const receipt = saved && { assignmentId: id, state: saved.status, url: "/operations?workspace=command&job=" + id };
+    if (saved?.delegatedBy?.digest === digest) return res.json(receipt);
+    return fail(res, 409, autonomous
+      ? `An assignment of type ${assignmentType} already exists for this objective revision and Run generation${review ? " and source" : ""} (${id}). Continue from the existing assignment.`
+      : "This assignment key already identifies different work.", receipt);
   }
 
   worker.post("/jobs/:id/delegate-operations-review", async (req, res) => {

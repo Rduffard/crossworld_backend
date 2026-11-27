@@ -156,7 +156,16 @@ export function backendClient(base, token) {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      throw Object.assign(new Error(`Operations request failed (HTTP ${response.status}).`), { status: response.status });
+      let message = `Operations request failed (HTTP ${response.status}).`;
+      if (response.status >= 400 && response.status < 500 &&
+          /^\/jobs\/[a-f\d-]+\/studio-mission$/.test(endpoint) &&
+          response.headers.get("content-type")?.includes("application/json")) {
+        const rejection = await response.json().catch(() => null);
+        if (typeof rejection?.message === "string" && rejection.message.trim()) {
+          message = `HTTP ${response.status}: ${redact(rejection.message, token).slice(0, 500)}`;
+        }
+      }
+      throw Object.assign(new Error(message), { status: response.status });
     }
     return response.json();
   };
