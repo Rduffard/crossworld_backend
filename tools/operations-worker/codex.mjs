@@ -58,13 +58,20 @@ const studioBriefingTool = {
 const studioMissionTool = {
   type: "function",
   name: "coordinate_studio_mission",
-  description: "List scoped grants from an executive review. Inspect or register by grant ID. Revise pending work or retry a blocked step under the recorded delegation, including authorized engineering corrections, retests and release steps. Use release-status to read the enrolled relay release inventory for owner handover.",
+  description: "List scoped grants from an executive review. Inspect or register by grant ID. Revise pending work or retry a blocked step under the recorded delegation, including authorized engineering corrections, retests and release steps. Use assign for standalone implementation, research, or independent QA on objectives explicitly listed in the grant. Use renew within recorded standing authority. Use revise to commission named work and request-approval to record a decision needed at a ready owner gate. Use release-status to read the enrolled relay release inventory for owner handover.",
   inputSchema: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["list", "register", "inspect", "revise", "recover", "release-status"] },
+      action: { type: "string", enum: ["list", "register", "inspect", "revise", "recover", "assign", "renew", "request-approval", "release-status"] },
       grantId: { type: "string", description: "Identifier of the owner-authorized mission grant." },
       revision: { type: "integer", minimum: 0 },
+      objectiveId: { type: "string" },
+      employeeId: { type: "string" },
+      assignmentKey: { type: "string" },
+      assignmentType: { type: "string", enum: ["implementation", "research", "qa", "browser"] },
+      instruction: { type: "string", maxLength: 2200 },
+      sourceJobId: { type: "string" },
+      endsAt: { type: "string", description: "New operating window end as an ISO 8601 timestamp." },
       step: { type: "string", description: "The blocked step key for a delegated recovery." },
       resolution: { type: "string", maxLength: 800, description: "How to resolve the blocker within the step's existing authority." },
       steps: { type: "array", items: { type: "object" }, maxItems: 20 },

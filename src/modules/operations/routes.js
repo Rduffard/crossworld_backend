@@ -152,7 +152,7 @@ function createRouter({
     proposals, jobs, projects, objectives, workforce, knowledge, references,
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
-    recoverMission: missions.recoverFromTurn, listMissions: missions.listFromTurn,
+    missionRecords, recoverMission: missions.recoverFromTurn, changeMission: missions.changeFromTurn, listMissions: missions.listFromTurn,
     executivePaused: executive.isPaused, executiveView: executive.view,
   });
   const governance = createGovernance({
@@ -332,13 +332,18 @@ function createRouter({
   router.reconcileIntervalMs = 30_000;
   router.reconcileOperations = async () => {
     const ownerId = owner();
-    if (!executiveEnabled || !workerEnabled || !enabled() || !/^[a-f\d]{24}$/.test(ownerId ?? "")) return;
+    if (!workerEnabled || !enabled() || !/^[a-f\d]{24}$/.test(ownerId ?? "")) return;
     const startedAt = new Date();
     let onlineRelays = 0;
     let relayCount = 0;
     let failed = false;
     try {
-      await expireLeases(ownerId);
+      try {
+        await expireLeases(ownerId);
+      } catch (error) {
+        failed = true;
+        reportError(failureDiagnostic(error, "Operations lease expiration"));
+      }
       const [settings, relays] = await Promise.all([
         dispatch().findOne({ _id: ownerId }),
         hosts().find({ ownerId, revokedAt: null, isolatedReviewSnapshot: { $ne: true } }).toArray(),
@@ -356,7 +361,7 @@ function createRouter({
         reportError(failureDiagnostic(result.reason, "Operations host reconciliation"));
       }
       const hostId = settings?.executiveService?.hostId;
-      if (hostId) {
+      if (executiveEnabled && hostId) {
         const host = relays.find(relay => relay._id === hostId);
         await executive.observeInfrastructure(ownerId, host, settings.executiveInfrastructure);
         if (host && online(host)) await executive.reconcile(host, { safetyNet: true });
@@ -378,13 +383,13 @@ function createRouter({
   };
 
   worker.post("/heartbeat", async (req, res) => {
-    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false, isolatedReviewSnapshot = false } = req.body || {};
+    const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, browserVerification = false, employeeConversations = false, backgroundReviews = false, isolatedReviewSnapshot = false } = req.body || {};
     const relayVersion = typeof req.body?.relayVersion === "string" && /^[a-f\d]{12}$/.test(req.body.relayVersion)
       ? req.body.relayVersion : null;
     const blueprintBranches = req.body?.blueprintBranches === true;
     const scopedRevision = typeof req.body?.scopedRevision === "string" && /^[a-f\d]{64}$/.test(req.body.scopedRevision)
       ? req.body.scopedRevision : null;
-    if (typeof isolatedReviewSnapshot !== "boolean" || typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
+    if (typeof browserVerification !== "boolean" || typeof isolatedReviewSnapshot !== "boolean" || typeof backgroundReviews !== "boolean" || typeof employeeConversations !== "boolean" || typeof extendedPrompts !== "boolean" || typeof boundedCorrections !== "boolean" || !uuid(instance) || !Array.isArray(efforts) || !efforts.length || efforts.length > 8 ||
         efforts.some((effort) => !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(effort)) ||
         !Array.isArray(supported) || supported.length > profiles.length || supported.some((entry) => !profiles.includes(entry)) ||
         (supported.includes("scoped") && !scopedRevision)) {
@@ -409,7 +414,7 @@ function createRouter({
     const host = await hosts().findOneAndUpdate({
       _id: req.operationsHost._id, revokedAt: null,
       $or: [{ instance }, { lastSeen: { $lt: new Date(+now - leaseMs) } }, { lastSeen: null }],
-    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, employeeConversations, backgroundReviews, isolatedReviewSnapshot, blueprintBranches, scopedRevision,
+    }, { $set: { instance, efforts, profiles: supported, extendedPrompts, boundedCorrections, browserVerification, employeeConversations, backgroundReviews, isolatedReviewSnapshot, blueprintBranches, scopedRevision,
       media: req.body?.media === true, mediaVideoFrames: req.body?.media === true && req.body?.mediaVideoFrames === true,
       mediaOutput: req.body?.media === true && req.body?.mediaOutput === true && supported.includes("workshop"),
       artifactImport: req.body?.artifactImport === true && req.body?.mediaOutput === true && supported.includes("workshop"),
@@ -635,11 +640,21 @@ function createRouter({
         ownerId: scope.ownerId, kind: "project-assignment", employeeId: job.employeeId,
         supervisorId: job.delegatedBy.employeeId, projectId: job.projectId, objectiveId: job.objectiveId, status: "assigned",
       }, { projection: { _id: 1 } }));
+      const standingCurrent = job.delegatedBy?.scope !== "executive-assignment" ||
+        await missionRecords().findOne({ _id: job.delegatedBy.grantId, ownerId: scope.ownerId, hostId: scope.hostId,
+          coordinatorActorId: job.delegatedBy.employeeId, workspace: job.workspace, status: { $in: ["active", "blocked"] },
+          endsAt: { $gt: new Date() }, "executiveAuthority.commission": true,
+          "executiveAuthority.objectiveIds": job.objectiveId,
+          ...(job.browserVerification ? { "executiveAuthority.browserVerification": true } : {}),
+          "authorization.routes": { $elemMatch: { profile: job.profile, capabilities: {
+            $all: job.profile === "development" ? ["read", "write"] : ["read"],
+          } } },
+        }, { projection: { _id: 1 } });
       const referencesCurrent = !job.approvedReferences?.length || (activeProject && await references().countDocuments({
         ownerId: scope.ownerId, projectId: activeProject._id, status: "approved", category: { $in: ["visual", "technical"] },
         $or: job.approvedReferences.map(({ id, mediaId }) => ({ _id: id, mediaId })),
       }) === job.approvedReferences.length);
-      if (!objective || !employee || !activeProject || !mandateCurrent || !referencesCurrent) {
+      if (!objective || !employee || !activeProject || !mandateCurrent || !standingCurrent || !referencesCurrent) {
         await jobs().updateOne(authorization, {
           $set: {
             status: "interrupted", finishedAt: new Date(),
@@ -685,6 +700,7 @@ function createRouter({
       ...(job.permissionDiagnostics ? { permissionDiagnostics: job.permissionDiagnostics } : {}),
       ...(job.scopedRevision ? { scopedRevision: job.scopedRevision } : {}),
       ...(job.blueprintTyped ? { blueprintTyped: true } : {}),
+      ...(job.browserVerification === true ? { browserVerification: true } : {}),
       ...(job.isolatedReview ? { isolatedReview: true } : {}),
       ...(job.studioTools === true ? { studioActions: true } : {}),
       ...(job.studioTools === true && job.missionId ? { missionId: job.missionId } : {}),

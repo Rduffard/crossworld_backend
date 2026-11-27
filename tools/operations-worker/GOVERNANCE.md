@@ -51,3 +51,17 @@ The active Sanguine Engine workflow is compatibility CI only. GitHub's default b
 The authenticated Actions inspection found only **Sanguine Engine CI** active in the engine repository and no publisher on `main`. If **Sanguine Engine CI and Release** or an equivalent publishing workflow is restored on a branch, disable it under **Actions → workflow → … → Disable workflow** and cancel queued publishing runs before pushing to that branch. Keep publisher credentials out of workflows. Existing package consumers need only Read access under the package's **Package settings → Manage Actions access**. Repository workflow settings and live runs were not modified by this revision.
 
 [Codex sandbox and approvals](https://learn.chatgpt.com/docs/agent-approvals-security) · [Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp) · [GitHub package access](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+
+## Standing First Mate mission authority
+
+On the owner-authenticated API, send a revision-checked `PATCH /operations/missions/:id` with
+`action: "executive-authority"` and `authority: { commission: true, renewUntil: "<ISO timestamp>" }`.
+Set `authority: null` to revoke further delegation under this setting. The grant must bind a First
+Mate, specify a capability ceiling, and have an owner-gated completion step. The owner can renew
+a specific expired or blocked grant through the same endpoint with `action: "renew"` and `endsAt`.
+
+The scheduled First Mate uses the mission tool to list available grants, renew an expired window
+within the ceiling, and revise the pending plan. Commissioned steps require named direct reports
+and fixed restricted routes. Corrections that replace a failed dependency require a separate
+reviewer. Request an owner decision on a ready approval step with `request-approval`. The owner
+still authorizes the gate through the normal mission approval action.

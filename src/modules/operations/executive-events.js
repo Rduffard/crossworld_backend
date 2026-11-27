@@ -81,8 +81,11 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
   const [missions, assignments, pending, decisions, resolved, available, unattended] = await Promise.all([
     records().find({ ownerId, hostId: host._id, $or: [
       { status: "blocked" },
+      { coordinatorActorId: coordinator?.actor.id ?? null, workspace: coordinator?.workspace ?? null,
+        status: { $in: ["authorized", "active", "expired"] }, endsAt: { $lte: new Date(now) },
+        "executiveAuthority.renewUntil": { $gt: new Date(now) } },
       { status: "active", reason: { $gt: "" } },
-    ] }, { projection: { status: 1, reason: 1, results: 1 } }).sort({ updatedAt: -1, _id: 1 }).limit(limit).toArray(),
+    ] }, { projection: { status: 1, reason: 1, results: 1, endsAt: 1, executiveAuthority: 1 } }).sort({ updatedAt: -1, _id: 1 }).limit(limit).toArray(),
     jobs().find({
       ownerId, hostId: host._id, executiveReview: { $ne: true }, missionId: null,
       status: { $in: ["completed", "failed", "interrupted"] },

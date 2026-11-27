@@ -19,7 +19,7 @@ const { rateLimitObservation, budgetStatus, dispatchStopped } = usageTools;
 const interval = 1000;
 const offlineLimit = 15_000;
 
-async function probeCommand(development, workshop, chrome, blender, fullAccess) {
+async function probeCommand(development, workshop, chrome, blender, fullAccess, writableRoots) {
   const { mkdtempSync, readFileSync, rmSync, writeFileSync, unlinkSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join, parse } = await import("node:path");
@@ -37,6 +37,11 @@ async function probeCommand(development, workshop, chrome, blender, fullAccess) 
   };
   const verified = [];
   if (readFileSync(process.execPath).length) verified.push("read");
+  const roots = JSON.parse(writableRoots);
+  if (roots.length && roots.map(writeProbe).every(Boolean)) {
+    verified.push("write");
+    if (new Set(roots.map(root => parse(root).root.toLowerCase())).size > 1) verified.push("cross-drive");
+  }
   if (fullAccess === "true") {
     const developmentWrite = writeProbe(development);
     const workshopWrite = writeProbe(workshop);
@@ -79,10 +84,10 @@ async function probeCommand(development, workshop, chrome, blender, fullAccess) 
   console.log(JSON.stringify(verified));
 }
 
-function missionPreflight({ exe, version, workspaces, fullAccess, draining }) {
+function missionPreflight({ exe, version, workspaces, editRoots, scopedRevision, fullAccess, draining }) {
   const chrome = process.env.OPERATIONS_CHROME_EXE || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
   const blender = process.env.OPERATIONS_BLENDER_EXE || installedBlender();
-  const runtime = createHash("sha256").update(JSON.stringify({ exe, version, workspaces, chrome, blender, fullAccess,
+  const runtime = createHash("sha256").update(JSON.stringify({ exe, version, workspaces, editRoots, scopedRevision, chrome, blender, fullAccess,
     probe: probeCommand.toString() })).digest("hex");
   let reports = [];
   let nextCheck = 0;
@@ -99,19 +104,23 @@ function missionPreflight({ exe, version, workspaces, fullAccess, draining }) {
     const observed = [];
     try {
       await server.initialize();
-      for (const profile of fullAccess ? ["read-only", "full-access"] : ["read-only"]) {
+      const profiles = ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])];
+      for (const profile of profiles) {
         const unrestricted = profile === "full-access";
+        const roots = editRoots[profile] ?? [];
         try {
           const result = await server.request("command/exec", {
             command: [process.execPath, "-e", `(${probeCommand})(...process.argv.slice(1)).catch(() => process.exitCode = 1)`,
-              workspaces.development, workspaces.workshop, chrome, blender, String(unrestricted)],
-            cwd: workspaces.development, sandboxPolicy: { type: unrestricted ? "dangerFullAccess" : "readOnly" },
+              workspaces.development, workspaces.workshop, chrome, blender, String(unrestricted), JSON.stringify(roots)],
+            cwd: roots[0] ?? workspaces.development,
+            sandboxPolicy: unrestricted ? { type: "dangerFullAccess" } : sandboxFor(roots[0], roots),
             timeoutMs: 35_000,
           });
           if (result.exitCode !== 0) continue;
           observed.push({ profile, runtime, observedAt: Date.now(), capabilities: JSON.parse(result.stdout),
             environment: unrestricted ? "windows-account" : "windows-sandbox",
-            sandbox: unrestricted ? "danger-full-access" : "read-only" });
+            sandbox: unrestricted ? "danger-full-access" : roots.length ? "workspace-write" : "read-only",
+            ...(profile === "scoped" ? { scope: scopedRevision } : {}) });
         } catch { /* This route remains unverified. */ }
       }
     } catch { /* Keep the relay available for other work. */ }
@@ -156,7 +165,7 @@ export function backendClient(base, token) {
 export const { redact } = diagnostics;
 
 export async function runWorker({ send, efforts, execute, token, signal, profiles, getUsage, getResources, mediaStorage,
-  mediaOutput = false, artifactImport = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false,
+  mediaOutput = false, artifactImport = false, boundedCorrections = false, browserVerification = false, employeeConversations = false, backgroundReviews = false,
   relayVersion, supervised = false, isolatedReviewSnapshot = false, blueprintBranches = false, scopedRevision,
   draining = () => false, reportHeartbeat, getMissionPreflights, log = console.log }) {
   const instance = randomUUID();
@@ -274,7 +283,7 @@ export async function runWorker({ send, efforts, execute, token, signal, profile
         }
         if (Date.now() - heartbeat >= 5000) {
           const announce = () => send("/heartbeat", {
-            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, employeeConversations, backgroundReviews, media: !!mediaStorage, usage: getUsage?.() || undefined,
+            instance, efforts, profiles: advertisedProfiles, extendedPrompts: true, boundedCorrections, browserVerification, employeeConversations, backgroundReviews, media: !!mediaStorage, usage: getUsage?.() || undefined,
             mediaVideoFrames: mediaStorage?.videoFrames === true,
             mediaOutput, artifactImport,
             mediaUsage: mediaStorage?.latestUsage(),
@@ -512,6 +521,10 @@ async function startWorker(draining = () => false) {
   const controller = new AbortController();
   process.on("SIGINT", () => controller.abort());
   process.on("SIGTERM", () => controller.abort());
+  const browserExecutable = process.env.OPERATIONS_CHROME_EXE || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+  const browserVerifier = !isolatedRoot && process.env.OPERATIONS_BROWSER_VERIFICATION !== "0" &&
+    path.isAbsolute(browserExecutable) && existsSync(browserExecutable)
+    ? await import("./browser-verification.mjs") : null;
   startup("relay-connect");
   await runWorker({
     send, token, efforts, profiles: ["read-only", ...Object.keys(editRoots), ...(fullAccess ? ["full-access"] : [])],
@@ -519,7 +532,7 @@ async function startWorker(draining = () => false) {
     relayVersion: createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex").slice(0, 12),
     supervised: process.connected === true && process.argv.includes("--supervised"),
     draining,
-    getMissionPreflights: isolatedRoot ? undefined : missionPreflight({ exe, version, workspaces, fullAccess, draining }),
+    getMissionPreflights: isolatedRoot ? undefined : missionPreflight({ exe, version, workspaces, editRoots, scopedRevision, fullAccess, draining }),
     reportHeartbeat: report => {
       if (process.connected) process.send({ type: "heartbeat", ...report }, () => {});
     },
@@ -528,7 +541,7 @@ async function startWorker(draining = () => false) {
       if (Date.now() - lastUsageAttempt >= 60_000) void refreshHeldUsage();
       return usage;
     },
-    boundedCorrections: true,
+    boundedCorrections: true, browserVerification: !!browserVerifier,
     artifactImport: mediaOutput,
     employeeConversations: true,
     backgroundReviews: !!isolatedRoot || process.env.OPERATIONS_BACKGROUND_REVIEWS === "1",
@@ -554,6 +567,19 @@ async function startWorker(draining = () => false) {
       }
       if (job.status === "cancelling" || job.eventCount > 0) {
         return { status: "interrupted", error: "Previous assignment cannot be safely replayed." };
+      }
+      if (job.browserVerification) {
+        if (!browserVerifier || profile !== "read-only" || job.workerRole !== "assignment" || job.codexThreadId) {
+          return { status: "failed", error: "The restricted browser verifier is unavailable for this assignment." };
+        }
+        try {
+          const observations = await browserVerifier.verifyBrowserRelease(browserExecutable, AbortSignal.any([signal, AbortSignal.timeout(50_000)]));
+          const passed = observations.every(item => item.status === 200 && item.expectedOrigin && item.content && !item.overflow);
+          record("response", "Browser verification", JSON.stringify({ target: "public Operations entry", observations, passed }));
+          return { status: passed ? "completed" : "failed", error: passed ? "" : "The public Operations browser checks failed." };
+        } catch {
+          return { status: "failed", error: "The restricted browser verification did not complete." };
+        }
       }
       if (job.outputMedia && (!mediaOutput || job.codexThreadId || profile !== "workshop" || correction)) {
         return { status: "failed", error: "Job-scoped media export is unavailable on this host." };

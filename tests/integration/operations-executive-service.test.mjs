@@ -429,3 +429,94 @@ test("First Mate claims remain exclusive across relays and a stale lease can be 
   assert.equal((await missions.findOne({ _id: missionId })).status, "blocked");
   assert.equal(await jobs.countDocuments({ missionId }), 2, "The supervisor does not exceed the delegated retry");
 });
+
+test("a scheduled executive turn can commission a correction and independent retest before the owner gate", async t => {
+  const fixture = await startTestMongo(t);
+  const client = await MongoClient.connect(fixture.uri);
+  t.after(() => client.close());
+  const db = client.db(fixture.database);
+  const collections = Object.fromEntries(["dispatch", "jobs", "hosts", "workforce", "records", "proposals", "eventBatches", "initiatives"]
+    .map(name => [name, () => db.collection(name)]));
+  const ownerId = "owner";
+  const host = { _id: randomUUID(), ownerId, profiles: ["development", "read-only"], efforts: ["low"] };
+  const actor = { _id: randomUUID(), ownerId, kind: "employee", role: "first-mate", status: "available", name: "Barnaby" };
+  const employee = role => ({ _id: randomUUID(), ownerId, kind: "employee", role, status: "available", workspace: "development",
+    supervisorId: actor._id });
+  const engineer = employee("worker");
+  const reviewer = employee("qa");
+  await collections.hosts().insertOne(host);
+  await collections.workforce().insertMany([actor, engineer, reviewer]);
+  await collections.jobs().insertOne({ ownerId, hostId: host._id, createdAt: new Date(), studioTools: true,
+    studioActor: { id: actor._id, role: actor.role }, workspace: "development", model: "fixture" });
+
+  const options = { ...collections, owner: () => ownerId, online: () => true, workerEnabled: true };
+  const setup = createMissions(options);
+  const ownerPatch = setup.router.stack.find(layer => layer.route?.methods.patch).route.stack[0].handle;
+  const dispatch = async (method, ...args) => method(...args, {
+    code: 200, status(code) { this.code = code; return this; }, json(body) { return { code: this.code, body }; },
+  });
+  const step = (key, fields = {}) => ({ key, title: key, prompt: key, profile: "read-only", requires: ["read"],
+    after: [], approval: false, ...fields });
+  const original = step("original", { reviewer: reviewer._id });
+  const gate = step("accept", { approval: true, after: [{ step: original.key, result: "pass" }] });
+  const grantId = randomUUID();
+  const endsAt = new Date(Date.now() - 1000);
+  const renewUntil = new Date(Date.now() + 600_000);
+  const authorization = { routes: [{ profile: "read-only", capabilities: ["read"] },
+    { profile: "development", capabilities: ["read", "write"] }] };
+  await collections.records().insertOne({ _id: grantId, ownerId, hostId: host._id, workspace: "development", effort: "low",
+    coordinatorActorId: actor._id, title: "Integrated fixture release", completionStep: gate.key, steps: [original, gate],
+    authorization, status: "blocked", endsAt, revision: 0, registration: {}, approvals: {},
+    results: { [original.key]: { result: "blocked" }, [gate.key]: { result: "skipped" } } });
+  const configured = await dispatch(ownerPatch, { params: { id: grantId }, body: {
+    action: "executive-authority", revision: 0, authority: { commission: true, renewUntil: renewUntil.toISOString() },
+  } });
+  assert.equal(configured.code, 200);
+
+  // Recreate both controllers to demonstrate that authority comes from the persisted grant.
+  const controller = createMissions(options);
+  const service = createExecutiveService({ ...options, enabled: true, eligibleMissionJobs: controller.dispatchable });
+  await service.reconcile(host, { safetyNet: true });
+  const executive = await collections.jobs().findOne({ executiveReview: true });
+  assert.match(executive.prompt, new RegExp(grantId));
+  assert.equal(executive.profile, "read-only");
+  const renewal = { action: "renew", grantId, revision: 1, endsAt: new Date(Date.now() + 300_000).toISOString() };
+  assert.equal((await dispatch(controller.changeFromTurn, { ...executive, executiveReview: false }, host._id, renewal)).code, 403);
+  assert.equal((await dispatch(controller.changeFromTurn, executive, host._id,
+    { ...renewal, endsAt: new Date(+renewUntil + 1000).toISOString() })).code, 400);
+  assert.equal((await dispatch(controller.changeFromTurn, executive, host._id, renewal)).code, 200);
+
+  const fix = step("correct", { assignee: engineer._id, profile: "development", requires: ["read", "write"],
+    after: [{ step: original.key, result: "blocked" }] });
+  const release = { backend: "a".repeat(40), frontend: "b".repeat(40) };
+  const verify = step("verify-integrated-release", { reviewer: reviewer._id, release, after: [{ step: fix.key, result: "pass" }] });
+  const revisedGate = { ...gate, after: [{ step: verify.key, result: "pass" }] };
+  const revision = { grantId, revision: 2, steps: [original, fix, verify, revisedGate] };
+  assert.equal((await dispatch(controller.reviseFromTurn, executive, host._id,
+    { ...revision, steps: [original, fix, verify, { ...revisedGate, approval: false }] })).code, 409);
+  assert.equal((await dispatch(controller.reviseFromTurn, executive, host._id, revision)).code, 200);
+
+  host.missionPreflights = authorization.routes.map(({ profile, capabilities }) => ({
+    profile, capabilities, observedAt: Date.now(), sandbox: profile === "read-only" ? "read-only" : "workspace-write",
+  }));
+  for (const [planned, assignee] of [[fix, engineer], [verify, reviewer]]) {
+    await controller.reconcile(host, grantId);
+    const work = await collections.jobs().findOne({ missionId: grantId, missionStep: planned.key });
+    assert.equal(work.employeeId, assignee._id);
+    assert.equal(work.profile, planned.profile);
+    await collections.jobs().updateOne({ _id: work._id }, { $set: { status: "completed", finishedAt: new Date(),
+      eventCount: 1, events: [{ view: "response", text: "Fixture evidence\nMISSION_RESULT: PASS" }] } });
+  }
+  await controller.reconcile(host, grantId);
+  const advanced = await collections.records().findOne({ _id: grantId });
+  assert.equal(advanced.reason, "Waiting for owner approval.");
+  assert.equal(advanced.results[verify.key].result, "pass");
+  assert.deepEqual(advanced.results[verify.key].reviewRelease, release);
+  assert.equal(await collections.jobs().countDocuments({ missionId: grantId, missionStep: gate.key }), 0);
+  const request = await dispatch(controller.changeFromTurn, executive, host._id, {
+    action: "request-approval", grantId, revision: advanced.revision, step: gate.key, resolution: "Accept the verified release.",
+  });
+  assert.equal(request.code, 200);
+  assert.equal(request.body.approvalRequests[gate.key].sourceTurnId, executive._id);
+  assert.deepEqual(request.body.approvals, {});
+});
