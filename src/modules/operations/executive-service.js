@@ -4,6 +4,7 @@ const { budgetStatus, usageHoldUntil } = require("./usage");
 const { actionableGrants, conditionHeading, executiveEvents } = require("./executive-events");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 const { relayJobCapabilities } = require("./relay-claims");
+const { autonomousClaimFilter, operatingMode, runGeneration } = require("./autonomous-work");
 
 const wakeInterval = 2 * 60_000;
 const defaultReconcileInterval = 5 * 60_000;
@@ -62,7 +63,9 @@ function createExecutiveService({
         status: { $in: ["authorized", "active", "blocked"] } },
         { projection: { title: 1, status: 1, reason: 1, initiativeId: 1, "current.step": 1,
           "steps.key": 1, "steps.after": 1 } }).sort({ updatedAt: -1 }).limit(15).toArray(),
-      objectives?.().find({ ownerId, status: "active" }, { projection: { title: 1, projectId: 1 } })
+      objectives?.().find({ ownerId, status: "active" }, {
+        projection: { title: 1, projectId: 1, priority: 1, autonomousMigration: 1, autonomousDelivery: 1 },
+      })
         .sort({ updatedAt: -1 }).limit(15).toArray(),
     ]);
     const occupied = new Set(running.flatMap(job => [job.employeeId, job.studioActor?.id, job.conversationActor?.id]));
@@ -111,6 +114,7 @@ function createExecutiveService({
       model: reservation.model, effort: reservation.effort, title: "First Mate executive review",
       studioActor: reservation.actor, studioTools: true, executiveReview: true,
       executiveOutcomeReceipts: reservation.outcomeReceipts === true,
+      ...(reservation.operatingGeneration === undefined ? {} : { operatingGeneration: reservation.operatingGeneration }),
       executiveTrigger: reservation.trigger, workerRole: "direct",
       profile: "read-only", status: "queued", prompt: reservation.prompt,
       createdAt: reservation.at, events: [], eventCount: 0, codexThreadId: null,
@@ -123,6 +127,7 @@ function createExecutiveService({
     const now = clock();
     const settings = await dispatch().findOne({ _id: ownerId });
     if (paused(settings, now) || hold(host, now)) return;
+    const autonomous = operatingMode(settings) === "run";
     const state = settings?.executiveService;
     if (state && state.hostId !== host._id) return;
     const checkpoint = settings?.executiveWatchtower;
@@ -157,7 +162,10 @@ function createExecutiveService({
     const notified = eventVersion > (checkpoint?.eventVersion ?? 0);
     const due = safetyNet && reconcileInterval > 0 &&
       now - (+checkpoint?.checkedAt || 0) >= reconcileInterval;
-    if (state && checkpoint && !notified && !due && !checkpoint.pendingConditions?.length && !checkpoint.moreAssignments) return;
+    const recoverReview = autonomous && ["failed", "interrupted"].includes(previous?.status) &&
+      state.reservation.operatingGeneration === runGeneration(settings) && !state.reservation.recovery;
+    if (state && checkpoint && !notified && !due && !recoverReview &&
+        !checkpoint.pendingConditions?.length && !checkpoint.moreAssignments) return;
 
     // Drain persisted batches before discovery so a backlog cannot overflow the checkpoint.
     const discovery = checkpoint?.pendingConditions?.length ? null :
@@ -180,15 +188,18 @@ function createExecutiveService({
       assignmentReceiptIds: discovery?.assignmentReceiptIds ?? [],
       objectiveReceipts: discovery?.conditions.filter(item => Object.hasOwn(item, "objectiveRevision")) ?? [],
       pendingConditions: changed.slice(conditionsPerReview),
+      operatingGeneration: autonomous ? runGeneration(settings) : null,
       version: (checkpoint?.version ?? 0) + 1,
     };
     const reservationGuard = {
       _id: ownerId, executivePaused: { $ne: true }, paused: { $ne: true },
+      operatingMode: autonomous ? "run" : { $exists: false },
+      ...(autonomous ? { operatingGeneration: runGeneration(settings) } : {}),
       $or: [{ maintenanceUntil: { $exists: false } }, { maintenanceUntil: null }, { maintenanceUntil: { $lte: new Date(now) } }],
       "executiveService.reservation.id": state?.reservation?.id || { $exists: false },
       "executiveWatchtower.version": checkpoint?.version ?? { $exists: false },
     };
-    if (state && !changed.length) {
+    if (state && !changed.length && !recoverReview && (!autonomous || checkpoint?.operatingGeneration === runGeneration(settings))) {
       await dispatch().updateOne(reservationGuard, { $set: { executiveWatchtower: nextCheckpoint } });
       return;
     }
@@ -203,10 +214,16 @@ function createExecutiveService({
     if (!source?.model || !["development", "workshop"].includes(source.workspace)) return;
 
     const last = previous ? await precedingResult(previous, eventBatches(), { limit: 1800 }) : "";
+    const ordinaryWork = autonomous ? [
+      "BEDROCK is in Run. Call coordinate_studio_mission with action assign, objectiveId, employeeId, assignmentKey, assignmentType and instruction. Omit grantId. Use an active project objective and an employee in your reporting chain in that project workspace. Use implementation for both development and workshop production. Missions and Blueprints are optional.",
+      "Inspect current assignments before acting. Queue missing high priority work and continue past blocked or owner-gated lanes. For each completed implementation or research assignment, assign separate QA with assignmentType qa, the sourceJobId and a different employee. After QA_VERDICT: FAIL, call assign with assignmentType implementation and that QA job as sourceJobId, then independently retest. BEDROCK retries admitted failures once and records passing QA. Do not bypass any approval or publish or promote production art.",
+      "Prioritize migrated ENDURANCE objectives. Reuse exact historical candidates where possible and address outstanding verification and correction. When prerequisites have independent QA, commission the integrated demonstration. Its verified result appears in Approvals for owner acceptance.",
+    ] : [];
     const instructions = [
       "Run an executive review using the existing Operations records and supported studio tools.",
+      ...ordinaryWork,
       "Inspect active objectives, mission results, owner decisions and relay limits. For an objective that needs planning, check existing work and dependencies before proposing or delegating the next authorized action. Recover an eligible blocked step using its recorded delegation and independent evidence. Continue unrelated authorized work when a decision is pending.",
-      "Inspect the exact grant and revision using the identifiers below. Register eligible standalone grants. When the relay exposes recover, use it for a step whose recorded retry authorization applies. Use renew within recorded standing authority and revise to commission named work within the grant capability ceiling. Record concrete owner decisions with request-approval at a ready gate.",
+      !autonomous && "Inspect the exact grant and revision using the identifiers below. Register eligible standalone grants. When the relay exposes recover, use it for a step whose recorded retry authorization applies. Use renew within recorded standing authority and revise to commission named work within the grant capability ceiling. Record concrete owner decisions with request-approval at a ready gate.",
       "For a release, inspect the exact candidate, independent verdict and pending approval gates. Prefer independent verification of the integrated release when its exact revisions are available. Commission corrections and independent verification before advancing the owner gate. Record unavailable actions and required owner decisions with their Operations links. Preserve approval gates, retry limits and separate final acceptance.",
       "Delegate investigation, implementation and independent verification within existing authority. Classify new blockers before asking for authorization, and continue independent authorized work.",
       batch.length && conditionHeading +
@@ -222,6 +239,8 @@ function createExecutiveService({
       id, at: new Date(now), trigger: !state ? "enrollment" : notified ? "event" : "reconciliation",
       actor: { id: actors[0]._id, name: actors[0].name, role: "first-mate" },
       model: source.model, workspace: source.workspace, effort: effortFor(host), prompt, outcomeReceipts: true,
+      ...(autonomous ? { operatingGeneration: runGeneration(settings) } : {}),
+      ...(recoverReview ? { recovery: true } : {}),
     } };
     try {
       const saved = await dispatch().updateOne(reservationGuard, {
@@ -263,9 +282,11 @@ function createExecutiveService({
     const runnable = host && online(host) && compatible(host) && !hold(host, now);
     const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
     const isPaused = !enabled || paused(settings, now);
-    const state = isPaused ? "Paused" : decision ? "Awaiting Decision" :
+    const mode = operatingMode(settings);
+    const state = mode === "stop" ? "Stopped" : isPaused ? "Paused" : decision ? "Awaiting Decision" :
       activeRuns.length || running || (job?.status === "queued" && runnable) ? "Working" : "Standing By";
-    const controlReason = !enabled ? "Executive dispatch is unavailable." : settings?.executivePaused ? "Paused by owner." :
+    const controlReason = !enabled ? "Executive dispatch is unavailable." : mode === "stop" ? "Stopped by owner." :
+      settings?.executivePaused ? "Paused by owner." :
       isPaused ? "Studio dispatch is paused or in maintenance." : decision ? "Operations requires an owner decision." :
         host && hold(host, now) ? "Waiting for subscription capacity." :
           service && !runnable ? "Waiting for the enrolled relay." : undefined;
@@ -282,7 +303,7 @@ function createExecutiveService({
     const relayQueue = host && {
       ownerId, hostId: host._id, ...filters,
       ...isolationFilter(host),
-      $and: [...capabilities, dueJobs(now)],
+      $and: [...capabilities, dueJobs(now), autonomousClaimFilter(enabled ? settings : null)],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
     };
@@ -322,7 +343,7 @@ function createExecutiveService({
       ? { ...supervisor, status: "stale", reason: "The supervisor has missed its last scheduled check." }
       : supervisor;
     return { state, activity, capacity: operations?.capacity, compatibleQueued, retryAt: retry?.candidateRetryAt, decision,
-      ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true,
+      ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true, mode,
       reason: controlReason || activityReason, jobId: activity === "blocked" ? missionJobs?.candidateBlock?.jobId ?? jobId : jobId,
       lastReviewAt: current?.at, orchestration,
       review: current && { id: current.id, trigger: current.trigger, status: job?.status,

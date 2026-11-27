@@ -24,6 +24,8 @@ const { createStudioActions, operationsReviewId } = require("./studio-actions");
 const { createObjectiveRuns, precedingResult, responseMarker } = require("./objective-runs");
 const { reconcileParentContinuations } = require("./parent-continuation");
 const { createExecutiveService } = require("./executive-service");
+const { autonomousClaimFilter, autonomousScope, discardStoppedWork, migrateEndurance, operatingMode, operatingModes,
+  reconcileAutonomous, reportsTo, runGeneration } = require("./autonomous-work");
 const { relayJobCapabilities } = require("./relay-claims");
 const { createBlueprints } = require("./blueprints");
 const { validArtifactImport } = require("./media-artifacts");
@@ -153,7 +155,7 @@ function createRouter({
     owner, online, headquarters, missionBriefing: missions.briefing, hostLimit, workerEnabled, eventBatches, jobView, inMaintenance, isolatedReviewHost,
     reviseMission: missions.reviseFromTurn, inspectMission: missions.inspectFromTurn, registerMission: missions.registerFromTurn,
     missionRecords, recoverMission: missions.recoverFromTurn, changeMission: missions.changeFromTurn, listMissions: missions.listFromTurn,
-    executivePaused: executive.isPaused, executiveView: executive.view,
+    executivePaused: executive.isPaused, executiveView: executive.view, dispatch,
   });
   const governance = createGovernance({
     requests: () => db().collection("operations_github_requests"),
@@ -348,6 +350,11 @@ function createRouter({
         dispatch().findOne({ _id: ownerId }),
         hosts().find({ ownerId, revokedAt: null, isolatedReviewSnapshot: { $ne: true } }).toArray(),
       ]);
+      if (executiveEnabled && operatingMode(settings) === "run" && !settings.enduranceMigratedAt &&
+          await migrateEndurance({ ownerId, records: missionRecords, objectives, projects })) {
+        await dispatch().updateOne({ _id: ownerId, enduranceMigratedAt: { $exists: false } },
+          { $set: { enduranceMigratedAt: new Date() } });
+      }
       relayCount = relays.length;
       onlineRelays = relays.filter(host => online(host)).length;
       const results = await Promise.allSettled(relays.map(host =>
@@ -359,6 +366,11 @@ function createRouter({
         }
         failed = true;
         reportError(failureDiagnostic(result.reason, "Operations host reconciliation"));
+      }
+      if (executiveEnabled && operatingMode(settings)) {
+        for (const relay of relays) {
+          await reconcileAutonomous({ settings, ownerId, hostId: relay._id, jobs, objectives, eventBatches });
+        }
       }
       const hostId = settings?.executiveService?.hostId;
       if (executiveEnabled && hostId) {
@@ -550,9 +562,14 @@ function createRouter({
           ...(held || !continuationEnabled ? { resumedFrom: { $exists: false } } : {}),
           ...(isolated ? { isolatedReview: true } : { isolatedReview: { $ne: true } }),
           ...(background ? { profile: "read-only" }
-            : allocated || held ? { delegatedBy: { $exists: false } } : {}),
+            : held ? { delegatedBy: { $exists: false } } : {}),
           $and: [
             ...capabilities,
+            autonomousClaimFilter(executiveEnabled && !held ? settings : null),
+            ...(!background && allocated && !held ? [{ $or: [
+              { delegatedBy: { $exists: false } },
+              { "delegatedBy.scope": autonomousScope, workerRole: "correction" },
+            ] }] : []),
             ...(firstMateBusy ? [{ $nor: firstMateIdentity }] : []),
             ...(held || settings?.executivePaused === true || !executiveEnabled ? [{ executiveReview: { $ne: true } }] : []),
             { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs } }] },
@@ -570,7 +587,7 @@ function createRouter({
         }, { $set: {
           status: "running", instance, activeHost,
           leaseUntil: new Date(Date.now() + leaseMs), startedAt: new Date(),
-        } }, { sort: { createdAt: 1 }, returnDocument: "after" });
+        } }, { sort: { dispatchPriority: 1, createdAt: 1 }, returnDocument: "after" });
       } catch (error) {
         if (error.code !== 11000) throw error;
         job = await jobs().findOne({ ...scope, activeHost, instance });
@@ -617,6 +634,7 @@ function createRouter({
       if (!(await jobs().updateOne(key, { $set: { runAuthorizedAt: new Date() } })).matchedCount) return res.json(null);
     }
     if (job.objectiveId && job.employeeId && !job.runAuthorizedAt && job.status === "running") {
+      const autonomous = job.delegatedBy?.scope === autonomousScope;
       const [objective, employee] = await Promise.all([
         objectives().findOne({ _id: job.objectiveId, ownerId: scope.ownerId, status: "active",
           ...(job.delegatedBy ? { revision: job.delegatedBy.objectiveRevision } : {}),
@@ -624,11 +642,12 @@ function createRouter({
         }, { projection: { projectId: 1 } }),
         workforce().findOne({
           _id: job.employeeId, ownerId: scope.ownerId, kind: "employee",
-          ...(job.delegatedBy ? { revision: job.delegatedBy.employeeRevision, supervisorId: job.delegatedBy.employeeId } : {}),
+          ...(job.delegatedBy ? { revision: job.delegatedBy.employeeRevision,
+            ...(!autonomous ? { supervisorId: job.delegatedBy.employeeId } : {}) } : {}),
           ...(job.blueprintRevisions ? { revision: job.blueprintRevisions.employee } : {}),
           role: job.assignedRole || (job.workerRole === "correction" ? "worker" : job.workerRole),
           workspace: job.workspace, status: "available",
-        }, { projection: { _id: 1 } }),
+        }, { projection: { _id: 1, supervisorId: 1 } }),
       ]);
       const authorization = { _id: job._id, ...scope, instance, status: "running", runAuthorizedAt: { $exists: false } };
       const activeProject = !objective?.projectId || await projects().findOne({
@@ -636,10 +655,25 @@ function createRouter({
         ...(job.delegatedBy ? { revision: job.delegatedBy.projectRevision } : {}),
         ...(job.blueprintRevisions ? { revision: job.blueprintRevisions.project } : {}),
       }, { projection: { _id: 1 } });
-      const mandateCurrent = !job.delegatedBy || (employee && activeProject && await workforce().findOne({
+      const currentSettings = autonomous && await dispatch().findOne({ _id: scope.ownerId });
+      if (autonomous && (operatingMode(currentSettings) !== "run" || runGeneration(currentSettings) !== job.autonomous.generation ||
+          currentSettings.paused || maintenanceActive(currentSettings))) {
+        const stopped = runGeneration(currentSettings) !== job.autonomous.generation;
+        await jobs().updateOne(authorization, {
+          $set: stopped ? { status: "cancelled", finishedAt: new Date() } : { status: "queued" },
+          $unset: { activeHost: "", instance: "", leaseUntil: "", startedAt: "" },
+        });
+        return res.json(null);
+      }
+      const mandateCurrent = !job.delegatedBy || (employee && activeProject && (autonomous
+        ? await reportsTo(workforce, scope.ownerId, employee, job.delegatedBy.employeeId) && !await workforce().findOne({
+          ownerId: scope.ownerId, kind: "project-assignment", employeeId: job.employeeId,
+          projectId: job.projectId, objectiveId: job.objectiveId, status: { $ne: "assigned" },
+        }, { projection: { _id: 1 } })
+        : await workforce().findOne({
         ownerId: scope.ownerId, kind: "project-assignment", employeeId: job.employeeId,
         supervisorId: job.delegatedBy.employeeId, projectId: job.projectId, objectiveId: job.objectiveId, status: "assigned",
-      }, { projection: { _id: 1 } }));
+      }, { projection: { _id: 1 } })));
       const standingCurrent = job.delegatedBy?.scope !== "executive-assignment" ||
         await missionRecords().findOne({ _id: job.delegatedBy.grantId, ownerId: scope.ownerId, hostId: scope.hostId,
           coordinatorActorId: job.delegatedBy.employeeId, workspace: job.workspace, status: { $in: ["active", "blocked"] },
@@ -955,6 +989,28 @@ function createRouter({
   router.get("/headquarters", async (_req, res) => res.json(await headquarters(owner())));
   router.get("/executive-service", async (_req, res) => res.json(await executive.view(owner())));
   router.patch("/executive-service", async (req, res) => {
+    const mode = req.body?.mode;
+    if (operatingModes.includes(mode)) {
+      if (mode === "run" && (!workerEnabled || !executiveEnabled || await lifecycleRunning())) {
+        return reject(res, 409, "BEDROCK must be available before starting autonomous work.");
+      }
+      await dispatch().updateOne({ _id: owner() }, [{
+        $set: {
+          operatingGeneration: { $add: [{ $ifNull: ["$operatingGeneration", 0] },
+            { $cond: [{ $and: [{ $ne: [{ $ifNull: ["$operatingMode", ""] }, "stop"] }, { $eq: [mode, "stop"] }] }, 1, 0] }] },
+          operatingMode: mode, executivePaused: mode !== "run",
+          executiveEvents: { $add: [{ $ifNull: ["$executiveEvents", 0] }, 1] },
+        },
+      }], { upsert: true });
+      if (mode === "stop") {
+        const settings = await dispatch().findOne({ _id: owner() });
+        await discardStoppedWork(jobs, { ownerId: owner() }, runGeneration(settings));
+      }
+      return res.json(await executive.view(owner()));
+    }
+    if (await dispatch().findOne({ _id: owner(), operatingMode: { $exists: true } })) {
+      return reject(res, 409, "Use Run, Pause, or Stop to change the operating mode.");
+    }
     if (typeof req.body?.paused !== "boolean") return reject(res, 400, "Set whether First Mate is paused.");
     await dispatch().updateOne({ _id: owner() }, { $set: { executivePaused: req.body.paused } }, { upsert: true });
     res.json(await executive.view(owner()));
@@ -978,6 +1034,14 @@ function createRouter({
       githubEnabled: governance.available, toolsEnabled: governance.toolsAvailable, workerEnabled,
       policy: await governance.config(owner()), requests: await governance.list(owner()),
     });
+  });
+  router.get("/approvals/autonomous-deliveries", async (_req, res) => {
+    const pending = await objectives().find({
+      ownerId: owner(), status: "active", "autonomousMigration.ownerAcceptance": true,
+      "autonomousDelivery.verifiedAt": { $type: "date" },
+      $expr: { $eq: ["$autonomousDelivery.objectiveRevision", "$revision"] },
+    }, { projection: { title: 1, autonomousDelivery: 1 } }).sort({ "autonomousDelivery.verifiedAt": -1 }).limit(20).toArray();
+    res.json(pending);
   });
   router.patch("/approvals/policy", async (req, res) => {
     const status = await governance.configure(owner(), req.body?.revision, req.body?.modes, req.body?.toolModes);

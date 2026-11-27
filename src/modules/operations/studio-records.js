@@ -11,7 +11,8 @@ const definitions = {
     fields: ["name", "employeeId", "projectId", "objectiveId", "supervisorId", "responsibilities", "status", "activationSource"] },
   projects: { source: "projects", fields: ["name", "description", "workspace", "status", "revision"],
     workspace: "projects", record: "project" },
-  objectives: { source: "objectives", fields: ["title", "projectId", "priority", "status", "criteria", "revision"],
+  objectives: { source: "objectives", fields: ["title", "projectId", "priority", "status", "criteria", "revision",
+    "instruction", "autonomousMigration", "autonomousDelivery"],
     scope: ["projectId"], workspace: "objectives", record: "objective" },
   knowledge: { source: "knowledge", filter: { status: { $in: knowledgeStatuses } }, allowedStatuses: knowledgeStatuses,
     fields: ["title", "projectId", "kind", "summary", "source", "author", "status", "memoryKind", "createdAt", "updatedAt"],
@@ -23,7 +24,7 @@ const definitions = {
     scope: ["employeeId", "projectId", "objectiveId"], workspace: "command",
     fields: ["title", "employeeId", "assigneeName", "reviewerName", "projectId", "objectiveId", "status", "error", "reviewOf",
       "delegatedBy.sourceTurnId", "delegatedBy.employeeId", "delegatedBy.sessionId", "createdAt", "startedAt", "finishedAt",
-      "scheduledAt", "leaseUntil", "workerRole", "eventCount"] },
+      "scheduledAt", "leaseUntil", "workerRole", "eventCount", "autonomous", "executiveAssignmentType"] },
 };
 const idPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
 const validStatus = /^[a-z-]{1,24}$/;
