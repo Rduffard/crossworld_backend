@@ -231,9 +231,16 @@ function createStudioActions({ proposals, jobs, projects, objectives, workforce,
         scope: autonomous ? autonomousScope : "executive-assignment", ...(!autonomous ? { grantId } : {}), digest, projectRevision: selection.project.revision,
         objectiveRevision: selection.objective.revision, employeeRevision: selection.employee.revision },
     };
-    try { await jobs().insertOne(job); } catch (error) { if (error.code !== 11000) throw error; }
-    const saved = await jobs().findOne({ _id: id, ownerId });
-    const receipt = saved && { assignmentId: id, state: saved.status, url: "/operations?workspace=command&job=" + id };
+    let saved;
+    try {
+      await jobs().insertOne(job);
+      saved = job;
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      saved = await jobs().findOne({ _id: id, ownerId });
+      if (!saved) throw error;
+    }
+    const receipt = { assignmentId: id, state: saved.status, url: "/operations?workspace=command&job=" + id };
     if (saved?.delegatedBy?.digest === digest) return res.json(receipt);
     return fail(res, 409, autonomous
       ? `An assignment of type ${assignmentType} already exists for this objective revision and Run generation${review ? " and source" : ""} (${id}). Continue from the existing assignment.`

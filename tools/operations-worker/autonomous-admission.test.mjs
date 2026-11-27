@@ -16,8 +16,9 @@ test("Run assignment admission ignores stale grant IDs and explains conflicts wi
   const project = { _id: projectId, revision: 1, workspace: "development" };
   const employee = { _id: employeeId, supervisorId: actorId, revision: 1, role: "worker" };
   const settings = { operatingMode: "run", operatingGeneration: 2 };
-  const host = { _id: "relay", instance, profiles: ["development"], efforts: ["low"], boundedCorrections: true };
+  const host = { _id: "relay", instance, profiles: ["development", "read-only"], efforts: ["low"], boundedCorrections: true };
   const queued = new Map();
+  let unrelatedDuplicate = false;
   const actions = createStudioActions({
     owner: () => ownerId, online: () => true, workerEnabled: true, hostLimit: () => 10_000,
     executivePaused: async () => false, inMaintenance: async () => false,
@@ -29,7 +30,7 @@ test("Run assignment admission ignores stale grant IDs and explains conflicts wi
     jobs: () => ({
       findOne: async ({ _id }) => _id === turnId ? actor : queued.get(_id),
       insertOne: async job => {
-        if (queued.has(job._id)) throw Object.assign(new Error("Duplicate"), { code: 11000 });
+        if (unrelatedDuplicate || queued.has(job._id)) throw Object.assign(new Error("Duplicate"), { code: 11000 });
         queued.set(job._id, job);
       },
     }),
@@ -37,6 +38,10 @@ test("Run assignment admission ignores stale grant IDs and explains conflicts wi
   const app = express();
   app.use(express.json(), (req, _res, next) => { req.operationsHost = host; next(); });
   app.use("/operations/worker", actions.worker);
+  app.use((error, _req, res, next) => {
+    if (error.code !== 11000) return next(error);
+    return res.sendStatus(500);
+  });
   const server = app.listen(0, "127.0.0.1");
   t.after(() => server.close());
   await once(server, "listening");
@@ -54,10 +59,18 @@ test("Run assignment admission ignores stale grant IDs and explains conflicts wi
   assert.equal(queued.get(receipt.assignmentId).delegatedBy.scope, "autonomous-assignment");
   assert.equal(queued.get(receipt.assignmentId).delegatedBy.grantId, undefined);
   assert.deepEqual(await submit(), receipt);
-  await assert.rejects(submit({ assignmentKey: "another-key", instruction: "Different work." }),
-    { status: 409, message: new RegExp(`HTTP 409: An assignment of type implementation already exists.*${receipt.assignmentId}`) });
+  queued.get(receipt.assignmentId).status = "running";
+  await assert.rejects(submit({ assignmentKey: "another-key", instruction: "Different work." }), error => {
+    assert.equal(error.status, 409);
+    assert.match(error.message, /HTTP 409: An assignment of type implementation already exists/);
+    assert.ok(error.message.includes(`Existing assignment state is running. Open ${receipt.url}.`));
+    return true;
+  });
   assert.equal(queued.size, 1);
 
+  unrelatedDuplicate = true;
+  await assert.rejects(submit({ assignmentType: "research" }),
+    { status: 500, message: "Operations request failed (HTTP 500)." });
   settings.operatingGeneration++;
   await assert.rejects(submit(), { status: 409, message: /no longer part of the active Run generation/ });
 });

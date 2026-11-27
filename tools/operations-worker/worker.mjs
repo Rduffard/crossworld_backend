@@ -163,6 +163,13 @@ export function backendClient(base, token) {
         const rejection = await response.json().catch(() => null);
         if (typeof rejection?.message === "string" && rejection.message.trim()) {
           message = `HTTP ${response.status}: ${redact(rejection.message, token).slice(0, 500)}`;
+          const { assignmentId, state, url } = rejection;
+          if (response.status === 409 && typeof assignmentId === "string" &&
+              /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(assignmentId) &&
+              ["queued", "running", "cancelling", "completed", "failed", "interrupted", "cancelled"].includes(state) &&
+              url === "/operations?workspace=command&job=" + assignmentId) {
+            message += ` Existing assignment state is ${state}. Open ${url}.`;
+          }
         }
       }
       throw Object.assign(new Error(message), { status: response.status });
