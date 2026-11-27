@@ -64,6 +64,8 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(gated.state, "Awaiting Decision");
   assert.equal(gated.activity, "awaiting-owner-approval");
   assert.equal(gated.ownerDecisionRequired, true);
+  assert.equal(gated.decision.id, "gate");
+  assert.match(gated.decision.url, /source=mission&record=gate$/);
   assert.equal(gated.compatibleQueued, 1, "The independent review stays queued while the owner gate is visible");
   await collections.jobs().deleteOne({ _id: "unsupported" });
   await collections.jobs().updateOne({ _id: second._id }, { $set: { status: "failed", finishedAt: new Date(now) } });
@@ -188,6 +190,23 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   const delivered = (await runs()).slice(9).flatMap(review => [...review.prompt.matchAll(/assignment completed (burst-\d+)/g)].map(match => match[1]));
   assert.equal(delivered.length, 52);
   assert.equal(new Set(delivered).size, 52, "A timestamp-tied batch survives paging and restart without duplication");
+
+  await collections.jobs().insertOne({ _id: "late-write", ownerId: relay.ownerId, hostId: relay._id,
+    workerRole: "assignment", status: "completed", finishedAt: new Date(now - 3_600_000) });
+  now += 120_000;
+  await controller.signal(relay.ownerId);
+  await create().reconcile(relay);
+  assert.match((await runs()).at(-1).prompt, /assignment completed late-write/);
+  await create().reconcile(relay);
+  assert.equal((await collections.jobs().findOne({ _id: "late-write" })).executiveOutcomeObserved, true);
+
+  await collections.records().deleteOne({ _id: "gate" });
+  await collections.jobs().insertMany(Array.from({ length: 30 }, (_, index) => ({
+    _id: "unsupported-" + index, ownerId: relay.ownerId, hostId: relay._id,
+    status: "queued", profile: "scoped", effort: "low", createdAt: new Date(now - 60_000),
+  })));
+  assert.equal((await status()).activity, "awaiting-dispatch");
+  assert.equal((await status()).compatibleQueued, 1);
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {

@@ -198,7 +198,7 @@ function createRouter({
         unique: true, partialFilterExpression: { resumedFrom: { $type: "string" } },
       }),
       jobs().createIndex({ ownerId: 1, "resumeParent.hostId": 1, resumeDisposition: 1, finishedAt: 1 }),
-      jobs().createIndex({ ownerId: 1, hostId: 1, finishedAt: 1, _id: 1 }),
+      jobs().createIndex({ ownerId: 1, hostId: 1, executiveOutcomeObserved: 1, finishedAt: 1, _id: 1 }),
       blueprintRuns().createIndex({ ownerId: 1, hostId: 1, status: 1, lastCheckedAt: 1, createdAt: 1 }),
       jobs().createIndex({ ownerId: 1, blueprintRunId: 1 }, {
         partialFilterExpression: { blueprintRunId: { $type: "string" } },

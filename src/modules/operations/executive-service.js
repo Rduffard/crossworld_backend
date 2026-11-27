@@ -119,6 +119,14 @@ function createExecutiveService({
     if (paused(settings, now) || hold(host, now)) return;
     const state = settings?.executiveService;
     if (state && state.hostId !== host._id) return;
+    const checkpoint = settings?.executiveWatchtower;
+    // Acknowledge only after the reservation or pending batch is durable. A restart can replay this write.
+    if (checkpoint?.assignmentReceiptIds?.length) {
+      await jobs().updateMany({
+        _id: { $in: checkpoint.assignmentReceiptIds }, ownerId, hostId: host._id,
+        executiveOutcomeObserved: { $ne: true },
+      }, { $set: { executiveOutcomeObserved: true } });
+    }
     let previous;
     if (state?.reservation) {
       previous = await jobs().findOne({ _id: state.reservation.id, ownerId, hostId: host._id });
@@ -130,7 +138,6 @@ function createExecutiveService({
       if (inFlight.includes(previous.status)) return;
     }
     const eventVersion = settings?.executiveEvents ?? 0;
-    const checkpoint = settings?.executiveWatchtower;
     const lastActivity = Math.max(+state?.reservation?.at || 0, +previous?.finishedAt || 0);
     if (state && now - lastActivity < wakeInterval) return;
     const notified = eventVersion > (checkpoint?.eventVersion ?? 0);
@@ -140,8 +147,7 @@ function createExecutiveService({
 
     // Drain persisted batches before discovery so a backlog cannot overflow the checkpoint.
     const discovery = checkpoint?.pendingConditions?.length ? null :
-      await executiveEvents({ ownerId, host, coordinator: state?.reservation, now, records, proposals, jobs, workforce,
-        assignmentCursor: checkpoint?.assignmentCursor });
+      await executiveEvents({ ownerId, host, coordinator: state?.reservation, now, records, proposals, jobs, workforce });
     const conditions = [
       ...(discovery ? Object.values(settings?.executiveInfrastructure?.events ?? {}) : []),
       ...(discovery?.conditions ?? []),
@@ -157,7 +163,7 @@ function createExecutiveService({
       eventVersion: discovery ? eventVersion : checkpoint.eventVersion,
       checkedAt: discovery ? new Date(now) : checkpoint.checkedAt, observedKeys,
       moreAssignments: discovery?.moreAssignments ?? checkpoint?.moreAssignments ?? false,
-      assignmentCursor: discovery?.assignmentCursor ?? checkpoint?.assignmentCursor ?? null,
+      assignmentReceiptIds: discovery?.assignmentReceiptIds ?? [],
       pendingConditions: changed.slice(conditionsPerReview),
       version: (checkpoint?.version ?? 0) + 1,
     };
@@ -228,7 +234,14 @@ function createExecutiveService({
         $expr: { $ne: ["$approval.id", { $ifNull: ["$decision.id", null] }] } }, { projection: { _id: 1 } }),
       service && proposals().findOne({ ownerId, sessionId: service.sessionId, state: "pending" }, { projection: { jobId: 1 } }),
     ]);
-    const decision = missionDecision || executionDecision || proposal;
+    const decisionJobId = executionDecision?._id || proposal?.jobId;
+    const decision = missionDecision ? {
+      kind: "mission", id: missionDecision._id,
+      url: "/operations?workspace=command&source=mission&record=" + encodeURIComponent(missionDecision._id),
+    } : decisionJobId ? {
+      kind: "execution", id: decisionJobId,
+      url: "/operations?workspace=command&job=" + encodeURIComponent(decisionJobId),
+    } : null;
     const operations = host && await snapshot(ownerId, host, now);
     const grants = host && await actionableGrants({ ownerId, host, coordinator: current, now, records, jobs, workforce });
     const running = ["running", "cancelling"].includes(job?.status) && +job.leaseUntil > now;
@@ -240,18 +253,21 @@ function createExecutiveService({
       isPaused ? "Studio dispatch is paused or in maintenance." : decision ? "Operations requires an owner decision." :
         host && hold(host, now) ? "Waiting for subscription capacity." :
           service && !runnable ? "Waiting for the enrolled relay." : undefined;
-    const jobId = state === "Awaiting Decision" ? proposal?.jobId || executionDecision?._id || job?._id : job?._id;
+    const jobId = state === "Awaiting Decision" ? decisionJobId : job?._id;
     const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
     const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
-    const compatibleQueued = operations?.queued.filter(item => host.efforts?.includes(item.effort) &&
-      (!item.profile || host.profiles?.includes(item.profile)) && (!item.executiveReview || !settings?.executivePaused));
+    const compatibleQueued = host && await jobs().countDocuments({
+      ownerId, hostId: host._id, status: "queued", effort: { $in: host.efforts ?? [] },
+      $or: [{ profile: null }, { profile: { $in: host.profiles ?? [] } }],
+      ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
+    });
     const activity = isPaused ? "paused" :
       decision ? "awaiting-owner-approval" :
       !host || !online(host, now) || !compatible(host) ? "relay-unavailable" :
       activeRuns.length ? "executing" :
       hold(host, now) ? "subscription-limit" :
       job?.status === "failed" || job?.status === "interrupted" ? "orchestration-failure" :
-      compatibleQueued.length || grants?.length || operations.missions.some(mission => mission.status === "active" && !mission.reason)
+      compatibleQueued || grants?.length || operations.missions.some(mission => mission.status === "active" && !mission.reason)
         ? "awaiting-dispatch" : operations.queued.length ? "blocked" :
         operations.missions.some(mission => mission.status === "blocked" || mission.status === "active")
           ? "blocked" : "no-authorized-actionable-work";
@@ -265,7 +281,7 @@ function createExecutiveService({
         (operations?.queued.length ? "Queued work requires a compatible relay configuration." : "A mission dependency is blocked."),
       "no-authorized-actionable-work": "No authorized actionable work remains on this relay.",
     }[activity];
-    return { state, activity, capacity: operations?.capacity, compatibleQueued: compatibleQueued?.length,
+    return { state, activity, capacity: operations?.capacity, compatibleQueued, decision,
       ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true,
       reason: controlReason || activityReason, jobId,
       lastReviewAt: current?.at,
