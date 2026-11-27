@@ -30,6 +30,7 @@ function boundedSnapshot(snapshot, budget) {
 
 function createExecutiveService({
   dispatch, jobs, hosts, workforce, records, proposals, objectives, eligibleMissionJobs, eventBatches, online, enabled, clock = Date.now,
+  isolatedReviewHostId = () => undefined,
   reconcileInterval = defaultReconcileInterval,
 }) {
   const paused = (settings, now) => settings?.executivePaused === true || settings?.paused === true ||
@@ -268,6 +269,7 @@ function createExecutiveService({
     }) : {};
     const relayQueue = host && {
       ownerId, hostId: host._id, ...filters,
+      ...(host._id === isolatedReviewHostId() ? { isolatedReview: true } : { isolatedReview: { $ne: true } }),
       $and: [...capabilities, dueJobs(now)],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),

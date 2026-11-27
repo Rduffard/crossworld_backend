@@ -255,6 +255,8 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   const otherReviews = [
     { _id: "earlier-future", status: "scheduled", scheduledAt: new Date(now + 60_000) },
     { _id: "earlier-media", mediaInputs: [{}] },
+    { _id: "earlier-isolated", isolatedReview: true },
+    { _id: "earlier-retry", candidateRetryAt: new Date(now + 60_000) },
     { _id: "later-mismatch", createdAt: new Date(now) },
   ];
   await collections.records().insertMany(otherReviews.map(({ _id }) => ({
