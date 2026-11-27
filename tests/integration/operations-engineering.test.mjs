@@ -129,3 +129,28 @@ test("automatic Engineering refresh retries after a failure but honors GitHub ba
   now += 60_000;
   assert.equal(router.refreshWhenDue(), undefined);
 });
+
+test("automatic Engineering retries only failed or stale observations", async () => {
+  let now = 1000000;
+  let failing = true;
+  const calls = [];
+  const router = engineering.createEngineering({
+    repositories: () => ["studio/healthy", "studio/partial"], now: () => now,
+    fetchData: async url => {
+      calls.push(url);
+      if (url.includes("/partial/commits") && failing) return new Response(null, { status: 502 });
+      return Response.json(url.includes("/actions/") ? { workflow_runs: [] } : url.includes("?") ? [] : {});
+    },
+  });
+  await router.refreshWhenDue();
+  assert.equal(calls.length, 12);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    calls.length = 0;
+    now += 60_000;
+    if (attempt) failing = false;
+    await router.refreshWhenDue();
+    assert.deepEqual(calls, ["https://api.github.com/repos/studio/partial/commits?per_page=12"]);
+  }
+  now += 60_000;
+  assert.equal(router.refreshWhenDue(), undefined);
+});

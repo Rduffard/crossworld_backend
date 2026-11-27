@@ -520,3 +520,40 @@ test("a scheduled executive turn can commission a correction and independent ret
   assert.equal(request.body.approvalRequests[gate.key].sourceTurnId, executive._id);
   assert.deepEqual(request.body.approvals, {});
 });
+
+test("objective discovery replays receipts across restart using numeric revisions and legacy timestamps", async t => {
+  const fixture = await startTestMongo(t);
+  const client = await MongoClient.connect(fixture.uri);
+  t.after(() => client.close());
+  const db = client.db(fixture.database);
+  const collections = Object.fromEntries(["dispatch", "jobs", "hosts", "workforce", "records", "proposals", "eventBatches", "objectives"]
+    .map(name => [name, () => db.collection(name)]));
+  const host = { _id: "relay", ownerId: "owner", profiles: ["read-only"], efforts: ["low"] };
+  const actor = { _id: "first-mate", ownerId: host.ownerId, kind: "employee", role: "first-mate", status: "available", name: "Barnaby" };
+  let now = Date.now();
+  const updatedAt = new Date(now);
+  const objective = { ownerId: host.ownerId, status: "active", criteria: [{ review: null }], updatedAt };
+  await collections.workforce().insertOne(actor);
+  await collections.jobs().insertOne({ ownerId: host.ownerId, hostId: host._id, studioTools: true,
+    studioActor: { id: actor._id, role: actor.role }, workspace: "development", model: "fixture" });
+  await collections.objectives().insertMany([{ ...objective, _id: "numeric", revision: 1 },
+    { ...objective, _id: "legacy" }, { ...objective, _id: "stable", revision: 1 }]);
+  const restart = () => createExecutiveService({ ...collections, enabled: true, online: () => true, clock: () => now });
+  await restart().reconcile(host, { safetyNet: true });
+  const first = await collections.jobs().findOne({ executiveReview: true });
+  assert.match(first.prompt, /objective needs planning numeric/);
+  assert.match(first.prompt, /objective needs planning legacy/);
+  await collections.objectives().updateOne({ _id: "numeric" }, { $inc: { revision: 1 } });
+  await restart().reconcile(host, { safetyNet: true });
+  assert.equal((await collections.objectives().findOne({ _id: "numeric" })).executivePlanningObservedRevision, undefined);
+  assert.deepEqual((await collections.objectives().findOne({ _id: "legacy" })).executivePlanningObservedRevision, updatedAt);
+  assert.equal((await collections.objectives().findOne({ _id: "stable" })).executivePlanningObservedRevision, 1);
+  await collections.jobs().updateOne({ _id: first._id }, { $set: { status: "completed", finishedAt: new Date(now) } });
+  now += 6 * 60_000;
+  await restart().reconcile(host, { safetyNet: true });
+  const second = await collections.jobs().findOne({ executiveReview: true, _id: { $ne: first._id } });
+  assert.match(second.prompt, /objective needs planning numeric/);
+  assert.doesNotMatch(second.prompt, /objective needs planning (legacy|stable)/);
+  await restart().reconcile(host, { safetyNet: true });
+  assert.equal((await collections.objectives().findOne({ _id: "numeric" })).executivePlanningObservedRevision, 2);
+});

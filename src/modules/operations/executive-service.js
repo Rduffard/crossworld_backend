@@ -135,7 +135,9 @@ function createExecutiveService({
     }
     if (objectives && checkpoint?.objectiveReceipts?.length) {
       await objectives().bulkWrite(checkpoint.objectiveReceipts.map(({ recordId, objectiveRevision }) => ({
-        updateOne: { filter: { _id: recordId, ownerId, updatedAt: objectiveRevision },
+        updateOne: { filter: { _id: recordId, ownerId, ...(typeof objectiveRevision === "number"
+          ? { revision: objectiveRevision }
+          : { updatedAt: objectiveRevision, $expr: { $not: [{ $isNumber: "$revision" }] } }) },
           update: { $set: { executivePlanningObservedRevision: objectiveRevision ?? "initial" } } },
       })));
     }

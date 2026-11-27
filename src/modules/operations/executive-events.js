@@ -3,6 +3,7 @@ const { missionStepRoles, resolveRoute } = require("./mission-capabilities");
 
 const limit = 50;
 const digest = values => createHash("sha256").update(JSON.stringify(values)).digest("hex");
+const objectiveRevisionValue = { $cond: [{ $isNumber: "$revision" }, "$revision", { $ifNull: ["$updatedAt", null] }] };
 const conditionHeading = "New durable conditions (record identifiers):\n";
 
 async function previouslyPublishedAssignments(jobs, ownerId, hostId, assignments) {
@@ -61,7 +62,7 @@ async function actionableGrants({ ownerId, host, coordinator, now, records, jobs
 async function unattendedObjectives(objectives, ownerId, now) {
   if (!objectives) return [];
   return objectives().aggregate([
-    { $match: { ownerId, status: "active", $expr: { $ne: [{ $ifNull: ["$updatedAt", "initial"] },
+    { $match: { ownerId, status: "active", $expr: { $ne: [{ $ifNull: [objectiveRevisionValue, "initial"] },
       { $ifNull: ["$executivePlanningObservedRevision", false] }] }, criteria: { $elemMatch: { "review.decision": { $ne: "accepted" } } } } },
     { $sort: { updatedAt: -1, _id: 1 } },
     { $lookup: {
@@ -73,7 +74,7 @@ async function unattendedObjectives(objectives, ownerId, now) {
     } },
     { $match: { "activeWork.0": { $exists: false } } },
     { $limit: limit },
-    { $project: { updatedAt: 1 } },
+    { $project: { objectiveRevision: objectiveRevisionValue } },
   ]).toArray();
 }
 
@@ -124,8 +125,9 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     ...available,
   ].map(event => ({ key: digest(event), kind: event[0], recordId: event[1] }));
   for (const objective of unattended) {
-    conditions.push({ key: digest(["objective needs planning", objective._id, objective.updatedAt]),
-      kind: "objective needs planning", recordId: objective._id, objectiveRevision: objective.updatedAt ?? null });
+    const { objectiveRevision } = objective;
+    conditions.push({ key: digest(["objective needs planning", objective._id, objectiveRevision]),
+      kind: "objective needs planning", recordId: objective._id, objectiveRevision });
   }
   return { conditions, moreAssignments, assignmentReceiptIds: assignments.map(job => job._id) };
 }

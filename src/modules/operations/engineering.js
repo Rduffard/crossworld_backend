@@ -27,7 +27,6 @@ const maxRepositories = 8;
 function createEngineering({ repositories, fetchData = fetch, now = Date.now }) {
   const router = express.Router();
   let snapshot;
-  let lastSuccessfulObservation;
   let nextAttempt = 0;
   let pending;
   const configuredRepositories = () => [...new Set(repositories().filter(name => repoPattern.test(name)))];
@@ -71,7 +70,10 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
 
   router.get("/", (_req, res) => res.json(status()));
 
-  function refresh(configured) {
+  const fresh = entry => entry?.status === "available" && now() - entry.observedAt < freshnessMs;
+  const repositoryFresh = repo => fresh(repo) && Object.keys(sections).every(key => fresh(repo.details?.[key]));
+
+  function refresh(configured, { force = false } = {}) {
     nextAttempt = now() + throttleMs;
     pending = (async () => {
       const entries = [];
@@ -79,14 +81,18 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
       let limited = false;
       for (const name of configured) {
         const cached = previous.get(name);
+        if (!force && repositoryFresh(cached)) {
+          entries.push(cached);
+          continue;
+        }
         if (limited) {
-          entries.push({ ...cached, name, status: "not-refreshed" });
+          entries.push(!force && cached ? cached : { ...cached, name, status: "not-refreshed" });
           continue;
         }
         try {
-          const repo = await github(name);
-          const observedAt = now();
+          const repo = !force && fresh(cached) ? cached : { ...await github(name), observedAt: now() };
           const details = Object.fromEntries(await Promise.all(Object.entries(sections).map(async ([key, [path, summarize]]) => {
+            if (!force && fresh(cached?.details?.[key])) return [key, cached.details[key]];
             try {
               return [key, { status: "available", items: summarize(await github(name, path)), observedAt: now() }];
             } catch (error) {
@@ -94,7 +100,7 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
             }
           })));
           entries.push({
-            name, status: "available", details, observedAt,
+            name, status: "available", details, observedAt: repo.observedAt,
             ...pick(repo, ["visibility", "default_branch", "language", "pushed_at", "size", "open_issues_count"]),
           });
           limited = Object.values(details).some(value => value.status === "rate-limited");
@@ -104,18 +110,16 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
           limited = cause === "rate-limited";
         }
       }
-      const complete = entries.every(entry => entry.status === "available" &&
-        Object.values(entry.details).every(detail => detail.status === "available"));
-      if (complete) lastSuccessfulObservation = now();
-      snapshot = { observedAt: now(), repositories: entries, complete };
+      snapshot = { observedAt: now(), repositories: entries };
     })().finally(() => { pending = undefined; });
     return pending;
   }
 
   router.refreshWhenDue = () => {
-    if (pending || nextAttempt > now() || (snapshot?.complete && now() - lastSuccessfulObservation < freshnessMs)) return;
+    if (pending || nextAttempt > now()) return;
     const configured = configuredRepositories().slice(0, maxRepositories);
-    if (configured.length) return refresh(configured);
+    const known = new Map((snapshot?.repositories || []).map(repo => [repo.name, repo]));
+    if (configured.some(name => !repositoryFresh(known.get(name)))) return refresh(configured);
   };
 
   router.post("/refresh", async (_req, res) => {
@@ -126,7 +130,7 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
     if (nextAttempt > now()) return res.status(429).json({ message: "GitHub refresh is temporarily throttled." });
     const configured = configuredRepositories().slice(0, maxRepositories);
     if (!configured.length) return res.status(409).json({ message: "No GitHub repositories are configured." });
-    await refresh(configured);
+    await refresh(configured, { force: true });
     return res.json(status());
   });
   return router;
