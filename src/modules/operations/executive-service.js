@@ -258,8 +258,13 @@ function createExecutiveService({
     const jobId = state === "Awaiting Decision" ? decisionJobId : job?._id;
     const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
     const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
+    const observed = host?.primaryClaimOptions;
+    const currentPoll = Boolean(observed && observed.instance === host.instance);
     const queue = host && {
-      ownerId, hostId: host._id, status: "queued", ...relayJobCapabilities(host),
+      ownerId, hostId: host._id, status: "queued", ...relayJobCapabilities(host, {
+        extendedPrompts: currentPoll && observed.extendedPrompts === true,
+        artifactImport: currentPoll && observed.artifactImport === true,
+      }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
     };
     const [compatibleQueued, retry] = queue ? await Promise.all([
@@ -267,15 +272,15 @@ function createExecutiveService({
       jobs().findOne({ ...queue, candidateRetryAt: { $gt: new Date(now) } },
         { sort: { candidateRetryAt: 1 }, projection: { candidateRetryAt: 1 } }),
     ]) : [];
+    const missionReady = operations?.missions.some(mission => mission.status === "active" && !mission.reason && !mission.current?.step);
     const activity = isPaused ? "paused" :
       decision ? "awaiting-owner-approval" :
       !host || !online(host, now) || !compatible(host) ? "relay-unavailable" :
       activeRuns.length ? "executing" :
       hold(host, now) ? "subscription-limit" :
       job?.status === "failed" || job?.status === "interrupted" ? "orchestration-failure" :
-      compatibleQueued || grants?.length ? "awaiting-dispatch" :
+      compatibleQueued || grants?.length || missionReady ? "awaiting-dispatch" :
       retry ? "awaiting-retry" : operations.queued.length ? "blocked" :
-      operations.missions.some(mission => mission.status === "active" && !mission.reason) ? "awaiting-dispatch" :
         operations.missions.some(mission => mission.status === "blocked" || mission.status === "active")
           ? "blocked" : "no-authorized-actionable-work";
     const activityReason = {

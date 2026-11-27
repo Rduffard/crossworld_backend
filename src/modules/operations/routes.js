@@ -381,6 +381,13 @@ function createRouter({
     if (lane !== "primary" && (!background || req.operationsHost.backgroundReviews !== true)) {
       return reject(res, 409, "This relay has no background review slot.");
     }
+    const claimOptions = { extendedPrompts: req.body.extendedPrompts === true, artifactImport: req.body.artifactImport === true };
+    const observed = req.operationsHost.primaryClaimOptions;
+    if (!background && (observed?.instance !== instance ||
+        observed.extendedPrompts !== claimOptions.extendedPrompts || observed.artifactImport !== claimOptions.artifactImport)) {
+      await hosts().updateOne({ _id: req.operationsHost._id, ownerId: owner(), instance, revokedAt: null },
+        { $set: { primaryClaimOptions: { instance, ...claimOptions } } });
+    }
     await ensureIndexes();
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
     const activeHost = background ? scope.hostId + ":review" : scope.hostId;
@@ -467,9 +474,7 @@ function createRouter({
       admittingClaims++;
       try {
         if (await inMaintenance()) return res.json(null);
-        const { $and: capabilities, ...relayFilters } = relayJobCapabilities(req.operationsHost, {
-          extendedPrompts: req.body.extendedPrompts === true, artifactImport: req.body.artifactImport === true,
-        });
+        const { $and: capabilities, ...relayFilters } = relayJobCapabilities(req.operationsHost, claimOptions);
         job = await jobs().findOneAndUpdate({
           ...scope, ...relayFilters,
           ...(held ? { reviewOf: { $exists: false }, seriesId: { $exists: false }, blueprintRunId: { $exists: false } } : {}),

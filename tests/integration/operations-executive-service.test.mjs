@@ -229,6 +229,18 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(waiting.compatibleQueued, 0);
   assert.equal(waiting.activity, "awaiting-retry");
   assert.equal(+waiting.retryAt, now + 60_000);
+  await collections.records().insertOne({ _id: "independent-ready", ownerId: relay.ownerId, hostId: relay._id,
+    status: "active", reason: "", endsAt: new Date(now + 3600_000) });
+  assert.equal((await status()).activity, "awaiting-dispatch", "Independent mission work takes priority over the retry");
+  await collections.records().deleteOne({ _id: "independent-ready" });
+  await collections.hosts().updateOne({ _id: relay._id }, { $set: { instance: "current", extendedPrompts: true, artifactImport: true,
+    primaryClaimOptions: { instance: "prior", extendedPrompts: true, artifactImport: true } } });
+  await collections.jobs().insertOne({ _id: "extended", ownerId: relay.ownerId, hostId: relay._id,
+    status: "queued", profile: "read-only", effort: "low", requiresExtendedPrompt: true, artifactImport: {} });
+  assert.equal((await status()).compatibleQueued, 0);
+  await collections.hosts().updateOne({ _id: relay._id }, { $set: { "primaryClaimOptions.instance": "current" } });
+  assert.equal((await status()).compatibleQueued, 1);
+  await collections.jobs().deleteOne({ _id: "extended" });
   now += 60_000;
   assert.equal((await status()).compatibleQueued, 1, "The retry becomes ready while media still requires relay support");
 });
