@@ -262,16 +262,20 @@ function createExecutiveService({
     const observed = host?.primaryClaimOptions;
     const currentPoll = Boolean(observed && observed.instance === host.instance);
     const supportsPreflight = currentPoll && observed.missionPreflight === true;
-    const missionJobs = host && await eligibleMissionJobs?.(ownerId, host, supportsPreflight);
     const { $and: capabilities, ...filters } = host ? relayJobCapabilities(host, {
       extendedPrompts: currentPoll && observed.extendedPrompts === true,
       artifactImport: currentPoll && observed.artifactImport === true,
     }) : {};
-    const queue = host && {
+    const relayQueue = host && {
       ownerId, hostId: host._id, ...filters,
-      $and: [...capabilities, dueJobs(now), { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs?.eligibleIds ?? [] } }] }],
+      $and: [...capabilities, dueJobs(now)],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
+    };
+    const missionJobs = relayQueue && await eligibleMissionJobs?.(ownerId, host, supportsPreflight, relayQueue, now);
+    const queue = relayQueue && {
+      ...relayQueue, $and: [...relayQueue.$and,
+        { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs?.eligibleIds ?? [] } }] }],
     };
     const [compatibleQueued, retry] = queue ? await Promise.all([
       jobs().countDocuments({ ...queue, $or: [{ candidateRetryAt: { $exists: false } }, { candidateRetryAt: { $lte: new Date(now) } }] }),

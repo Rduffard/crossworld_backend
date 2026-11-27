@@ -829,16 +829,17 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     return { candidate };
   }
 
-  async function dispatchable(ownerId, host, supportsPreflight) {
+  async function dispatchable(ownerId, host, supportsPreflight, queue, now) {
     const scope = activeQuery(ownerId, host._id);
     const items = await records().find({ ...scope, "current.jobId": { $exists: true } }).toArray();
     const byJob = new Map(items.map(mission => [mission.current.jobId, mission]));
     const eligibleIds = [];
     let candidateBlock;
     if (!byJob.size) return { eligibleIds, candidateBlock };
-    const candidates = await jobs().find({ ownerId, hostId: host._id, _id: { $in: [...byJob.keys()] },
-      status: { $in: ["queued", "scheduled"] },
-    }, { projection: { missionId: 1, missionStep: 1, profile: 1, requiresMissionPreflight: 1, scopedRevision: 1, reviewCandidate: 1 } }).toArray();
+    const candidates = await jobs().find({ ...queue, _id: { $in: [...byJob.keys()] } }, {
+      projection: { missionId: 1, missionStep: 1, profile: 1, requiresMissionPreflight: 1,
+        scopedRevision: 1, reviewCandidate: 1, candidateRetryAt: 1 },
+    }).sort({ createdAt: 1, _id: 1 }).toArray();
     for (const job of candidates) {
       const mission = byJob.get(job._id);
       if (mission._id !== job.missionId || mission.current.step !== job.missionStep ||
@@ -846,8 +847,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       const route = admissionRoute(job, host, mission);
       if (!route) continue;
       const { candidateRejection } = admissionCandidate(job, mission, route.step);
-      if (candidateRejection) candidateBlock ??= { jobId: job._id, reason: candidateRejection };
-      else eligibleIds.push(job._id);
+      if (!candidateRejection) eligibleIds.push(job._id);
+      else if (!(+job.candidateRetryAt > now)) candidateBlock ??= { jobId: job._id, reason: candidateRejection };
     }
     return { eligibleIds, candidateBlock };
   }

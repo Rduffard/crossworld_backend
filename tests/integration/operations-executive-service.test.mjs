@@ -250,10 +250,23 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: { ...candidate, commit: "b".repeat(40) } } });
   assert.equal((await status()).activity, "awaiting-retry", "A mismatched candidate does not mask the retry");
   await collections.jobs().updateOne({ _id: "backoff" }, { $set: { status: "waiting" } });
+  const currentMission = await collections.records().findOne({ _id: "independent-ready" });
+  const currentReview = await collections.jobs().findOne({ _id: "mission-review" });
+  const otherReviews = [
+    { _id: "earlier-future", status: "scheduled", scheduledAt: new Date(now + 60_000) },
+    { _id: "earlier-media", mediaInputs: [{}] },
+    { _id: "later-mismatch", createdAt: new Date(now) },
+  ];
+  await collections.records().insertMany(otherReviews.map(({ _id }) => ({
+    ...currentMission, _id, current: { step: "review", jobId: _id },
+  })));
+  await collections.jobs().insertMany(otherReviews.map(review => ({ ...currentReview, ...review, missionId: review._id })));
   const blockedCandidate = await status();
   assert.equal(blockedCandidate.activity, "blocked");
   assert.match(blockedCandidate.reason, /differs from the mission handoff/);
   assert.equal(blockedCandidate.jobId, "mission-review");
+  await collections.records().deleteMany({ _id: { $in: otherReviews.map(review => review._id) } });
+  await collections.jobs().deleteMany({ _id: { $in: otherReviews.map(review => review._id) } });
   await collections.jobs().updateOne({ _id: "backoff" }, { $set: { status: "queued" } });
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: candidate } });
   assert.equal((await status()).activity, "awaiting-dispatch", "The selected candidate is eligible");
