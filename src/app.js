@@ -26,7 +26,18 @@ const io = new Server(server, {
 });
 
 // DB
-connectDB();
+connectDB().then(() => {
+  const reconcile = async () => {
+    try {
+      await operations.reconcileExecutive();
+    } catch {
+      console.error("Operations supervisor reconciliation failed.");
+    } finally {
+      setTimeout(reconcile, 30_000).unref();
+    }
+  };
+  void reconcile();
+});
 
 const corsMiddleware = cors({ origin: true, credentials: true });
 

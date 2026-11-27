@@ -82,6 +82,12 @@ function resolveRoute(host, mission, step, now = Date.now()) {
   return preferred;
 }
 
+function missionStepRoles(step) {
+  if (step.reviewer) return ["qa", "art-director"];
+  if (step.assignee) return ["worker", "lead", "art-director"];
+  return ["first-mate"];
+}
+
 function checkRoute(host, mission, step, now) {
   if (!host.profiles?.includes(step.profile) || !host.efforts?.includes(mission.effort)) {
     return { reason: "The relay no longer advertises the requested profile or reasoning effort." };
@@ -108,4 +114,4 @@ function checkRoute(host, mission, step, now) {
     runtime: report.runtime, observedAt: report.observedAt, ...(route.scope ? { scope: route.scope } : {}) } };
 }
 
-module.exports = { allowsStep, authorization, capabilityList, inheritedAuthorization, observations, preflightChanged, resolveRoute };
+module.exports = { allowsStep, authorization, capabilityList, inheritedAuthorization, missionStepRoles, observations, preflightChanged, resolveRoute };

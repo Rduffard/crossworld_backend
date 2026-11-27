@@ -93,6 +93,7 @@ function createRouter({
   reportError = () => {},
   workerEnabled = true,
   executiveEnabled = false,
+  executiveReconcileInterval,
   isolatedReviewHostId = () => process.env.OPERATIONS_ISOLATED_REVIEW_HOST_ID,
   githubTestAdapter,
   mcpTestAdapter,
@@ -119,8 +120,8 @@ function createRouter({
   const missionRecords = () => db().collection("operations_missions");
   const initiativeRecords = () => db().collection("operations_mission_initiatives");
   const proposals = () => db().collection("operations_action_proposals");
-  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals,
-    eventBatches, online, enabled: workerEnabled && executiveEnabled });
+  const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals, objectives,
+    eventBatches, online, enabled: workerEnabled && executiveEnabled, reconcileInterval: executiveReconcileInterval });
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
@@ -155,6 +156,23 @@ function createRouter({
     toolAdapter: mcpTestAdapter,
   });
   let indexes;
+  let firstMateIndex;
+  let firstMateIndexRetryAt = 0;
+  async function ensureFirstMateIndex(ownerId) {
+    if (Date.now() < firstMateIndexRetryAt) return false;
+    return firstMateIndex ||= (async () => {
+      await expireLeases(ownerId);
+      await jobs().createIndex({ ownerId: 1 }, { name: "one_active_first_mate_per_owner", unique: true,
+        partialFilterExpression: { activeHost: { $type: "string" }, $or: firstMateIdentity },
+      });
+      return true;
+    })().catch(error => {
+      reportError(failureDiagnostic(error, "first mate lease index"));
+      firstMateIndexRetryAt = Date.now() + 5_000;
+      firstMateIndex = undefined;
+      return false;
+    });
+  }
   function ensureIndexes() {
     indexes ||= Promise.all([
       eventBatches().createIndex({ jobId: 1, offset: 1 }, { unique: true }),
@@ -172,9 +190,6 @@ function createRouter({
       }),
       jobs().createIndex({ activeHost: 1 }, {
         unique: true, partialFilterExpression: { activeHost: { $type: "string" } },
-      }),
-      jobs().createIndex({ ownerId: 1 }, { name: "one_active_first_mate_per_owner", unique: true,
-        partialFilterExpression: { activeHost: { $type: "string" }, $or: firstMateIdentity },
       }),
       jobs().createIndex({ successorOf: 1 }, {
         unique: true, partialFilterExpression: { successorOf: { $type: "string" } },
@@ -262,6 +277,36 @@ function createRouter({
   worker.use("/supervisor", lifecycle.worker);
   worker.use("/media", media.worker);
   if (workerEnabled) worker.use(studioActions.worker);
+  async function expireLeases(ownerId, activeSlots) {
+    const now = new Date();
+    const result = await jobs().updateMany({
+      ownerId, status: { $in: ["running", "cancelling"] }, leaseUntil: { $lte: now },
+      ...(activeSlots ? { $or: [
+        { activeHost: { $in: activeSlots } },
+        { activeHost: { $type: "string" }, $or: firstMateIdentity },
+      ] } : { activeHost: { $type: "string" } }),
+    }, {
+      $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
+      $unset: { activeHost: "" },
+    });
+    if (result.modifiedCount) await executive.signal(ownerId);
+  }
+
+  // The hosted process can reconcile durable state even when no relay is calling it.
+  router.reconcileExecutive = async () => {
+    const ownerId = owner();
+    if (!executiveEnabled || !workerEnabled || !enabled() || !/^[a-f\d]{24}$/.test(ownerId ?? "")) return;
+    await expireLeases(ownerId);
+    const settings = await dispatch().findOne({ _id: ownerId });
+    const hostId = settings?.executiveService?.hostId;
+    if (!hostId) return; // Enrollment continues to use the existing relay path.
+    const host = await hosts().findOne({ _id: hostId, ownerId, revokedAt: null });
+    await executive.observeInfrastructure(ownerId, host, settings.executiveInfrastructure);
+    if (!host || !online(host)) return;
+    if (!settings.paused && !maintenanceActive(settings)) await missions.reconcile(host);
+    await executive.reconcile(host, { safetyNet: true });
+  };
+
   worker.post("/heartbeat", async (req, res) => {
     const { efforts, instance, profiles: supported = ["read-only"], extendedPrompts = false, boundedCorrections = false, employeeConversations = false, backgroundReviews = false, isolatedReviewSnapshot = false } = req.body || {};
     const relayVersion = typeof req.body?.relayVersion === "string" && /^[a-f\d]{12}$/.test(req.body.relayVersion)
@@ -314,21 +359,10 @@ function createRouter({
           : {}),
       });
     }
-    const expired = await jobs().updateMany({
-      ownerId: owner(), leaseUntil: { $lte: now }, $or: [
-        { activeHost: { $in: [host._id, host._id + ":review"] } },
-        { activeHost: { $type: "string" }, $or: firstMateIdentity },
-      ],
-    }, {
-      $set: { status: "interrupted", finishedAt: now, error: "Worker lease expired." },
-      $unset: { activeHost: "" },
-    });
     try {
-      if (executiveEnabled && expired.modifiedCount && await jobs().findOne({
-        ownerId: host.ownerId, hostId: host._id, status: "interrupted", finishedAt: now,
-        $or: [{ missionId: { $exists: true } }, { workerRole: { $in: ["assignment", "qa", "correction", "air"] } }],
-      }, { projection: { _id: 1 } })) await executive.signal(host.ownerId);
-      await executive.reconcile({ ...host, usage: usage && usage.observedAt > (host.usage?.observedAt || 0) ? usage : host.usage });
+      await expireLeases(host.ownerId, [host._id, host._id + ":review"]);
+      await executive.reconcile({ ...host, lastSeen: now,
+        usage: usage && usage.observedAt > (host.usage?.observedAt || 0) ? usage : host.usage });
     } catch (error) {
       reportError(failureDiagnostic(error, "executive service heartbeat"));
     }
@@ -348,7 +382,7 @@ function createRouter({
     await ensureIndexes();
     const scope = { ownerId: owner(), hostId: req.operationsHost._id };
     const activeHost = background ? scope.hostId + ":review" : scope.hostId;
-    let job = await jobs().findOne({ ...scope, activeHost, instance });
+    let job = await jobs().findOne({ ...scope, activeHost, instance, leaseUntil: { $gt: new Date() } });
     const budget = budgetStatus(req.operationsHost.usage);
     if (budget.state === "suspended" || (!job && dispatchStopped(budget))) return res.json(null);
     const isolated = scope.hostId === isolatedReviewHostId();
@@ -425,7 +459,7 @@ function createRouter({
       if (background && (held || spansWorkspaces.includes(other?.profile))) return res.json(null);
       const missionJobs = background || held ? [] : await missions.eligible(scope.ownerId, req.operationsHost,
         req.body.missionPreflight === true);
-      const firstMateBusy = await jobs().findOne({
+      const firstMateBusy = !await ensureFirstMateIndex(scope.ownerId) || await jobs().findOne({
         ownerId: scope.ownerId, activeHost: { $type: "string" }, $or: firstMateIdentity,
       }, { projection: { _id: 1 } });
       admittingClaims++;
@@ -618,7 +652,8 @@ function createRouter({
     }
     const query = { _id: req.params.id, ownerId: owner(), hostId: req.operationsHost._id, instance };
     const current = await jobs().findOne(query, {
-      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1, missionId: 1, workerRole: 1, approval: 1 },
+      projection: { status: 1, eventCount: 1, instruction: 1, decision: 1, codexThreadId: 1, missionId: 1,
+        workerRole: 1, approval: 1, activeHost: 1, executiveReview: 1 },
     });
     if (!current) return reject(res, 404, "Job assignment not found.");
     if (terminal.includes(current.status)) return res.json(current);
@@ -673,7 +708,8 @@ function createRouter({
       leaseUntil: { $gt: new Date() },
     }, update, { projection: { status: 1, eventCount: 1 }, returnDocument: "after" });
     if (!saved) return reject(res, 409, "Job lease or status changed. Retry sync.");
-    if ((result && (current.missionId || ["assignment", "qa", "correction", "air"].includes(current.workerRole))) ||
+    if ((result && !current.executiveReview && (current.activeHost === query.hostId || current.missionId ||
+          ["assignment", "qa", "correction", "air"].includes(current.workerRole))) ||
         (approval?.state === "pending" && approval.id !== current.approval?.id)) {
       try {
         await executive.signal(query.ownerId);
@@ -718,6 +754,15 @@ function createRouter({
 
   router.use(authenticate, (req, res, next) => {
     if (!ownerAllowed(owner(), req.user)) return reject(res, 403, "Operations access denied.");
+    if (["POST", "PATCH"].includes(req.method) &&
+        /^\/(?:missions(?:\/|$)|workforce(?:\/|$)|jobs\/[^/]+\/(?:approval|objective-proposal)\/?$)/i.test(req.path)) {
+      const ownerId = owner();
+      res.once("finish", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          executive.signal(ownerId).catch(error => reportError(failureDiagnostic(error, "executive decision wake")));
+        }
+      });
+    }
     next();
   });
   const briefJson = express.json({ limit: "768kb" });
@@ -1392,5 +1437,9 @@ function createRouter({
   return router;
 }
 
-module.exports = createRouter({ executiveEnabled: true });
+const executiveSweepMinutes = Number(process.env.OPERATIONS_EXECUTIVE_RECONCILE_MINUTES ?? 5);
+module.exports = createRouter({ executiveEnabled: true,
+  executiveReconcileInterval: Number.isFinite(executiveSweepMinutes) && executiveSweepMinutes >= 0
+    ? executiveSweepMinutes * 60_000 : undefined,
+});
 module.exports.createRouter = createRouter;

@@ -5,7 +5,7 @@ const { lastResponseLine, precedingResult } = require("./objective-runs");
 const { LEGACY_PROMPT_LIMIT } = require("./prompt-limits");
 const { usageHoldUntil } = require("./usage");
 const { createInitiatives, missionStatus, expiringMissionStatuses } = require("./mission-initiatives");
-const { allowsStep, authorization, capabilityList, inheritedAuthorization, preflightChanged, resolveRoute } = require("./mission-capabilities");
+const { allowsStep, authorization, capabilityList, inheritedAuthorization, missionStepRoles, preflightChanged, resolveRoute } = require("./mission-capabilities");
 
 const uuid = /^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/;
 const stepKey = /^[a-z][a-z0-9-]{0,39}$/;
@@ -584,10 +584,8 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       } } });
       return;
     }
-    const actorQuery = step.reviewer
-      ? { _id: step.reviewer, role: { $in: ["qa", "art-director"] } }
-      : step.assignee ? { _id: step.assignee, role: { $in: ["worker", "lead", "art-director"] } }
-        : { role: "first-mate" };
+    const employeeId = step.reviewer || step.assignee;
+    const actorQuery = { ...(employeeId ? { _id: employeeId } : {}), role: { $in: missionStepRoles(step) } };
     const actors = await workforce().find({ ownerId: mission.ownerId, kind: "employee", status: "available", ...actorQuery })
       .limit(2).toArray();
     if (actors.length !== 1) {
