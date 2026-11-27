@@ -37,7 +37,7 @@ async function actionableGrants({ ownerId, host, coordinator, now, records, jobs
   return [...eligibleGrants].map(([id, revision]) => ["actionable grant", id, revision]);
 }
 
-async function executiveEvents({ ownerId, host, coordinator, now, records, proposals, jobs, workforce }) {
+async function executiveEvents({ ownerId, host, coordinator, now, records, proposals, jobs, workforce, assignmentCursor }) {
   const [missions, assignments, pending, decisions, resolved, available] = await Promise.all([
     records().find({ ownerId, hostId: host._id, $or: [
       { status: "blocked" },
@@ -47,7 +47,13 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
       ownerId, hostId: host._id, executiveReview: { $ne: true }, missionId: null,
       status: { $in: ["completed", "failed", "interrupted"] },
       workerRole: { $in: ["assignment", "qa", "correction", "air"] },
-    }, { projection: { status: 1, error: 1, workerRole: 1 } }).sort({ finishedAt: -1, _id: 1 }).limit(limit).toArray(),
+      finishedAt: { $type: "date" },
+      ...(assignmentCursor ? { $or: [
+        { finishedAt: { $gt: assignmentCursor.finishedAt } },
+        { finishedAt: assignmentCursor.finishedAt, _id: { $gt: assignmentCursor.id } },
+      ] } : {}),
+    }, { projection: { status: 1, error: 1, workerRole: 1, finishedAt: 1 } })
+      .sort({ finishedAt: 1, _id: 1 }).limit(limit + 1).toArray(),
     jobs().find({
       ownerId, status: "running", "approval.state": "pending", "approval.expiresAt": { $gt: now },
       $expr: { $ne: ["$approval.id", { $ifNull: ["$decision.id", null] }] },
@@ -59,7 +65,10 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     actionableGrants({ ownerId, host, coordinator, now, records, jobs, workforce }),
   ]);
 
-  return [
+  const moreAssignments = assignments.length > limit;
+  if (moreAssignments) assignments.pop();
+  const last = assignments.at(-1);
+  const conditions = [
     ...missions.map(mission => ["mission", mission._id, mission.status, mission.reason,
       Object.entries(mission.results ?? {}).sort(([a], [b]) => a.localeCompare(b))
         .filter(([, result]) => ["blocked", "correct"].includes(result.result))
@@ -72,6 +81,7 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     ...resolved.map(proposal => ["proposal decision", proposal._id, proposal.state]),
     ...available,
   ].map(event => ({ key: digest(event), kind: event[0], recordId: event[1] }));
+  return { conditions, moreAssignments, assignmentCursor: last ? { finishedAt: last.finishedAt, id: last._id } : assignmentCursor };
 }
 
 module.exports = { actionableGrants, executiveEvents };

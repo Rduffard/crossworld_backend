@@ -58,7 +58,14 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(second.sessionId, first.sessionId);
   assert.equal(second.executiveTrigger, "event");
   assert.match(second.prompt, /Recorded decision from prior review/);
-  assert.equal((await status()).state, "Working", "An owner gate does not block an independent review");
+  await collections.jobs().insertOne({ _id: "unsupported", ownerId: relay.ownerId, hostId: relay._id,
+    status: "queued", effort: "low", profile: "scoped" });
+  const gated = await status();
+  assert.equal(gated.state, "Awaiting Decision");
+  assert.equal(gated.activity, "awaiting-owner-approval");
+  assert.equal(gated.ownerDecisionRequired, true);
+  assert.equal(gated.compatibleQueued, 1, "The independent review stays queued while the owner gate is visible");
+  await collections.jobs().deleteOne({ _id: "unsupported" });
   await collections.jobs().updateOne({ _id: second._id }, { $set: { status: "failed", finishedAt: new Date(now) } });
   now += 899_999;
   await controller.reconcile(relay, { safetyNet: true });
@@ -164,6 +171,23 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   const afterAssignment = await runs();
   assert.equal(afterAssignment.length, 9);
   assert.match(afterAssignment[8].prompt, /assignment completed completed-assignment/);
+
+  await collections.jobs().updateOne({ _id: afterAssignment[8]._id }, { $set: { status: "completed", finishedAt: new Date(now) } });
+  await collections.jobs().insertMany(Array.from({ length: 52 }, (_, index) => ({
+    _id: "burst-" + String(index).padStart(2, "0"), ownerId: relay.ownerId, hostId: relay._id,
+    workerRole: "assignment", status: "completed", finishedAt: new Date(now),
+  })).reverse());
+  await controller.signal(relay.ownerId);
+  for (let index = 0; index < 3; index++) {
+    now += 120_000;
+    await create().reconcile(relay);
+    const review = (await runs()).at(-1);
+    assert.notEqual(review._id, afterAssignment[8]._id);
+    await collections.jobs().updateOne({ _id: review._id }, { $set: { status: "completed", finishedAt: new Date(now) } });
+  }
+  const delivered = (await runs()).slice(9).flatMap(review => [...review.prompt.matchAll(/assignment completed (burst-\d+)/g)].map(match => match[1]));
+  assert.equal(delivered.length, 52);
+  assert.equal(new Set(delivered).size, 52, "A timestamp-tied batch survives paging and restart without duplication");
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {
