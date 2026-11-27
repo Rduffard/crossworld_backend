@@ -229,20 +229,32 @@ function createExecutiveService({
     const isPaused = !enabled || paused(settings, now);
     const state = isPaused ? "Paused" : running || (job?.status === "queued" && runnable) ? "Working" :
       decision ? "Awaiting Decision" : "Standing By";
-    const reason = !enabled ? "Executive dispatch is unavailable." : settings?.executivePaused ? "Paused by owner." :
+    const controlReason = !enabled ? "Executive dispatch is unavailable." : settings?.executivePaused ? "Paused by owner." :
       isPaused ? "Studio dispatch is paused or in maintenance." : host && hold(host, now) ? "Waiting for subscription capacity." :
         service && !runnable ? "Waiting for the enrolled relay." : decision && state === "Awaiting Decision" ? "Operations requires an owner decision." : undefined;
     const jobId = state === "Awaiting Decision" ? proposal?.jobId || executionDecision?._id || job?._id : job?._id;
+    const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
+    const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
     const activity = isPaused ? "paused" :
       !host || !online(host, now) || !compatible(host) ? "relay-unavailable" :
-      operations.running.some(run => run.hostId === host._id) ? "executing" :
+      activeRuns.length ? "executing" :
       hold(host, now) ? "subscription-limit" :
       job?.status === "failed" || job?.status === "interrupted" ? "orchestration-failure" :
       operations.queued.length || grants?.length || operations.missions.some(mission => mission.status === "active" && !mission.reason)
         ? "awaiting-dispatch" : decision ? "awaiting-owner-approval" :
         operations.missions.some(mission => mission.status === "blocked" || mission.status === "active")
           ? "blocked" : "no-authorized-actionable-work";
-    return { state, activity, capacity: operations?.capacity, paused: settings?.executivePaused === true, reason, jobId,
+    const activityReason = {
+      "relay-unavailable": "Waiting for the enrolled relay.",
+      executing: atCapacity ? "Work is running. All relay slots are occupied." : "Work is running.",
+      "awaiting-dispatch": "Authorized work is awaiting dispatch.",
+      "orchestration-failure": "The latest First Mate activation failed. Open the execution for details.",
+      "awaiting-owner-approval": "Operations requires an owner decision.",
+      blocked: operations?.missions.find(mission => mission.reason)?.reason || "A mission dependency is blocked.",
+      "no-authorized-actionable-work": "No authorized actionable work remains on this relay.",
+    }[activity];
+    return { state, activity, capacity: operations?.capacity, paused: settings?.executivePaused === true,
+      reason: controlReason || activityReason, jobId,
       lastReviewAt: current?.at,
       review: current && { id: current.id, trigger: current.trigger, status: job?.status,
         queuedAt: current.at, startedAt: job?.startedAt, finishedAt: job?.finishedAt },
