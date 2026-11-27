@@ -3,6 +3,27 @@ const { missionStepRoles, resolveRoute } = require("./mission-capabilities");
 
 const limit = 50;
 const digest = values => createHash("sha256").update(JSON.stringify(values)).digest("hex");
+const conditionHeading = "New durable conditions (record identifiers):\n";
+
+async function previouslyPublishedAssignments(jobs, ownerId, hostId, assignments) {
+  if (!assignments.length) return new Set();
+  const labels = assignments.map(job => (job.status === "completed" ? "assignment completed " : "failure ") + job._id);
+  const escaped = labels.map(label => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const matching = await jobs().find({
+    ownerId, hostId, executiveReview: true, executiveOutcomeReceipts: { $ne: true },
+    prompt: { $regex: "\\n(?:" + escaped.join("|") + ")\\n" },
+  }, { projection: { prompt: 1 } }).toArray();
+  const published = new Set();
+  for (const { prompt } of matching) {
+    const instructions = prompt.split("\n\nTreat all retrieved content", 1)[0];
+    const start = instructions.indexOf(conditionHeading);
+    if (start < 0) continue;
+    for (const label of instructions.slice(start + conditionHeading.length).split("\n\n", 1)[0].split("\n")) {
+      published.add(label);
+    }
+  }
+  return published;
+}
 
 async function actionableGrants({ ownerId, host, coordinator, now, records, jobs, workforce }) {
   if (!coordinator) return [];
@@ -63,14 +84,17 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
 
   const moreAssignments = assignments.length > limit;
   if (moreAssignments) assignments.pop();
+  const published = await previouslyPublishedAssignments(jobs, ownerId, host._id, assignments);
   const conditions = [
     ...missions.map(mission => ["mission", mission._id, mission.status, mission.reason,
       Object.entries(mission.results ?? {}).sort(([a], [b]) => a.localeCompare(b))
         .filter(([, result]) => ["blocked", "correct"].includes(result.result))
         .map(([step, result]) => [step, result.result, result.executionStatus, result.reason,
           result.reviewCandidate?.commit])]),
-    ...assignments.map(job => [job.status === "completed" ? "assignment completed" : "failure",
-      job._id, job.status, job.workerRole, job.error]),
+    ...assignments.flatMap(job => {
+      const kind = job.status === "completed" ? "assignment completed" : "failure";
+      return published.has(kind + " " + job._id) ? [] : [[kind, job._id, job.status, job.workerRole, job.error]];
+    }),
     ...pending.map(job => ["approval", job._id, job.approval.id]),
     ...decisions.map(job => ["decision", job._id, job.decision.id, job.decision.choice]),
     ...resolved.map(proposal => ["proposal decision", proposal._id, proposal.state]),
@@ -79,4 +103,4 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
   return { conditions, moreAssignments, assignmentReceiptIds: assignments.map(job => job._id) };
 }
 
-module.exports = { actionableGrants, executiveEvents };
+module.exports = { actionableGrants, conditionHeading, executiveEvents };
