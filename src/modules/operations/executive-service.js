@@ -39,6 +39,8 @@ function createExecutiveService({
   const hold = (host, now) => usageHoldUntil(host?.usage, now);
   const compatible = host => host && !host.missionOnly && !host.isolatedReviewSnapshot &&
     host.profiles?.includes("read-only") && effortFor(host);
+  const isolationFilter = host => host._id === isolatedReviewHostId()
+    ? { isolatedReview: true } : { isolatedReview: { $ne: true } };
   const isPaused = async ownerId => !enabled || paused(await dispatch().findOne({ _id: ownerId }), clock());
 
   async function snapshot(ownerId, host, now) {
@@ -49,7 +51,7 @@ function createExecutiveService({
       jobs().find({ ownerId, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: time } },
         { projection: { hostId: 1, title: 1, activeHost: 1, employeeId: 1, "studioActor.id": 1,
           "conversationActor.id": 1 } }).limit(30).toArray(),
-      jobs().find({ ownerId, hostId: host._id, ...dueJobs(now) },
+      jobs().find({ ownerId, hostId: host._id, ...isolationFilter(host), ...dueJobs(now) },
         { projection: { workerRole: 1, missionId: 1, effort: 1, profile: 1, workspace: 1, executiveReview: 1 } })
         .sort({ createdAt: 1 }).limit(30).toArray(),
       jobs().find({ ownerId, hostId: host._id, executiveReview: { $ne: true },
@@ -269,7 +271,7 @@ function createExecutiveService({
     }) : {};
     const relayQueue = host && {
       ownerId, hostId: host._id, ...filters,
-      ...(host._id === isolatedReviewHostId() ? { isolatedReview: true } : { isolatedReview: { $ne: true } }),
+      ...isolationFilter(host),
       $and: [...capabilities, dueJobs(now)],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),

@@ -290,6 +290,11 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.jobs().deleteOne({ _id: "extended" });
   now += 60_000;
   assert.equal((await status()).compatibleQueued, 1, "The retry becomes ready while media still requires relay support");
+  await collections.records().deleteMany({ ownerId: relay.ownerId });
+  await collections.jobs().updateMany({ status: "queued" }, { $set: { status: "waiting" } });
+  await collections.jobs().insertOne({ _id: "isolated-only", ownerId: relay.ownerId, hostId: relay._id,
+    status: "queued", profile: "read-only", effort: "low", isolatedReview: true });
+  assert.equal((await status()).activity, "no-authorized-actionable-work");
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {
