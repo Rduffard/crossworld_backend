@@ -1,6 +1,6 @@
 const subscriptionBudget = Object.freeze({
   baselineDate: "2026-11-26", baselinePercent: 43,
-  warningPercent: 63, dispatchStopPercent: 66, executionStopPercent: 68,
+  warningPercent: 90, dispatchStopPercent: 95, executionStopPercent: 98,
 });
 
 function budgetStatus(snapshot, now = Date.now()) {
