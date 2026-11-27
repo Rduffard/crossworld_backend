@@ -252,15 +252,16 @@ function createExecutiveService({
     const grants = host && await actionableGrants({ ownerId, host, coordinator: current, now, records, jobs, workforce });
     const running = ["running", "cancelling"].includes(job?.status) && +job.leaseUntil > now;
     const runnable = host && online(host) && compatible(host) && !hold(host, now);
+    const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
     const isPaused = !enabled || paused(settings, now);
     const state = isPaused ? "Paused" : decision ? "Awaiting Decision" :
-      running || (job?.status === "queued" && runnable) ? "Working" : "Standing By";
+      activeRuns.length || running || (job?.status === "queued" && runnable) ? "Working" : "Standing By";
     const controlReason = !enabled ? "Executive dispatch is unavailable." : settings?.executivePaused ? "Paused by owner." :
       isPaused ? "Studio dispatch is paused or in maintenance." : decision ? "Operations requires an owner decision." :
         host && hold(host, now) ? "Waiting for subscription capacity." :
           service && !runnable ? "Waiting for the enrolled relay." : undefined;
-    const jobId = state === "Awaiting Decision" ? decisionJobId : job?._id;
-    const activeRuns = operations?.running.filter(run => run.hostId === host._id) ?? [];
+    const jobId = state === "Awaiting Decision" ? decisionJobId :
+      (running ? job._id : activeRuns[0]?._id ?? job?._id);
     const atCapacity = activeRuns.length > 0 && activeRuns.length >= operations.capacity.slots;
     const observed = host?.primaryClaimOptions;
     const currentPoll = Boolean(observed && observed.instance === host.instance);

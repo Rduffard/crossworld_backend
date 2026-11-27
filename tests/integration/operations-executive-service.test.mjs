@@ -46,6 +46,13 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.jobs().updateOne({ _id: first._id }, { $set: { status: "completed", finishedAt: new Date(now),
     eventCount: 1, events: [{ view: "response", text: "Recorded decision from prior review" }] } });
   assert.equal((await status()).state, "Standing By");
+  await collections.jobs().insertOne({ _id: "direct-active", ownerId: relay.ownerId, hostId: relay._id,
+    status: "running", leaseUntil: new Date(now + 60_000) });
+  const active = await status();
+  assert.equal(active.state, "Working");
+  assert.equal(active.activity, "executing");
+  assert.equal(active.jobId, "direct-active");
+  await collections.jobs().deleteOne({ _id: "direct-active" });
   await collections.proposals().insertOne({ ownerId: relay.ownerId, state: "pending", jobId: first._id, sessionId: first.sessionId });
   assert.equal((await status()).state, "Awaiting Decision");
   assert.equal((await status()).jobId, first._id);
