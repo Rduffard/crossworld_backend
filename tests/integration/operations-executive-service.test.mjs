@@ -249,6 +249,12 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.records().updateOne({ _id: "independent-ready" }, { $set: { "steps.0.candidate": candidate } });
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: { ...candidate, commit: "b".repeat(40) } } });
   assert.equal((await status()).activity, "awaiting-retry", "A mismatched candidate does not mask the retry");
+  await collections.jobs().updateOne({ _id: "backoff" }, { $set: { status: "waiting" } });
+  const blockedCandidate = await status();
+  assert.equal(blockedCandidate.activity, "blocked");
+  assert.match(blockedCandidate.reason, /differs from the mission handoff/);
+  assert.equal(blockedCandidate.jobId, "mission-review");
+  await collections.jobs().updateOne({ _id: "backoff" }, { $set: { status: "queued" } });
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: candidate } });
   assert.equal((await status()).activity, "awaiting-dispatch", "The selected candidate is eligible");
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { scopedRevision: "mismatched" } });

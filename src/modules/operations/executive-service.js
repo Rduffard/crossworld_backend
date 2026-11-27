@@ -269,7 +269,7 @@ function createExecutiveService({
     }) : {};
     const queue = host && {
       ownerId, hostId: host._id, ...filters,
-      $and: [...capabilities, dueJobs(now), { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs ?? [] } }] }],
+      $and: [...capabilities, dueJobs(now), { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs?.eligibleIds ?? [] } }] }],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
     };
@@ -295,13 +295,13 @@ function createExecutiveService({
       "awaiting-retry": "Waiting for the automatic candidate verification retry.",
       "orchestration-failure": "The latest First Mate activation failed. Open the execution for details.",
       "awaiting-owner-approval": "Operations requires an owner decision.",
-      blocked: operations?.missions.find(mission => mission.reason)?.reason ||
+      blocked: missionJobs?.candidateBlock?.reason || operations?.missions.find(mission => mission.reason)?.reason ||
         (operations?.queued.length ? "Queued work requires a compatible relay configuration." : "A mission dependency is blocked."),
       "no-authorized-actionable-work": "No authorized actionable work remains on this relay.",
     }[activity];
     return { state, activity, capacity: operations?.capacity, compatibleQueued, retryAt: retry?.candidateRetryAt, decision,
       ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true,
-      reason: controlReason || activityReason, jobId,
+      reason: controlReason || activityReason, jobId: activity === "blocked" ? missionJobs?.candidateBlock?.jobId ?? jobId : jobId,
       lastReviewAt: current?.at,
       review: current && { id: current.id, trigger: current.trigger, status: job?.status,
         queuedAt: current.at, startedAt: job?.startedAt, finishedAt: job?.finishedAt },
