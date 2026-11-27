@@ -99,3 +99,33 @@ test("Engineering preserves prior observations through partial refreshes", async
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test("automatic Engineering refresh retries after a failure but honors GitHub backoff", async () => {
+  let now = 1000000;
+  let status = 502;
+  let calls = 0;
+  const router = engineering.createEngineering({
+    repositories: () => ["studio/project"], now: () => now,
+    fetchData: async url => {
+      calls++;
+      if (status !== 200) return new Response(null, { status, headers: { "retry-after": "120" } });
+      return Response.json(url.includes("/actions/") ? { workflow_runs: [] } : url.includes("?") ? [] : {});
+    },
+  });
+  await router.refreshWhenDue();
+  assert.equal(calls, 1);
+  now += 59_999;
+  assert.equal(router.refreshWhenDue(), undefined);
+  now++;
+  status = 429;
+  await router.refreshWhenDue();
+  assert.equal(calls, 2);
+  now += 119_999;
+  assert.equal(router.refreshWhenDue(), undefined);
+  now++;
+  status = 200;
+  await router.refreshWhenDue();
+  assert.equal(calls, 8);
+  now += 60_000;
+  assert.equal(router.refreshWhenDue(), undefined);
+});

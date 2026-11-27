@@ -319,7 +319,13 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(unattended.recordId, "unattended");
   assert.deepEqual(await planningConditions(), [unattended], "Unchanged work does not create another wake key");
   await objectives().updateOne({ _id: "unattended" }, { $set: { updatedAt: new Date(now + 1) } });
-  assert.notEqual((await planningConditions())[0].key, unattended.key);
+  await objectives().insertMany(Array.from({ length: 50 }, (_, index) => ({
+    _id: "already-seen-" + index, ownerId: relay.ownerId, status: "active", criteria,
+    updatedAt: new Date(now + 10), executivePlanningObservedRevision: new Date(now + 10),
+  })));
+  const eligible = await planningConditions();
+  assert.deepEqual(eligible.map(item => item.recordId), ["unattended"]);
+  assert.notEqual(eligible[0].key, unattended.key);
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {

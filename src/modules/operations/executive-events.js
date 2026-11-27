@@ -61,7 +61,8 @@ async function actionableGrants({ ownerId, host, coordinator, now, records, jobs
 async function unattendedObjectives(objectives, ownerId, now) {
   if (!objectives) return [];
   return objectives().aggregate([
-    { $match: { ownerId, status: "active", criteria: { $elemMatch: { "review.decision": { $ne: "accepted" } } } } },
+    { $match: { ownerId, status: "active", $expr: { $ne: [{ $ifNull: ["$updatedAt", "initial"] },
+      { $ifNull: ["$executivePlanningObservedRevision", false] }] }, criteria: { $elemMatch: { "review.decision": { $ne: "accepted" } } } } },
     { $sort: { updatedAt: -1, _id: 1 } },
     { $lookup: {
       from: "operations_jobs", localField: "_id", foreignField: "objectiveId", as: "activeWork",
@@ -118,8 +119,11 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     ...decisions.map(job => ["decision", job._id, job.decision.id, job.decision.choice]),
     ...resolved.map(proposal => ["proposal decision", proposal._id, proposal.state]),
     ...available,
-    ...unattended.map(objective => ["objective needs planning", objective._id, objective.updatedAt]),
   ].map(event => ({ key: digest(event), kind: event[0], recordId: event[1] }));
+  for (const objective of unattended) {
+    conditions.push({ key: digest(["objective needs planning", objective._id, objective.updatedAt]),
+      kind: "objective needs planning", recordId: objective._id, objectiveRevision: objective.updatedAt ?? null });
+  }
   return { conditions, moreAssignments, assignmentReceiptIds: assignments.map(job => job._id) };
 }
 

@@ -133,6 +133,12 @@ function createExecutiveService({
         executiveOutcomeObserved: { $ne: true },
       }, { $set: { executiveOutcomeObserved: true } });
     }
+    if (objectives && checkpoint?.objectiveReceipts?.length) {
+      await objectives().bulkWrite(checkpoint.objectiveReceipts.map(({ recordId, objectiveRevision }) => ({
+        updateOne: { filter: { _id: recordId, ownerId, updatedAt: objectiveRevision },
+          update: { $set: { executivePlanningObservedRevision: objectiveRevision ?? "initial" } } },
+      })));
+    }
     let previous;
     if (state?.reservation) {
       previous = await jobs().findOne({ _id: state.reservation.id, ownerId, hostId: host._id });
@@ -170,6 +176,7 @@ function createExecutiveService({
       checkedAt: discovery ? new Date(now) : checkpoint.checkedAt, observedKeys,
       moreAssignments: discovery?.moreAssignments ?? checkpoint?.moreAssignments ?? false,
       assignmentReceiptIds: discovery?.assignmentReceiptIds ?? [],
+      objectiveReceipts: discovery?.conditions.filter(item => Object.hasOwn(item, "objectiveRevision")) ?? [],
       pendingConditions: changed.slice(conditionsPerReview),
       version: (checkpoint?.version ?? 0) + 1,
     };

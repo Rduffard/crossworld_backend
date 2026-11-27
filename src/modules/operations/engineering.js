@@ -27,6 +27,7 @@ const maxRepositories = 8;
 function createEngineering({ repositories, fetchData = fetch, now = Date.now }) {
   const router = express.Router();
   let snapshot;
+  let lastSuccessfulObservation;
   let nextAttempt = 0;
   let pending;
   const configuredRepositories = () => [...new Set(repositories().filter(name => repoPattern.test(name)))];
@@ -103,13 +104,16 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
           limited = cause === "rate-limited";
         }
       }
-      snapshot = { observedAt: now(), repositories: entries };
+      const complete = entries.every(entry => entry.status === "available" &&
+        Object.values(entry.details).every(detail => detail.status === "available"));
+      if (complete) lastSuccessfulObservation = now();
+      snapshot = { observedAt: now(), repositories: entries, complete };
     })().finally(() => { pending = undefined; });
     return pending;
   }
 
   router.refreshWhenDue = () => {
-    if (pending || nextAttempt > now() || (snapshot && now() - snapshot.observedAt < freshnessMs)) return;
+    if (pending || nextAttempt > now() || (snapshot?.complete && now() - lastSuccessfulObservation < freshnessMs)) return;
     const configured = configuredRepositories().slice(0, maxRepositories);
     if (configured.length) return refresh(configured);
   };
