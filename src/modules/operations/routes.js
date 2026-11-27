@@ -306,13 +306,26 @@ function createRouter({
       await missions.reconcile(host, undefined, { expireOnly: true });
       return;
     }
-    await recurrence.reconcile(host);
-    await missions.reconcile(host);
-    if (usageHoldUntil(host.usage)) return;
-    await blueprints.reconcile(scope);
-    if (settings?.parentContinuation === true && host.extendedPrompts === true && claimOptions?.extendedPrompts === true) {
-      await reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope });
+    const tasks = [
+      ["recurrence", () => recurrence.reconcile(host)],
+      ["mission", () => missions.reconcile(host)],
+    ];
+    if (!usageHoldUntil(host.usage)) {
+      tasks.push(["blueprint", () => blueprints.reconcile(scope)]);
+      if (settings?.parentContinuation === true && host.extendedPrompts === true && claimOptions?.extendedPrompts === true) {
+        tasks.push(["parent continuation", () => reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope })]);
+      }
     }
+    let failed = false;
+    for (const [kind, reconcile] of tasks) {
+      try {
+        await reconcile();
+      } catch (error) {
+        failed = true;
+        reportError(failureDiagnostic(error, "Operations " + kind + " reconciliation"));
+      }
+    }
+    return failed;
   }
 
   // The hosted supervisor and relay fast path share the same durable reconcilers.
@@ -335,7 +348,10 @@ function createRouter({
       const results = await Promise.allSettled(relays.map(host =>
         reconcileHost(host, settings, host.primaryClaimOptions?.instance === host.instance ? host.primaryClaimOptions : null)));
       for (const result of results) {
-        if (result.status !== "rejected") continue;
+        if (result.status === "fulfilled") {
+          failed ||= result.value === true;
+          continue;
+        }
         failed = true;
         reportError(failureDiagnostic(result.reason, "Operations host reconciliation"));
       }
