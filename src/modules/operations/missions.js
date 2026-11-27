@@ -624,7 +624,9 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       "Mission: " + mission.title + "\nStep: " + step.title + "\n" + step.prompt,
       ...(recovery ? [
         "Resume the unfinished work for this step. Verify the prior artifacts and reuse completed work. " +
-          (recovery.delegatedBy
+          (recovery.automatic
+            ? "The Operations supervisor recovered an expired lease under the owner's existing retry authorization:\n"
+            : recovery.delegatedBy
             ? "First Mate supplied the following resolution under the owner's delegated recovery authorization:\n"
             : "The owner supplied the following resolution for this step within its existing authorization:\n") + recovery.resolution,
         priorEvidence,
@@ -699,9 +701,9 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     }
   }
 
-  async function reconcile(host, missionId) {
+  async function reconcile(host, missionId, { expireOnly = false } = {}) {
     const scope = { ownerId: host.ownerId, hostId: host._id };
-    if (!missionId && !usageHoldUntil(host.usage)) {
+    if (!expireOnly && !missionId && !usageHoldUntil(host.usage)) {
       await repairQualifiedCorrection(scope);
       await initiativeController.reconcile(scope);
     }
@@ -709,7 +711,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     await records().updateMany({ ...scope, status: { $in: expiringMissionStatuses }, endsAt: { $lte: new Date() } }, {
       $set: { status: "expired", reason: "Authorized operating window ended.", updatedAt: new Date() }, $inc: { revision: 1 },
     });
-    if (usageHoldUntil(host.usage)) return;
+    if (expireOnly || usageHoldUntil(host.usage)) return;
     const candidates = records().find({ ...activeQuery(scope.ownerId, scope.hostId), ...scope }).sort({ createdAt: 1, _id: 1 });
     for await (let mission of candidates) {
       if (mission.current) {
@@ -758,6 +760,23 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
             ...(mission.current.previousJobId ? { previousJobId: mission.current.previousJobId } : {}),
             ...(verdict ? {} : { reason: job.candidateAdmissionError ||
               (job.error === preflightChanged ? preflightChanged : "No valid completion verdict.") }) } } };
+        if (job.status === "interrupted" && job.error === "Worker lease expired." &&
+            mission.registration && mission.endsAt <= mission.delegatedRecoveryEndsAt &&
+            mission.delegatedRecoveryEndsAt > new Date() && mission.delegatedRecoverySteps?.includes(failedStep.key) &&
+            job.profile === "read-only" && !job.studioTools && failedStep.profile === "read-only" &&
+            !failedStep.approval && !failedStep.allowProfileFallback &&
+            !mission.recoveries?.some(attempt => attempt.step === failedStep.key)) {
+          const recovery = recoverStep({ ...mission, results: fields.results }, {
+            step: failedStep.key, end: mission.endsAt, attribution: { automatic: true },
+            resolution: "The worker lease expired. Recheck the evidence and complete this Read Only step within its existing scope.",
+          });
+          if (recovery.fields) {
+            if ((await change(mission, recovery.fields)).matchedCount) {
+              await enqueue({ ...mission, ...recovery.fields, revision: mission.revision + 1 }, host);
+            }
+            continue;
+          }
+        }
         if (!(await change(mission, fields)).matchedCount) continue;
         mission = { ...mission, ...fields, revision: mission.revision + 1 };
       }

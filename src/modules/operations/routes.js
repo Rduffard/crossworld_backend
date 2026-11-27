@@ -94,6 +94,7 @@ function createRouter({
   reportError = () => {},
   workerEnabled = true,
   executiveEnabled = false,
+  observeDeployments = false,
   executiveReconcileInterval,
   isolatedReviewHostId = () => process.env.OPERATIONS_ISOLATED_REVIEW_HOST_ID,
   githubTestAdapter,
@@ -116,6 +117,10 @@ function createRouter({
   const finance = () => db().collection("operations_finance");
   const correspondence = () => db().collection("operations_correspondence");
   const series = () => db().collection("operations_recurrence");
+  const engineering = createEngineering({ repositories: () => {
+    const configured = repositories();
+    return configured.length ? configured : ["Rduffard/crossworld_backend", "Rduffard/crossworld_creative"];
+  } });
   const media = createMedia({ records: () => db().collection("operations_media"), hosts, jobs, owner, online, workerEnabled, inMaintenance });
   const recurrence = createRecurrence({ records: series, jobs });
   const missionRecords = () => db().collection("operations_missions");
@@ -295,19 +300,65 @@ function createRouter({
     if (result.modifiedCount) await executive.signal(ownerId);
   }
 
-  // The hosted process can reconcile durable state even when no relay is calling it.
-  router.reconcileExecutive = async () => {
+  async function reconcileHost(host, settings, claimOptions) {
+    const scope = { ownerId: host.ownerId, hostId: host._id };
+    if (settings?.paused || maintenanceActive(settings) || !online(host)) {
+      await missions.reconcile(host, undefined, { expireOnly: true });
+      return;
+    }
+    await recurrence.reconcile(host);
+    await missions.reconcile(host);
+    if (usageHoldUntil(host.usage)) return;
+    await blueprints.reconcile(scope);
+    if (settings?.parentContinuation === true && host.extendedPrompts === true && claimOptions?.extendedPrompts === true) {
+      await reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope });
+    }
+  }
+
+  // The hosted supervisor and relay fast path share the same durable reconcilers.
+  router.reconcileIntervalMs = 30_000;
+  router.reconcileOperations = async () => {
     const ownerId = owner();
     if (!executiveEnabled || !workerEnabled || !enabled() || !/^[a-f\d]{24}$/.test(ownerId ?? "")) return;
-    await expireLeases(ownerId);
-    const settings = await dispatch().findOne({ _id: ownerId });
-    const hostId = settings?.executiveService?.hostId;
-    if (!hostId) return; // Enrollment continues to use the existing relay path.
-    const host = await hosts().findOne({ _id: hostId, ownerId, revokedAt: null });
-    await executive.observeInfrastructure(ownerId, host, settings.executiveInfrastructure);
-    if (!host || !online(host)) return;
-    if (!settings.paused && !maintenanceActive(settings)) await missions.reconcile(host);
-    await executive.reconcile(host, { safetyNet: true });
+    const startedAt = new Date();
+    let onlineRelays = 0;
+    let relayCount = 0;
+    let failed = false;
+    try {
+      await expireLeases(ownerId);
+      const [settings, relays] = await Promise.all([
+        dispatch().findOne({ _id: ownerId }),
+        hosts().find({ ownerId, revokedAt: null, isolatedReviewSnapshot: { $ne: true } }).toArray(),
+      ]);
+      relayCount = relays.length;
+      onlineRelays = relays.filter(host => online(host)).length;
+      const results = await Promise.allSettled(relays.map(host =>
+        reconcileHost(host, settings, host.primaryClaimOptions?.instance === host.instance ? host.primaryClaimOptions : null)));
+      for (const result of results) {
+        if (result.status !== "rejected") continue;
+        failed = true;
+        reportError(failureDiagnostic(result.reason, "Operations host reconciliation"));
+      }
+      const hostId = settings?.executiveService?.hostId;
+      if (hostId) {
+        const host = relays.find(relay => relay._id === hostId);
+        await executive.observeInfrastructure(ownerId, host, settings.executiveInfrastructure);
+        if (host && online(host)) await executive.reconcile(host, { safetyNet: true });
+      }
+      if (observeDeployments) {
+        void engineering.refreshWhenDue()?.catch(error => reportError(failureDiagnostic(error, "Operations deployment observation")));
+      }
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      const finishedAt = new Date();
+      await dispatch().updateOne({ _id: ownerId }, { $set: { orchestration: {
+        startedAt, finishedAt, nextSweepAt: new Date(+finishedAt + router.reconcileIntervalMs),
+        status: failed ? "degraded" : "healthy", onlineRelays, relayCount,
+        ...(failed ? { reason: "A reconciliation failed. The supervisor will retry automatically." } : {}),
+      } } }, { upsert: true });
+    }
   };
 
   worker.post("/heartbeat", async (req, res) => {
@@ -453,13 +504,7 @@ function createRouter({
       if (settings?.paused || maintenanceActive(settings)) return res.json(null);
       const continuationEnabled = settings?.parentContinuation === true;
       if (!background) {
-        await recurrence.reconcile(req.operationsHost);
-        await missions.reconcile({ ...req.operationsHost, ownerId: scope.ownerId });
-        if (!usageHoldUntil(req.operationsHost.usage)) await blueprints.reconcile(scope);
-        if (continuationEnabled && !usageHoldUntil(req.operationsHost.usage) &&
-            req.operationsHost.extendedPrompts === true && req.body.extendedPrompts === true) {
-          await reconcileParentContinuations({ jobs: jobs(), eventBatches: eventBatches(), ...scope });
-        }
+        await reconcileHost(req.operationsHost, settings, req.body);
       }
       const allocated = req.operationsHost.backgroundReviews === true;
       const other = allocated && await jobs().findOne({
@@ -822,10 +867,7 @@ function createRouter({
       };
     }) });
   });
-  router.use("/engineering", createEngineering({ repositories: () => {
-    const configured = repositories();
-    return configured.length ? configured : ["Rduffard/crossworld_backend", "Rduffard/crossworld_creative"];
-  } }));
+  router.use("/engineering", engineering);
   router.use("/workshop-registry", createWorkshopRegistry({ records: () => db().collection("operations_workshop_registry"), owner }));
   router.use("/reports", createReports({ jobs, objectives, projects, workforce, eventBatches, owner }));
   router.use("/workflow", createWorkflow({ jobs, projects, objectives, workforce, owner, jobView }));
@@ -1441,7 +1483,7 @@ function createRouter({
 }
 
 const executiveSweepMinutes = Number(process.env.OPERATIONS_EXECUTIVE_RECONCILE_MINUTES ?? 5);
-module.exports = createRouter({ executiveEnabled: true,
+module.exports = createRouter({ executiveEnabled: true, observeDeployments: true,
   executiveReconcileInterval: Number.isFinite(executiveSweepMinutes) && executiveSweepMinutes >= 0
     ? executiveSweepMinutes * 60_000 : undefined,
 });

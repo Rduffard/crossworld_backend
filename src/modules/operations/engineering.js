@@ -70,14 +70,7 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
 
   router.get("/", (_req, res) => res.json(status()));
 
-  router.post("/refresh", async (_req, res) => {
-    if (pending) {
-      await pending;
-      return res.json(status());
-    }
-    if (nextAttempt > now()) return res.status(429).json({ message: "GitHub refresh is temporarily throttled." });
-    const configured = configuredRepositories().slice(0, maxRepositories);
-    if (!configured.length) return res.status(409).json({ message: "No GitHub repositories are configured." });
+  function refresh(configured) {
     nextAttempt = now() + throttleMs;
     pending = (async () => {
       const entries = [];
@@ -112,7 +105,24 @@ function createEngineering({ repositories, fetchData = fetch, now = Date.now }) 
       }
       snapshot = { observedAt: now(), repositories: entries };
     })().finally(() => { pending = undefined; });
-    await pending;
+    return pending;
+  }
+
+  router.refreshWhenDue = () => {
+    if (pending || nextAttempt > now() || (snapshot && now() - snapshot.observedAt < freshnessMs)) return;
+    const configured = configuredRepositories().slice(0, maxRepositories);
+    if (configured.length) return refresh(configured);
+  };
+
+  router.post("/refresh", async (_req, res) => {
+    if (pending) {
+      await pending;
+      return res.json(status());
+    }
+    if (nextAttempt > now()) return res.status(429).json({ message: "GitHub refresh is temporarily throttled." });
+    const configured = configuredRepositories().slice(0, maxRepositories);
+    if (!configured.length) return res.status(409).json({ message: "No GitHub repositories are configured." });
+    await refresh(configured);
     return res.json(status());
   });
   return router;

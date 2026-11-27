@@ -58,8 +58,26 @@ async function actionableGrants({ ownerId, host, coordinator, now, records, jobs
   return [...eligibleGrants].map(([id, revision]) => ["actionable grant", id, revision]);
 }
 
-async function executiveEvents({ ownerId, host, coordinator, now, records, proposals, jobs, workforce }) {
-  const [missions, assignments, pending, decisions, resolved, available] = await Promise.all([
+async function unattendedObjectives(objectives, ownerId, now) {
+  if (!objectives) return [];
+  return objectives().aggregate([
+    { $match: { ownerId, status: "active", criteria: { $elemMatch: { "review.decision": { $ne: "accepted" } } } } },
+    { $sort: { updatedAt: -1, _id: 1 } },
+    { $lookup: {
+      from: "operations_jobs", localField: "_id", foreignField: "objectiveId", as: "activeWork",
+      pipeline: [{ $match: { ownerId, $or: [
+        { status: { $in: ["waiting", "queued", "scheduled"] } },
+        { status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: new Date(now) } },
+      ] } }, { $limit: 1 }, { $project: { _id: 1 } }],
+    } },
+    { $match: { "activeWork.0": { $exists: false } } },
+    { $limit: limit },
+    { $project: { updatedAt: 1 } },
+  ]).toArray();
+}
+
+async function executiveEvents({ ownerId, host, coordinator, now, records, proposals, jobs, workforce, objectives }) {
+  const [missions, assignments, pending, decisions, resolved, available, unattended] = await Promise.all([
     records().find({ ownerId, hostId: host._id, $or: [
       { status: "blocked" },
       { status: "active", reason: { $gt: "" } },
@@ -80,6 +98,7 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     proposals().find({ ownerId, state: { $in: ["applied", "rejected"] } }, { projection: { state: 1 } })
       .sort({ decidedAt: -1, _id: 1 }).limit(limit).toArray(),
     actionableGrants({ ownerId, host, coordinator, now, records, jobs, workforce }),
+    unattendedObjectives(objectives, ownerId, now),
   ]);
 
   const moreAssignments = assignments.length > limit;
@@ -99,6 +118,7 @@ async function executiveEvents({ ownerId, host, coordinator, now, records, propo
     ...decisions.map(job => ["decision", job._id, job.decision.id, job.decision.choice]),
     ...resolved.map(proposal => ["proposal decision", proposal._id, proposal.state]),
     ...available,
+    ...unattended.map(objective => ["objective needs planning", objective._id, objective.updatedAt]),
   ].map(event => ({ key: digest(event), kind: event[0], recordId: event[1] }));
   return { conditions, moreAssignments, assignmentReceiptIds: assignments.map(job => job._id) };
 }

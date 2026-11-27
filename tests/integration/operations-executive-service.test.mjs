@@ -6,6 +6,7 @@ import express from "express";
 import { MongoClient } from "mongodb";
 import { startTestMongo } from "../support/mongo-fixture.mjs";
 import { createExecutiveService } from "../../src/modules/operations/executive-service.js";
+import { executiveEvents } from "../../src/modules/operations/executive-events.js";
 import { createMissions } from "../../src/modules/operations/missions.js";
 import { createRouter } from "../../src/modules/operations/routes.js";
 
@@ -295,6 +296,23 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   await collections.jobs().insertOne({ _id: "isolated-only", ownerId: relay.ownerId, hostId: relay._id,
     status: "queued", profile: "read-only", effort: "low", isolatedReview: true });
   assert.equal((await status()).activity, "no-authorized-actionable-work");
+
+  const objectives = () => db.collection("operations_objectives");
+  const criteria = [{ review: null }];
+  await objectives().insertMany([
+    { _id: "unattended", ownerId: relay.ownerId, status: "active", criteria, updatedAt: new Date(now) },
+    { _id: "already-queued", ownerId: relay.ownerId, status: "active", criteria },
+    { _id: "owner-paused", ownerId: relay.ownerId, status: "paused", criteria },
+  ]);
+  const planningConditions = async () => (await executiveEvents({
+    ...collections, jobs: () => db.collection("operations_jobs"), objectives, ownerId: relay.ownerId, host: relay, now,
+  })).conditions.filter(item => item.kind === "objective needs planning");
+  await db.collection("operations_jobs").insertOne({ ownerId: relay.ownerId, objectiveId: "already-queued", status: "queued" });
+  const [unattended] = await planningConditions();
+  assert.equal(unattended.recordId, "unattended");
+  assert.deepEqual(await planningConditions(), [unattended], "Unchanged work does not create another wake key");
+  await objectives().updateOne({ _id: "unattended" }, { $set: { updatedAt: new Date(now + 1) } });
+  assert.notEqual((await planningConditions())[0].key, unattended.key);
 });
 
 test("First Mate claims remain exclusive across relays and a stale lease can be recovered", async t => {
@@ -310,7 +328,8 @@ test("First Mate claims remain exclusive across relays and a stale lease can be 
   });
 
   const app = express();
-  const router = createRouter({ db: () => db, owner: () => ownerId, enabled: () => true, executiveEnabled: true });
+  const create = () => createRouter({ db: () => db, owner: () => ownerId, enabled: () => true, executiveEnabled: true });
+  const router = create();
   app.use(router);
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -339,7 +358,7 @@ test("First Mate claims remain exclusive across relays and a stale lease can be 
       assert.equal(reply.status, 200);
       return reply.json();
     }
-    return { id, send };
+    return { id, hostId, send };
   }));
 
   const claims = await Promise.all(relays.map(({ send }) => send("claim")));
@@ -350,7 +369,50 @@ test("First Mate claims remain exclusive across relays and a stale lease can be 
   assert.equal((await jobs.findOne({ _id: relays[winner].id })).status, "running");
 
   await jobs.updateOne({ _id: relays[winner].id }, { $set: { leaseUntil: new Date(0) } });
-  await router.reconcileExecutive();
+  const hosts = db.collection("operations_hosts");
+  await hosts.updateMany({ ownerId }, { $set: { lastSeen: new Date(0) } });
+  const occurrenceId = randomUUID();
+  await db.collection("operations_recurrence").insertOne({
+    _id: randomUUID(), ownerId, hostId: relays[winner].hostId, state: "active", occurrenceId,
+    nextAt: new Date(), profile: "read-only", effort: "low", requiresExtendedPrompt: false,
+    workspace: "development", prompt: "Read a fixture.", total: 2, remaining: 2,
+  });
+  await router.reconcileOperations();
+  const settings = (await db.collection("operations_dispatch").findOne({ _id: ownerId })).orchestration;
+  assert.equal(settings.status, "healthy");
+  assert.equal(settings.relayCount, 2);
+  assert.equal(settings.onlineRelays, 0);
+  assert.ok(settings.nextSweepAt > settings.finishedAt);
   assert.equal((await jobs.findOne({ _id: relays[winner].id })).status, "interrupted");
+  assert.equal(await jobs.findOne({ _id: occurrenceId }), null);
+  await hosts.updateMany({ ownerId }, { $set: { lastSeen: new Date() } });
+  const restarted = create();
+  await Promise.all([router.reconcileOperations(), restarted.reconcileOperations()]);
+  assert.equal(await jobs.countDocuments({ _id: occurrenceId, status: "scheduled" }), 1,
+    "The hosted sweep restores the same scheduled occurrence before a relay requests work");
   assert.equal((await other.send("claim"))._id, other.id);
+
+  const missionId = randomUUID();
+  const interruptedId = randomUUID();
+  const endsAt = new Date(Date.now() + 600_000);
+  const hostId = relays[winner].hostId;
+  await db.collection("operations_workforce").insertOne({ _id: "fixture-qa", role: "qa", ownerId,
+    kind: "employee", status: "available" });
+  const missions = db.collection("operations_missions");
+  await missions.insertOne({ _id: missionId, hostId, ownerId, title: "Fixture", workspace: "development", effort: "low",
+    status: "active", endsAt, registration: {}, revision: 0, results: {}, approvals: {},
+    delegatedRecoveryEndsAt: endsAt, delegatedRecoverySteps: ["review"], current: { step: "review", jobId: interruptedId },
+    steps: [{ key: "review", title: "Verify", profile: "read-only", reviewer: "fixture-qa", after: [] }],
+  });
+  await jobs.insertOne({ _id: interruptedId, ownerId, hostId, missionId, missionStep: "review", profile: "read-only",
+    status: "interrupted", error: "Worker lease expired.", finishedAt: new Date(), eventCount: 0 });
+  await Promise.all([router.reconcileOperations(), restarted.reconcileOperations()]);
+  const retry = await missions.findOne({ _id: missionId });
+  assert.equal(retry.recoveries.length, 1);
+  assert.equal(retry.recoveries[0].automatic, true);
+  assert.equal((await jobs.findOne({ _id: retry.current.jobId })).status, "queued");
+  await jobs.updateOne({ _id: retry.current.jobId }, { $set: { status: "interrupted", error: "Worker lease expired." } });
+  await restarted.reconcileOperations();
+  assert.equal((await missions.findOne({ _id: missionId })).status, "blocked");
+  assert.equal(await jobs.countDocuments({ missionId }), 2, "The supervisor does not exceed the delegated retry");
 });

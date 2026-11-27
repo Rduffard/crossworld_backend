@@ -29,11 +29,11 @@ const io = new Server(server, {
 connectDB().then(() => {
   const reconcile = async () => {
     try {
-      await operations.reconcileExecutive();
+      await operations.reconcileOperations();
     } catch {
       console.error("Operations supervisor reconciliation failed.");
     } finally {
-      setTimeout(reconcile, 30_000).unref();
+      setTimeout(reconcile, operations.reconcileIntervalMs).unref();
     }
   };
   void reconcile();

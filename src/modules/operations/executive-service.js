@@ -153,7 +153,7 @@ function createExecutiveService({
 
     // Drain persisted batches before discovery so a backlog cannot overflow the checkpoint.
     const discovery = checkpoint?.pendingConditions?.length ? null :
-      await executiveEvents({ ownerId, host, coordinator: state?.reservation, now, records, proposals, jobs, workforce });
+      await executiveEvents({ ownerId, host, coordinator: state?.reservation, now, records, proposals, jobs, workforce, objectives });
     const conditions = [
       ...(discovery ? Object.values(settings?.executiveInfrastructure?.events ?? {}) : []),
       ...(discovery?.conditions ?? []),
@@ -196,7 +196,7 @@ function createExecutiveService({
     const last = previous ? await precedingResult(previous, eventBatches(), { limit: 1800 }) : "";
     const instructions = [
       "Run an executive review using the existing Operations records and supported studio tools.",
-      "Inspect active objectives, mission results, owner decisions and relay limits. Recover an eligible blocked step using its recorded delegation and independent evidence. Continue unrelated authorized work when a decision is pending.",
+      "Inspect active objectives, mission results, owner decisions and relay limits. For an objective that needs planning, check existing work and dependencies before proposing or delegating the next authorized action. Recover an eligible blocked step using its recorded delegation and independent evidence. Continue unrelated authorized work when a decision is pending.",
       "Inspect the exact grant and revision using the identifiers below. Register eligible standalone grants. When the relay exposes recover, use it for a step whose recorded retry authorization applies. Use revise only under delegated planning and within the existing permission ceiling.",
       "For a release, inspect the exact candidate, independent verdict and pending approval gates. Route independent exact-commit review through the existing review tool when authorized. Record unavailable actions and required owner decisions with their Operations links. Preserve approval gates, retry limits and separate final acceptance.",
       "Delegate investigation, implementation and independent verification within existing authority. Classify new blockers before asking for authorization, and continue independent authorized work.",
@@ -307,10 +307,14 @@ function createExecutiveService({
         (operations?.queued.length ? "Queued work requires a compatible relay configuration." : "A mission dependency is blocked."),
       "no-authorized-actionable-work": "No authorized actionable work remains on this relay.",
     }[activity];
+    const supervisor = settings?.orchestration;
+    const orchestration = supervisor && now > +supervisor.nextSweepAt + 60_000
+      ? { ...supervisor, status: "stale", reason: "The supervisor has missed its last scheduled check." }
+      : supervisor;
     return { state, activity, capacity: operations?.capacity, compatibleQueued, retryAt: retry?.candidateRetryAt, decision,
       ownerDecisionRequired: Boolean(decision), paused: settings?.executivePaused === true,
       reason: controlReason || activityReason, jobId: activity === "blocked" ? missionJobs?.candidateBlock?.jobId ?? jobId : jobId,
-      lastReviewAt: current?.at,
+      lastReviewAt: current?.at, orchestration,
       review: current && { id: current.id, trigger: current.trigger, status: job?.status,
         queuedAt: current.at, startedAt: job?.startedAt, finishedAt: job?.finishedAt },
     };
