@@ -245,6 +245,12 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
     missionPreflights: [{ profile: "read-only", capabilities: ["read"], observedAt: Date.now() }],
     primaryClaimOptions: { instance: "current", missionPreflight: true } } });
   assert.equal((await status()).activity, "awaiting-dispatch", "An eligible independent mission takes priority over the retry");
+  const candidate = { repository: "crossworld_backend", commit: "a".repeat(40) };
+  await collections.records().updateOne({ _id: "independent-ready" }, { $set: { "steps.0.candidate": candidate } });
+  await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: { ...candidate, commit: "b".repeat(40) } } });
+  assert.equal((await status()).activity, "awaiting-retry", "A mismatched candidate does not mask the retry");
+  await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { reviewCandidate: candidate } });
+  assert.equal((await status()).activity, "awaiting-dispatch", "The selected candidate is eligible");
   await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { scopedRevision: "mismatched" } });
   assert.equal((await status()).activity, "awaiting-retry", "A mission job whose queued scope is rejected does not mask the retry");
   await collections.jobs().deleteOne({ _id: "mission-review" });

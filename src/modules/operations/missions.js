@@ -816,6 +816,19 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     return { step, receipt };
   }
 
+  function admissionCandidate(job, mission, step) {
+    if (!step.candidate && !enduranceCandidateSource(mission, step)) return {};
+    if (job.profile !== "read-only" || step.allowProfileFallback) {
+      return { candidateRejection: "Candidate review requires an approved Read Only route without profile fallback." };
+    }
+    const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
+    const candidate = selectedReviewCandidate(mission, step, recovery);
+    if (!candidate || !isDeepStrictEqual(job.reviewCandidate, candidate)) {
+      return { candidateRejection: "Queued review candidate differs from the mission handoff. Resume review with the exact selected commit." };
+    }
+    return { candidate };
+  }
+
   async function dispatchable(ownerId, host, supportsPreflight) {
     const scope = activeQuery(ownerId, host._id);
     const items = await records().find({ ...scope, "current.jobId": { $exists: true } }).toArray();
@@ -823,11 +836,13 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     if (!byJob.size) return [];
     const candidates = await jobs().find({ ownerId, hostId: host._id, _id: { $in: [...byJob.keys()] },
       status: { $in: ["queued", "scheduled"] },
-    }, { projection: { missionId: 1, missionStep: 1, profile: 1, requiresMissionPreflight: 1, scopedRevision: 1 } }).toArray();
+    }, { projection: { missionId: 1, missionStep: 1, profile: 1, requiresMissionPreflight: 1, scopedRevision: 1, reviewCandidate: 1 } }).toArray();
     return candidates.filter(job => {
       const mission = byJob.get(job._id);
-      return mission._id === job.missionId && mission.current.step === job.missionStep &&
-        (!job.requiresMissionPreflight || supportsPreflight) && admissionRoute(job, host, mission);
+      if (mission._id !== job.missionId || mission.current.step !== job.missionStep ||
+          (job.requiresMissionPreflight && !supportsPreflight)) return false;
+      const route = admissionRoute(job, host, mission);
+      return route && !admissionCandidate(job, mission, route.step).candidateRejection;
     }).map(job => job._id);
   }
 
@@ -840,23 +855,15 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     const route = mission && admissionRoute(job, host, mission);
     if (!route) return false;
     const { step, receipt } = route;
-    if (step.candidate || enduranceCandidateSource(mission, step)) {
-      if (job.profile !== "read-only" || step.allowProfileFallback) {
-        return { candidateRejection: "Candidate review requires an approved Read Only route without profile fallback." };
+    const candidateCheck = admissionCandidate(job, mission, step);
+    if (candidateCheck.candidateRejection) return candidateCheck;
+    if (candidateCheck.candidate && job.reviewCandidateVerified !== true) {
+      const availability = await candidateAvailability(candidateCheck.candidate);
+      if (availability === "missing") {
+        return { candidateRejection: "Queued review commit is unavailable in its Crossworld GitHub repository." };
       }
-      const recovery = mission.recoveries?.find(attempt => attempt.jobId === mission.current.recoveryJobId);
-      const candidate = selectedReviewCandidate(mission, step, recovery);
-      if (!candidate || !isDeepStrictEqual(job.reviewCandidate, candidate)) {
-        return { candidateRejection: "Queued review candidate differs from the mission handoff. Resume review with the exact selected commit." };
-      }
-      if (job.reviewCandidateVerified !== true) {
-        const availability = await candidateAvailability(candidate);
-        if (availability === "missing") {
-          return { candidateRejection: "Queued review commit is unavailable in its Crossworld GitHub repository." };
-        }
-        if (availability === "unverified") {
-          return { candidateRejection: "GitHub candidate verification failed twice. Verification will retry.", retryCandidate: true };
-        }
+      if (availability === "unverified") {
+        return { candidateRejection: "GitHub candidate verification failed twice. Verification will retry.", retryCandidate: true };
       }
     }
     const accepted = await records().updateOne({ ...query, revision: mission.revision }, { $currentDate: { "current.admittedAt": true } });
