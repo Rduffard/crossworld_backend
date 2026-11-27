@@ -124,7 +124,7 @@ function createRouter({
   const missions = createMissions({ records: missionRecords, initiatives: initiativeRecords, jobs, workforce, hosts, eventBatches,
     dispatch, owner, online, workerEnabled, inMaintenance, startSession: () => db().client.startSession() });
   const executive = createExecutiveService({ dispatch, jobs, hosts, workforce, records: missionRecords, proposals, objectives,
-    eligibleMissionJobs: missions.eligible, eventBatches, online, enabled: workerEnabled && executiveEnabled,
+    eligibleMissionJobs: missions.dispatchable, eventBatches, online, enabled: workerEnabled && executiveEnabled,
     reconcileInterval: executiveReconcileInterval });
   const attentionReceipts = () => db().collection("operations_attention_receipts");
   const headquarters = createHeadquarters({ hosts, jobs, objectives, projects, finance, dispatch, receipts: attentionReceipts, online });

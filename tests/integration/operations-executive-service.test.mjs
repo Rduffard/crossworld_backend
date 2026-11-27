@@ -25,7 +25,7 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
 
   let now = Date.now();
   const missions = createMissions(collections);
-  const create = () => createExecutiveService({ ...collections, eligibleMissionJobs: missions.eligible,
+  const create = () => createExecutiveService({ ...collections, eligibleMissionJobs: missions.dispatchable,
     online: () => true, enabled: true, clock: () => now });
   let controller = create();
   const runs = () => collections.jobs().find({ executiveReview: true }).sort({ createdAt: 1 }).toArray();
@@ -233,16 +233,25 @@ test("First Mate coalesces wakes, restores its checkpoint and keeps owner decisi
   assert.equal(waiting.activity, "awaiting-retry");
   assert.equal(+waiting.retryAt, now + 60_000);
   await collections.records().insertOne({ _id: "independent-ready", ownerId: relay.ownerId, hostId: relay._id,
-    status: "active", reason: "", endsAt: new Date(now + 3600_000) });
+    status: "active", reason: "", endsAt: new Date(now + 3600_000), effort: "low",
+    steps: [{ key: "review", profile: "read-only", requires: ["read"] }],
+    authorization: { routes: [{ profile: "read-only", capabilities: ["read"] }] } });
   assert.equal((await status()).activity, "awaiting-retry", "An active record alone does not establish eligibility");
   await collections.records().updateOne({ _id: "independent-ready" }, { $set: { current: { step: "review", jobId: "mission-review" } } });
   await collections.jobs().insertOne({ _id: "mission-review", ownerId: relay.ownerId, hostId: relay._id,
-    missionId: "independent-ready", status: "queued", profile: "read-only", effort: "low", requiresMissionPreflight: true });
+    missionId: "independent-ready", missionStep: "review", status: "queued", profile: "read-only", effort: "low", requiresMissionPreflight: true });
   assert.equal((await status()).activity, "awaiting-retry", "A mission poll must support preflight");
   await collections.hosts().updateOne({ _id: relay._id }, { $set: { instance: "current",
+    missionPreflights: [{ profile: "read-only", capabilities: ["read"], observedAt: Date.now() }],
     primaryClaimOptions: { instance: "current", missionPreflight: true } } });
   assert.equal((await status()).activity, "awaiting-dispatch", "An eligible independent mission takes priority over the retry");
+  await collections.jobs().updateOne({ _id: "mission-review" }, { $set: { scopedRevision: "mismatched" } });
+  assert.equal((await status()).activity, "awaiting-retry", "A mission job whose queued scope is rejected does not mask the retry");
   await collections.jobs().deleteOne({ _id: "mission-review" });
+  await collections.jobs().insertOne({ _id: "due-schedule", ownerId: relay.ownerId, hostId: relay._id,
+    status: "scheduled", scheduledAt: new Date(now), profile: "read-only", effort: "low" });
+  assert.equal((await status()).compatibleQueued, 1, "A due scheduled job counts toward dispatch");
+  await collections.jobs().deleteOne({ _id: "due-schedule" });
   await collections.records().deleteOne({ _id: "independent-ready" });
   await collections.hosts().updateOne({ _id: relay._id }, { $set: { instance: "current", extendedPrompts: true, artifactImport: true,
     primaryClaimOptions: { instance: "prior", extendedPrompts: true, artifactImport: true } } });

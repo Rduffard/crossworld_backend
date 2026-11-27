@@ -10,6 +10,7 @@ const defaultReconcileInterval = 5 * 60_000;
 const recentLimit = 500;
 const conditionsPerReview = 40;
 const inFlight = ["queued", "running", "cancelling"];
+const dueJobs = now => ({ $or: [{ status: "queued" }, { status: "scheduled", scheduledAt: { $lte: new Date(now) } }] });
 
 function boundedSnapshot(snapshot, budget) {
   const bounded = { capacity: snapshot.capacity };
@@ -47,7 +48,7 @@ function createExecutiveService({
       jobs().find({ ownerId, status: { $in: ["running", "cancelling"] }, leaseUntil: { $gt: time } },
         { projection: { hostId: 1, title: 1, activeHost: 1, employeeId: 1, "studioActor.id": 1,
           "conversationActor.id": 1 } }).limit(30).toArray(),
-      jobs().find({ ownerId, hostId: host._id, status: "queued" },
+      jobs().find({ ownerId, hostId: host._id, ...dueJobs(now) },
         { projection: { workerRole: 1, missionId: 1, effort: 1, profile: 1, workspace: 1, executiveReview: 1 } })
         .sort({ createdAt: 1 }).limit(30).toArray(),
       jobs().find({ ownerId, hostId: host._id, executiveReview: { $ne: true },
@@ -267,8 +268,8 @@ function createExecutiveService({
       artifactImport: currentPoll && observed.artifactImport === true,
     }) : {};
     const queue = host && {
-      ownerId, hostId: host._id, status: "queued", ...filters,
-      $and: [...capabilities, { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs ?? [] } }] }],
+      ownerId, hostId: host._id, ...filters,
+      $and: [...capabilities, dueJobs(now), { $or: [{ missionId: { $exists: false } }, { _id: { $in: missionJobs ?? [] } }] }],
       ...(supportsPreflight ? {} : { requiresMissionPreflight: { $ne: true } }),
       ...(settings?.executivePaused ? { executiveReview: { $ne: true } } : {}),
     };

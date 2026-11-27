@@ -807,17 +807,39 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
       .map(mission => mission.current.jobId);
   }
 
+  function admissionRoute(job, host, mission) {
+    const step = mission.steps.find(item => item.key === job.missionStep);
+    if (!step) return false;
+    const { reason, receipt } = resolveRoute(host, mission, step);
+    if (reason || job.profile !== (receipt?.effectiveProfile ?? step.profile) ||
+        !!receipt !== (job.requiresMissionPreflight === true) || receipt?.scope !== job.scopedRevision) return false;
+    return { step, receipt };
+  }
+
+  async function dispatchable(ownerId, host, supportsPreflight) {
+    const scope = activeQuery(ownerId, host._id);
+    const items = await records().find({ ...scope, "current.jobId": { $exists: true } }).toArray();
+    const byJob = new Map(items.map(mission => [mission.current.jobId, mission]));
+    if (!byJob.size) return [];
+    const candidates = await jobs().find({ ownerId, hostId: host._id, _id: { $in: [...byJob.keys()] },
+      status: { $in: ["queued", "scheduled"] },
+    }, { projection: { missionId: 1, missionStep: 1, profile: 1, requiresMissionPreflight: 1, scopedRevision: 1 } }).toArray();
+    return candidates.filter(job => {
+      const mission = byJob.get(job._id);
+      return mission._id === job.missionId && mission.current.step === job.missionStep &&
+        (!job.requiresMissionPreflight || supportsPreflight) && admissionRoute(job, host, mission);
+    }).map(job => job._id);
+  }
+
   async function admit(job, host) {
     if (usageHoldUntil(host.usage)) return false;
     const query = { ownerId: job.ownerId, hostId: job.hostId, _id: job.missionId,
       status: "active", $expr: { $gt: ["$endsAt", "$$NOW"] },
       "current.jobId": job._id, "current.step": job.missionStep };
     const mission = await records().findOne(query);
-    if (!mission) return false;
-    const step = mission.steps.find(item => item.key === job.missionStep);
-    const { reason, receipt } = resolveRoute(host, mission, step);
-    if (reason || job.profile !== (receipt?.effectiveProfile ?? step.profile) || !!receipt !== (job.requiresMissionPreflight === true) ||
-        receipt?.scope !== job.scopedRevision) return false;
+    const route = mission && admissionRoute(job, host, mission);
+    if (!route) return false;
+    const { step, receipt } = route;
     if (step.candidate || enduranceCandidateSource(mission, step)) {
       if (job.profile !== "read-only" || step.allowProfileFallback) {
         return { candidateRejection: "Candidate review requires an approved Read Only route without profile fallback." };
@@ -854,7 +876,7 @@ function createMissions({ records, initiatives, jobs, workforce, hosts, eventBat
     }));
   }
 
-  return { router, reconcile, eligible, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn, listFromTurn };
+  return { router, reconcile, eligible, dispatchable, admit, briefing, reviseFromTurn, inspectFromTurn, registerFromTurn, recoverFromTurn, listFromTurn };
 }
 
 module.exports = { createMissions };
